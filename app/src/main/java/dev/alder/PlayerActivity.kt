@@ -714,6 +714,9 @@ class PlayerActivity : Screen() {
         background({ Stremio.saveLibrary(key, listOf(snapshot)) }) {}
     }
 
+    // Search mid-film would leave the film: the button does nothing here.
+    override fun onSearchRequested() = false
+
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (upNextPanel.visibility == View.VISIBLE) {
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
