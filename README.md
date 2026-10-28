@@ -94,6 +94,25 @@ Canopy has no add-on store. Setting up add-ons means typing and web forms, which
 
 After that, Canopy offers new versions itself: press Install when it asks, or use Settings › About › Updates. Android may ask you to allow Canopy to install apps the first time. (Version 1.0 needs one manual update with the code above.)
 
+### Install over ADB
+
+Handy for trying a build from a pull request, or when you'd rather push updates from your computer.
+
+1. On the TV, turn on **Developer options** (Settings › Device Preferences › About, press OK on *Build* seven times), then turn on **USB debugging** (or **Network debugging**) in Developer options.
+1. Find the TV's IP address under Settings › Network.
+1. On your computer, install [Android platform-tools](https://developer.android.com/tools/releases/platform-tools) for `adb`, and optionally the [GitHub CLI](https://cli.github.com) for `gh`.
+1. Get the APK:
+   - **A release:** download `Canopy.apk` from the [latest release](https://github.com/danmanv/Canopy/releases/latest).
+   - **A pull request's build:** each PR's *Build* check uploads a `Canopy-debug` artifact. Download it from the check's page, or run `gh run download <run-id> -R danmanv/Canopy -n Canopy-debug`.
+1. Connect and install:
+
+   ```sh
+   adb connect <tv-ip>:5555   # the TV asks you to allow debugging the first time
+   adb install -r <file>.apk  # -r keeps your profiles and sign-in
+   ```
+
+If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the TV was signed with a different key (a release replaced by a PR's debug build, or the reverse). Uninstall with `adb uninstall dev.canopy` and install again; you'll need to sign in again after that.
+
 ## Privacy
 
 Canopy has no analytics, no ads and no account of its own. It talks to Stremio, to the add-ons you installed, to image hosts for artwork, to [IntroDB](https://introdb.app) for intro times, and to GitHub to check for updates. Profiles and their PINs stay on the TV.
