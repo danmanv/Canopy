@@ -414,6 +414,8 @@ class MainActivity : Screen() {
     // the library's rows are redrawn, so the remote stays where it was on the rest of the page.
     override fun onRestart() {
         super.onRestart()
+        // Home's rows were changed in Settings: Home is drawn again in its new order.
+        if (page == Page.HOME && homeDrawn != HomeRows.saved(this)?.toString()) return showPage(Page.HOME)
         refreshLibrary?.invoke()
         refreshAddons?.invoke()
     }
@@ -421,6 +423,8 @@ class MainActivity : Screen() {
     private var refreshAddons: (() -> Unit)? = null // the open page's add-on check, run again on coming back to Canopy
 
     private var refreshLibrary: (() -> Unit)? = null // the open page's library rows (Home, Library), asked again
+    private var redrawContinue: (() -> Unit)? = null // Home's Tonight and Continue drawn again from the library in hand
+    private var homeDrawn: String? = null // Home's row choices when its rows were made
     private var last: View? = null // where the remote last was in the rows
 
     override fun onResume() {
@@ -1003,6 +1007,7 @@ class MainActivity : Screen() {
         loadMoreSections = null
         val opened = android.os.SystemClock.uptimeMillis()
         refreshLibrary = null
+        redrawContinue = null
         touched = false
         styleNav()
         content.removeAllViews()
@@ -1046,40 +1051,51 @@ class MainActivity : Screen() {
         }
 
         if (p == Page.HOME || p == Page.LIBRARY) {
+            val tonightSlot = if (p == Page.HOME) slot() else null // Tonight sits above Continue
             val slot = slot()
+            fun mine(v: View) = isInside(v, slot) || (tonightSlot != null && isInside(v, tonightSlot))
             if (grid) librarySlot = slot
             var shown: String? = null // what's on screen, to tell whether the fresh library changed anything
             var fresh = false
             fun show(list: List<JSONObject>, force: Boolean = false) {
                 val cw = Library.continueWatching(list)
+                // Pins on titles that left Continue Watching (finished, removed) go once Stremio's own answer is in.
+                if (p == Page.HOME && force) HomeRows.tonight(this).let { pins ->
+                    val ids = cw.map { it.optString("_id") }.toSet()
+                    if (pins.any { it !in ids }) HomeRows.setTonight(this, pins.filter { it in ids })
+                }
                 val what = (if (p == Page.HOME) cw else list).joinToString {
                     it.optString("_id") + it.optString("_mtime") + it.optBoolean("removed") + it.optJSONObject("state")?.optLong("timeOffset")
-                }
+                } + (if (p == Page.HOME) HomeRows.tonight(this).toString() else "")
                 // Saved copies wait once the remote is in use; Stremio's own answer always goes in (focus stays on
                 // its title below), or a stale disk copy could hide a show for the whole visit.
                 if (what == shown || (shown != null && touched && !force)) return
                 val firstShow = shown == null
                 shown = what
                 // The remote was on one of these titles: it stays on that title wherever it moved (watched: to the front).
-                val was = (currentFocus?.takeIf { isInside(it, slot) })?.tag
+                val was = (currentFocus?.takeIf { mine(it) })?.tag
                 library = list
                 if (p == Page.HOME) Profiles.active(this)?.let { me -> background({ WatchNext.sync(applicationContext, me.authKey, cw, me.pin != null) }) {} }
-                rows.filter { isInside(it.view, slot) }.forEach { r -> r.cards.forEach { it.unload() }; rows.remove(r) }
+                rows.filter { mine(it.view) }.forEach { r -> r.cards.forEach { it.unload() }; rows.remove(r) }
                 slot.removeAllViews()
-                if (p == Page.HOME) {
-                    val items = cw.map(::libraryItem)
-                    if (items.isNotEmpty()) {
-                        slot.addView(row("Continue", items.take(START), later(items)).view)
+                tonightSlot?.removeAllViews()
+                if (tonightSlot != null) {
+                    val (tonight, rest) = splitTonight(cw, { it.optString("_id") }, HomeRows.tonight(this))
+                        .let { (a, b) -> a.map(::libraryItem) to b.map(::libraryItem) }
+                    if (tonight.isNotEmpty()) tonightSlot.addView(row("Tonight", tonight).view)
+                    if (rest.isNotEmpty()) {
+                        slot.addView(row("Continue", rest.take(START), later(rest)).view)
                         android.util.Log.d("Canopy", "page ${p.label}: Continue in ${android.os.SystemClock.uptimeMillis() - opened} ms")
-                        startCinema(items.take(CINEMA_MAX))
                     }
+                    if (cw.isNotEmpty()) startCinema((tonight + rest).take(CINEMA_MAX))
                 } else {
                     showLibrary(slot)
                 }
-                if (was != null) (slot.findViewWithTag(was) ?: rows.firstOrNull { isInside(it.view, slot) }?.cards?.firstOrNull())?.requestFocus()
-                // Continue came in after a quicker row below took the first focus: the remote starts on Continue.
+                val top = rows.firstOrNull { mine(it.view) }
+                if (was != null) (tonightSlot?.findViewWithTag<View>(was) ?: slot.findViewWithTag<View>(was) ?: top?.cards?.firstOrNull())?.requestFocus()
+                // Continue came in after a quicker row below took the first focus: the remote starts on Tonight or Continue.
                 else if (p == Page.HOME && firstShow && !touched && focusedSomething && scroller.hasFocus())
-                    rows.firstOrNull { isInside(it.view, slot) }?.focusFirst()
+                    top?.focusFirst()
             }
             if (quick && library.isNotEmpty()) show(library) // the library already in memory: no wait on a revisit
             if (quick) background({ Stremio.savedLibrary(key) }) { r -> if (g == generation && !fresh) r.getOrNull()?.let { show(it) } }
@@ -1090,6 +1106,7 @@ class MainActivity : Screen() {
             }
             ask()
             refreshLibrary = { ask() }
+            if (p == Page.HOME) redrawContinue = { show(library, force = true) }
         }
         if (p == Page.LIBRARY) return
 
@@ -1100,13 +1117,17 @@ class MainActivity : Screen() {
             built = true
             builtFrom = addons.map { it.id }
             // Each catalog on its page under a plain name, personal rows first; the sort keeps the addons' order within a rank.
-            val shelves = addons.flatMap { it.catalogs }.mapNotNull { c -> shelf(c)?.takeIf { it.page == p }?.let { c to it } }
+            // Home has the rows the viewer chose in Settings, in their order (Watchly's picks until they choose).
+            if (p == Page.HOME) homeDrawn = HomeRows.saved(this)?.toString()
+            val shelves = if (p == Page.HOME) HomeRows.arranged(this, addons.flatMap { it.catalogs }).filter { it.second }
+                .mapIndexed { i, (c, _) -> c to Shelf(Page.HOME, homeTitle(c), i) }
+            else addons.flatMap { it.catalogs }.mapNotNull { c -> shelf(c)?.takeIf { it.page == p }?.let { c to it } }
                 .sortedBy { it.second.rank }
             val catalogs = shelves.map { it.first }
             if (catalogs.isEmpty()) {
                 val what = when (p) { Page.MOVIES -> "movie"; Page.LIVE -> "live"; else -> "show" }
                 // Home holds only Continue and Watchly's picks, so a new account sees nothing there without a word.
-                content.addView(text(if (p == Page.HOME) "Picks for you show here once Watchly is installed on this profile's Stremio account. Shows and Movies have more to browse."
+                content.addView(text(if (p == Page.HOME) "Choose rows for Home in Settings, under Home, or install Watchly for picks made for you. Shows and Movies have more to browse."
                     else "None of your addons has $what catalogs. Add one (AIOMetadata, Cinemeta) in Stremio.", BODY, color = TEXT_3)
                     .apply { setPadding(dp(PAD), 0, dp(PAD), 0) })
             }
@@ -1377,6 +1398,13 @@ class MainActivity : Screen() {
         }
     }
 
+    /** A catalog's name on Home, where movies and shows share a page: "Popular · Movies". */
+    private fun homeTitle(c: Addon.Catalog): String {
+        if (HomeRows.onByDefault(c)) return homeRowName(c.name)
+        val name = shelf(c)?.title ?: tidy(c.name)
+        return when (c.type) { "movie" -> "$name · Movies"; "series" -> "$name · Shows"; else -> name }
+    }
+
     /** Addon names as a person would write them: no "TV Shows:" label, no run-together keyword tags. */
     private fun tidy(name: String) = name.removePrefix("TV Shows: ").removePrefix("MyTrakt - ")
         // ponytail: Watchly glues TMDB keyword tags onto theme names ("Comedy Aftercreditsstinger"); a word this long is one.
@@ -1466,10 +1494,16 @@ class MainActivity : Screen() {
         }
     }
 
-    /** Hold OK on a Continue Watching title: choose a source yourself, or take the title off the row. */
+    /** Hold OK on a Continue Watching title: choose a source yourself, pin it to Tonight, or take it off the row. */
     private fun continueMenu(item: Item) {
-        choose(item.name, listOf("Choose a source", "Remove from Continue Watching")) { selected ->
+        val pinned = HomeRows.pinned(this, item.id)
+        choose(item.name, listOf("Choose a source", if (pinned) "Unpin from Tonight" else "Pin to Tonight", "Remove from Continue Watching")) { selected ->
             if (selected == 0) return@choose play(item, pick = true)
+            if (selected == 1) {
+                HomeRows.pin(this, item.id, !pinned)
+                redrawContinue?.invoke()
+                return@choose
+            }
             val original = library.firstOrNull { it.optString("_id") == item.id } ?: return@choose
             val updated = JSONObject(original.toString())
             val offset = Library.hideFromContinueWatching(updated)
@@ -1478,6 +1512,7 @@ class MainActivity : Screen() {
                     Settings.setHidden(this, Settings.hidden(this)
                         .put(item.id, JSONObject().put("name", item.name).put("timeOffset", offset)))
                     library = library.map { if (it.optString("_id") == item.id) updated else it }
+                    HomeRows.pin(this, item.id, false)
                     refreshLibrary?.invoke() // the row (and Google TV's) is drawn again without it
                 }) { error ->
                     forgetIfSessionGone(error)
