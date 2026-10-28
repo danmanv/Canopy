@@ -24,6 +24,14 @@ android {
     val keys = rootProject.file("keystore.properties").takeIf { it.exists() }
         ?.let { f -> Properties().apply { f.inputStream().use { load(it) } } }
     signingConfigs {
+        // One shared debug key, committed (it guards nothing), so every CI and local debug build has the same
+        // signature and `adb install -r` updates the TV in place, keeping profiles and sign-in.
+        getByName("debug") {
+            storeFile = file("canopy-debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (keys != null) create("release") {
             storeFile = file(keys.getProperty("storeFile"))
             storePassword = keys.getProperty("storePassword")

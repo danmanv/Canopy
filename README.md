@@ -111,7 +111,9 @@ Handy for trying a build from a pull request, or when you'd rather push updates 
    adb install -r <file>.apk  # -r keeps your profiles and sign-in
    ```
 
-If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the TV was signed with a different key (a release replaced by a PR's debug build, or the reverse). Uninstall with `adb uninstall dev.canopy` and install again; you'll need to sign in again after that.
+Every debug build (CI or local) is signed with the same committed key, `app/canopy-debug.keystore`, so one PR's build installs over another's with `adb install -r` and keeps your data. For example, with the TV at 192.168.1.231: `adb -s 192.168.1.231:5555 install -r app-debug.apk`. The package is `dev.canopy`.
+
+If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the TV was signed with a different key: a release replaced by a debug build or the reverse, or a debug build from before the shared key. Uninstall with `adb uninstall dev.canopy` and install again. That signs you out, but only once.
 
 ## Privacy
 
