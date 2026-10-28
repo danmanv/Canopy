@@ -15,6 +15,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Trailer previews.** Stop on a title for 3 seconds. Its trailer plays behind it without sound. Push a button to stop it. To turn it off, select **Settings → Picture & Sound → Trailer previews**.
 - **Up next starts the next episode.** At the end of an episode, **Up next** counts down from 15 seconds. Then the next episode starts. Select **Watch the credits** to stop it. When you pause, the count stops.
 - **Skip intro for anime.** Anime from Kitsu or MyAnimeList also show **Skip intro** and **Skip recap**. The times come from AniSkip.
 - **Skip 85 s.** When no one has timed the intro of an episode, **Skip 85 s** shows in the first 3 minutes. Push OK to go 85 seconds forward.
