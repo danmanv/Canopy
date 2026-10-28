@@ -156,7 +156,7 @@ abstract class Screen : Activity() {
         }
     }
 
-    // Read once for the whole app, not per screen: Inter alone is 870 KB, read twice, on the main thread.
+    // Read once for the whole app, not per screen: each font is read from the APK on the main thread.
     private val fonts get() = loadedFonts ?: Fonts(applicationContext.assets).also { loadedFonts = it }
 
     /** Shared House Lights typography. */
@@ -209,8 +209,8 @@ abstract class Screen : Activity() {
             if (art !== shadeSource) return@background
             // A bright film keeps the shade dark across the whole text column, not just at the screen's edge.
             windowShade?.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                if (bright) intArrayOf(0xF70E0C0A.toInt(), 0xE00E0C0A.toInt(), 0x800E0C0A.toInt(), 0x000E0C0A)
-                else intArrayOf(0xEB0E0C0A.toInt(), 0x000E0C0A, 0x000E0C0A))
+                if (bright) intArrayOf(0xF707090A.toInt(), 0xE007090A.toInt(), 0x8007090A.toInt(), 0x0007090A)
+                else intArrayOf(0xEB07090A.toInt(), 0x0007090A, 0x0007090A))
         }
     }
 
@@ -222,14 +222,14 @@ abstract class Screen : Activity() {
         setContentView(FrameLayout(this).apply {
             addView(backdrop, FrameLayout.LayoutParams(-1, -1))
             windowShade = View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xEB0E0C0A.toInt(), 0x000E0C0A, 0x000E0C0A))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xEB07090A.toInt(), 0x0007090A, 0x0007090A))
             }.also { addView(it, FrameLayout.LayoutParams(-1, -1)) }
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF70E0C0A.toInt(), 0x000E0C0A, 0x000E0C0A))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF707090A.toInt(), 0x0007090A, 0x0007090A))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x8C0E0C0A.toInt(), 0x000E0C0A, 0x000E0C0A, 0x000E0C0A, 0x000E0C0A, 0x000E0C0A, 0x000E0C0A))
+                    intArrayOf(0x8C07090A.toInt(), 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A))
             }, FrameLayout.LayoutParams(-1, -1))
             for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
                 GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
@@ -291,7 +291,7 @@ abstract class Screen : Activity() {
         if (icon != 0) setCompoundDrawablesRelative(getDrawable(icon)?.mutate()?.apply { setBounds(0, 0, dp(16), dp(16)) }, null, null, null)
         fun style(focused: Boolean) {
             background = GradientDrawable().apply {
-                setColor(TEXT)
+                setColor(if (focused) TUNGSTEN else TEXT)
                 cornerRadius = dp(BUTTON_H / 2).toFloat()
             }
             setTextColor(BASE)
@@ -366,17 +366,17 @@ abstract class Screen : Activity() {
     /** A hairline under a list row. */
     protected fun divider() = View(this).apply { setBackgroundColor(GLASS_EDGE) }
 
-    /** Canopy's mark beside the serif "Canopy": top left of the picker and sign-in, and Settings › About. */
+    /** Canopy's mark beside the lowercase "canopy" wordmark: top left of the picker and sign-in, and Settings › About. */
     protected fun brand(size: Float = WORDMARK) = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
         val mark = (size * 1.3f).toInt() // the mark's art fills about two thirds of its square
         addView(ImageView(context).apply { setImageResource(R.drawable.logo_transparent) }, LinearLayout.LayoutParams(dp(mark), dp(mark)))
-        addView(text("Canopy", size, serif = true).onArt(), wrap().apply { marginStart = dp(4) })
+        addView(text("canopy", size, serif = true).onArt(), wrap().apply { marginStart = dp(4) })
     }
 
     /** The IMDb tag beside a rating, as tall as the letters. */
     protected fun imdbTag() = text("IMDb", SMALL, bold = true, color = BASE).apply {
-        background = rounded(TUNGSTEN, 3)
+        background = rounded(RATING, 3)
         includeFontPadding = false
         setLineSpacing(0f, 1f)
         setPadding(dp(4), dp(1), dp(4), dp(1))
@@ -443,7 +443,7 @@ abstract class Screen : Activity() {
         foreground = if (on) GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
             cornerRadius = dp(radiusDp).toFloat()
-            setStroke(dp(1), TUNGSTEN_RIM) // a hairline: the glow and the lift carry focus
+            setStroke(dp(2), TUNGSTEN_RIM) // the emerald ring; the glow and the lift carry the rest
         } else null
         if (on && android.os.Build.VERSION.SDK_INT >= 28) {
             val poster = posterBitmap(this)
@@ -643,9 +643,12 @@ abstract class Screen : Activity() {
 
     // House Lights' shared values. Screens keep their layout and content; the helpers above own component styling.
     private class Fonts(assets: android.content.res.AssetManager) {
-        val medium: Typeface = Typeface.Builder(assets, "fonts/inter.ttf").setFontVariationSettings("'wght' 500").setWeight(500).build()
-        val semiBold: Typeface = Typeface.Builder(assets, "fonts/inter.ttf").setFontVariationSettings("'wght' 600").setWeight(600).build()
-        val serif: Typeface = Typeface.createFromAsset(assets, "fonts/instrument_serif.ttf")
+        val medium: Typeface = outfit(assets, 400)
+        val semiBold: Typeface = outfit(assets, 600)
+        val serif: Typeface = outfit(assets, 300) // titles: Outfit Light, large, in place of Alder's serif
+
+        private fun outfit(assets: android.content.res.AssetManager, weight: Int): Typeface =
+            Typeface.Builder(assets, "fonts/outfit.ttf").setFontVariationSettings("'wght' $weight").setWeight(weight).build()
     }
 
     companion object {
@@ -684,18 +687,20 @@ abstract class Screen : Activity() {
         const val CODE = 36f
         val LEADING = mapOf(SERIF_HERO to 40f, SERIF_TITLE to 30f, SERIF_NAME to 21f, BODY to 20f, SMALL to 17f, CODE to 40f)
 
-        const val BASE = 0xFF0E0C0A.toInt()
-        const val TEXT = 0xFFF3EEE6.toInt()
-        const val TEXT_2 = 0xB8F3EEE6.toInt()
-        const val TEXT_3 = 0x73F3EEE6
-        const val TUNGSTEN = 0xFFF3D9B1.toInt()
-        const val TUNGSTEN_RIM = 0x99F3D9B1.toInt()
-        const val TUNGSTEN_GLOW = 0x59F3D9B1
-        const val GLASS = 0x4D28221C
-        const val GLASS_FOCUSED = 0x3DF3EEE6 // a lit face: with no rim, the fill alone carries focus
-        const val GLASS_EDGE = 0x24FFF0DC
-        const val GLASS_HIGHLIGHT = 0x4DFFF5E6
-        const val ROW_FOCUSED = 0x29F3EEE6
+        const val BASE = 0xFF07090A.toInt()
+        const val TEXT = 0xFFEEF4F1.toInt()
+        const val TEXT_2 = 0xB8EEF4F1.toInt()
+        const val TEXT_3 = 0x73EEF4F1
+        // Canopy's Smoke look: the accent keeps Alder's name (fewer conflicts when merging upstream) but is emerald.
+        const val TUNGSTEN = 0xFF5FE3A8.toInt()
+        const val TUNGSTEN_RIM = 0xE65FE3A8.toInt()
+        const val TUNGSTEN_GLOW = 0x735FE3A8
+        const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
+        const val GLASS = 0x4D141A1A
+        const val GLASS_FOCUSED = 0x3DEEF4F1 // a lit face: with no rim, the fill alone carries focus
+        const val GLASS_EDGE = 0x24E6FFF4
+        const val GLASS_HIGHLIGHT = 0x4DF0FFF8
+        const val ROW_FOCUSED = 0x29EEF4F1
         const val PROGRESS_TRACK = 0x4DFFFFFF // light enough that a short fill still reads as a bar, not a dash
         private val pool = Executors.newFixedThreadPool(6)
     }
