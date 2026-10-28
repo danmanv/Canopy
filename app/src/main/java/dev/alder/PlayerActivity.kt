@@ -945,8 +945,8 @@ class PlayerActivity : Screen() {
             addView(buttons, FrameLayout.LayoutParams(-1, dp(76), Gravity.BOTTOM).apply {
                 bottomMargin = dp(11)
             })
-            addView(column(Gravity.END, keyHint("OK", "Play / pause"), keyHint("◀ ▶", "Seek on the bar")), FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(PAD); bottomMargin = dp(35)
+            addView(keyHint("OK", "Play / pause"), FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(PAD); bottomMargin = dp(43)
             })
         }
     }
