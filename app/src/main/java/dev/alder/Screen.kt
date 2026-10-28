@@ -2,6 +2,7 @@ package dev.alder
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorFilter
@@ -23,6 +24,7 @@ import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -112,6 +114,19 @@ abstract class Screen : Activity() {
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    /** The remote's search or mic button: Search opens listening, from any screen that hasn't a use of its own for it. */
+    override fun onSearchRequested(): Boolean {
+        if (authKey == null) return false
+        startActivity(Intent(this, SearchActivity::class.java).putExtra(SearchActivity.LISTEN, true))
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Most TVs give the mic button to the Assistant; the few that hand it to the app get the same as Search.
+        if (keyCode == KeyEvent.KEYCODE_VOICE_ASSIST && onSearchRequested()) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     /**
