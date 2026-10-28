@@ -43,7 +43,7 @@ object Settings {
     fun setHidden(c: Context, all: org.json.JSONObject) = prefs(c).edit().putString(profileKey(c, "hidden"), all.toString()).apply()
     /** A removed profile's taste goes with it, so a new profile in its place starts with none. */
     fun forget(c: Context, profileId: String) = prefs(c).edit().apply {
-        listOf("release", "dub", "audioLang", "subLang", "hidden").forEach { remove("$it@$profileId") }
+        listOf("release", "dub", "audioLang", "subLang", "hidden", "homeRows", "tonight").forEach { remove("$it@$profileId") }
         prefs(c).all.keys.filter { it.startsWith("title:") && it.endsWith("@$profileId") }.forEach(::remove)
     }.apply()
 
@@ -139,6 +139,7 @@ class SettingsActivity : Screen() {
     }
     private enum class Group(val label: String, val icon: Int = 0, val glyph: String = "") {
         STREAMS("Streams", R.drawable.ic_play),
+        HOME("Home", R.drawable.ic_home),
         PICTURE("Picture & Sound", R.drawable.ic_tv),
         SUBTITLES("Subtitles", R.drawable.ic_subtitles),
         ADDONS("Add-ons", R.drawable.ic_layers),
@@ -201,6 +202,8 @@ class SettingsActivity : Screen() {
     private var selectedGroup: Group? = null
     private var firstDetail: View? = null
     private var addonValue: TextView? = null
+    private var homeFocus: String? = null // the catalog the remote goes back to when Home's group is drawn again
+    private var homeBuild = 0
     private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -346,6 +349,7 @@ class SettingsActivity : Screen() {
         addonValue = null
         hint.text = when (group) {
             Group.STREAMS -> "Choose how Canopy finds and starts a source."
+            Group.HOME -> "Choose Home's rows and their order. Hold OK on a title in Continue Watching to pin it to Tonight."
             Group.PICTURE -> "Choose the picture and sound this TV can play."
             Group.SUBTITLES -> "Set how subtitles start and appear."
             Group.ADDONS -> "Manage the add-ons connected to this profile."
@@ -380,6 +384,7 @@ class SettingsActivity : Screen() {
                         "Release groups, codecs, languages and more are set in your streaming add-on on your phone or at web.stremio.com. This TV follows its order.") {}
                 }
             }
+            Group.HOME -> homeRows(homeFocus.also { homeFocus = null })
             Group.PICTURE -> {
                 pictureAndSound.forEach(::choiceRow)
                 languageRow("audioLang", "Audio language", "The dub to start with when a file has several. Changeable while watching.")
@@ -473,6 +478,70 @@ class SettingsActivity : Screen() {
                 "This TV hides its screensaver settings. From a computer, run: adb shell settings put secure " +
                     "screensaver_components $packageName/${CanopyDream::class.java.name}") {}
         }
+    }
+
+    /**
+     * Home's rows for this profile: Tonight, then every catalog of its add-ons in Home's order. OK on a catalog shows or
+     * hides it and moves it up or down; the page is drawn again with the remote on the same catalog.
+     */
+    private fun homeRows(focusOn: String?) {
+        val build = ++homeBuild
+        val tonight = actionRow("Tonight", "${HomeRows.tonight(this).size} pinned",
+            "Titles you pin show in their own row above Continue Watching, until you finish them.") {
+            if (HomeRows.tonight(this).isEmpty()) choose("Nothing is pinned", listOf("OK"),
+                "Hold OK on a title in Continue Watching on Home and choose Pin to Tonight.") {}
+            else choose("Tonight", listOf("Keep", "Unpin everything"), "Titles leave Tonight on their own once you finish them.") {
+                if (it == 1) { HomeRows.setTonight(this, emptyList()); redrawHome(null) }
+            }
+        }
+        actionRow("Reset Home rows", "", "Back to Canopy's own rows: Watchly's picks for you, in your add-ons' order.") {
+            HomeRows.reset(this)
+            redrawHome(null)
+        }
+        val key = authKey ?: return
+        val loading = text("Loading your catalogs…", SMALL, color = TEXT_3).apply { setPadding(dp(12), dp(10), 0, 0) }
+        detailRows.addView(loading)
+        background({ Stremio.savedAddons(key) ?: Stremio.addons(key) }) { result ->
+            if (selectedGroup != Group.HOME || build != homeBuild) return@background
+            detailRows.removeView(loading)
+            val rows = HomeRows.arranged(this, result.getOrNull().orEmpty().flatMap { it.catalogs })
+            if (rows.isEmpty()) {
+                detailRows.addView(text(if (result.isSuccess) "None of your add-ons has catalogs." else "Couldn't load your add-ons.",
+                    SMALL, color = TEXT_3).apply { setPadding(dp(12), dp(10), 0, 0) })
+                return@background
+            }
+            var shown = 0
+            rows.forEachIndexed { i, (catalog, on) ->
+                val type = when (catalog.type) { "movie" -> "Movies"; "series" -> "Shows"; else -> catalog.type.replaceFirstChar { it.uppercase() } }
+                val label = "${catalog.name} · $type"
+                val row = actionRow(label, if (on) "Row ${++shown}" else "Hidden",
+                    "From ${addonShortName(catalog.addon.name)}. OK to show or hide it, or move it up and down Home.") {
+                    choose(label, listOf(if (on) "Hide from Home" else "Show on Home", "Move up", "Move down", "Move to the top"),
+                        "From ${addonShortName(catalog.addon.name)}.") { pick ->
+                        val next = when (pick) {
+                            0 -> rows.mapIndexed { j, r -> if (j == i) r.first to !on else r }
+                            1 -> moved(rows, i, -1)
+                            2 -> moved(rows, i, 1)
+                            else -> moved(rows, i, -i)
+                        }
+                        HomeRows.saveArranged(this, next)
+                        redrawHome(HomeRows.key(catalog))
+                    }
+                }
+                (row.parent?.parent as? View)?.tag = HomeRows.key(catalog)
+            }
+            focusOn?.let { k -> detailRows.findViewWithTag<View>(k)?.requestFocus() }
+        }
+        if (focusOn == "") tonight.post { (tonight.parent?.parent as? View)?.requestFocus() }
+    }
+
+    /** Home's group drawn again after a change, with the remote back on [focusOn] (a catalog), or on Tonight. */
+    private fun redrawHome(focusOn: String?) {
+        // The remote waits on Home's name while its rows are replaced, or Android would put it on the first group.
+        groupViews[Group.HOME]?.requestFocus()
+        homeFocus = focusOn ?: ""
+        selectedGroup = null
+        showGroup(Group.HOME)
     }
 
     private fun settingRow(label: String, value: View, help: String, perProfile: Boolean = false,

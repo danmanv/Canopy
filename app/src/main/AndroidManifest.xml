@@ -34,7 +34,22 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:screenOrientation="landscape" />
-        <activity android:name=".SearchActivity" android:screenOrientation="landscape" />
+        <!-- The TV's own search hands a query here: the Assistant's "search for … on Canopy" and global search. -->
+        <activity
+            android:name=".SearchActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.SEARCH" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.google.android.gms.actions.SEARCH_ACTION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
+        </activity>
         <activity android:name=".SettingsActivity" android:screenOrientation="landscape" />
         <activity android:name=".AddonsActivity" android:screenOrientation="landscape" />
         <activity android:name=".DetailsActivity" android:screenOrientation="landscape" />

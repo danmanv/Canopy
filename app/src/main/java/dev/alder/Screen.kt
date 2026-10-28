@@ -2,6 +2,7 @@ package dev.alder
 
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.ColorFilter
@@ -23,6 +24,7 @@ import android.graphics.drawable.LayerDrawable
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.ImageView
@@ -128,6 +130,19 @@ abstract class Screen : Activity() {
     override fun onDestroy() {
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
+    }
+
+    /** The remote's search or mic button: Search opens listening, from any screen that hasn't a use of its own for it. */
+    override fun onSearchRequested(): Boolean {
+        if (authKey == null) return false
+        startActivity(Intent(this, SearchActivity::class.java).putExtra(SearchActivity.LISTEN, true))
+        return true
+    }
+
+    override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+        // Most TVs give the mic button to the Assistant; the few that hand it to the app get the same as Search.
+        if (keyCode == KeyEvent.KEYCODE_VOICE_ASSIST && onSearchRequested()) return true
+        return super.onKeyDown(keyCode, event)
     }
 
     /**
@@ -443,6 +458,66 @@ abstract class Screen : Activity() {
         indeterminateTintList = android.content.res.ColorStateList.valueOf(TUNGSTEN)
         max = 1000
         if (fraction != null) progress = (fraction * max).toInt()
+    }
+
+    /** The one screen between Play and the picture: what [startingScreen] builds, and the line under its ring. */
+    protected class Starting(val view: FrameLayout, val status: TextView, val spinner: View) {
+        /** A problem instead of progress: the ring stops and the line says what happened. */
+        fun fail(message: String) { spinner.visibility = View.GONE; status.text = message; status.setTextColor(TEXT) }
+    }
+
+    /**
+     * Pressing Play shows this until the picture does, on the sources lookup and the player alike, so the two read as one
+     * screen: the title's art (the episode's still first) under a dark fade, its logo or name and the episode at the
+     * lower left, and a small emerald ring with one quiet line. It reads the intent the title page started Play with.
+     */
+    protected fun startingScreen(): Starting {
+        val name = intent.getStringExtra("name").orEmpty()
+        val art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
+        val still = intent.getStringExtra("still")
+        val backArt = intent.getStringExtra("background") ?: intent.getStringExtra("poster")
+        Images.load(still ?: backArt, art, resources.displayMetrics.widthPixels, orElse = backArt.takeIf { still != null }, urgent = true) {
+            android.animation.ObjectAnimator.ofFloat(art, View.ALPHA, 1f).setDuration(400).start()
+            // A slow push in while it loads, so the wait feels alive rather than frozen.
+            art.animate().scaleX(1.06f).scaleY(1.06f).setDuration(12_000).setInterpolator(android.view.animation.LinearInterpolator()).start()
+        }
+        val logo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START; adjustViewBounds = true }
+        val title = text(name, SERIF_TITLE, serif = true).onArt().apply {
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; maxWidth = dp(HERO_W)
+        }
+        Images.load(intent.getStringExtra("logo") ?: Images.logoFor(intent.getStringExtra("id").orEmpty()),
+            logo, dp(320), urgent = true, failed = { logo.visibility = View.GONE }) { title.visibility = View.GONE }
+        val episode = intent.getStringExtra("episode")?.takeIf { intent.getStringExtra("type") == "series" }
+        val spinner = ring()
+        val status = text("Getting ready", SMALL, color = TEXT_2).onArt()
+        val block = column(Gravity.START).apply {
+            addView(FrameLayout(context).apply {
+                addView(title, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
+                addView(logo, FrameLayout.LayoutParams(-2, -1, Gravity.BOTTOM or Gravity.START))
+            }, LinearLayout.LayoutParams(dp(HERO_W), dp(96)))
+            if (episode != null) addView(text(episode, BODY, bold = true, color = TEXT_2).onArt().apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; maxWidth = dp(HERO_W)
+            }, wrap().apply { topMargin = dp(10) })
+            addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(spinner, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(10) })
+                addView(status, wrap())
+            }, wrap().apply { topMargin = dp(18) })
+        }
+        val view = FrameLayout(this).apply {
+            setBackgroundColor(BASE)
+            addView(art, FrameLayout.LayoutParams(-1, -1))
+            addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.BL_TR, intArrayOf(0xF207090A.toInt(), 0x9907090A.toInt(), 0x3307090A))
+            }, FrameLayout.LayoutParams(-1, -1))
+            addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC07090A.toInt(), 0x0007090A))
+            }, FrameLayout.LayoutParams(-1, -1))
+            addView(block, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(PAD); bottomMargin = dp(PAD + 8)
+            })
+        }
+        return Starting(view, status, spinner)
     }
 
     /** One list-row focus treatment across settings, episodes, sources and menus. */

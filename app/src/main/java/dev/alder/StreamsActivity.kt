@@ -16,8 +16,9 @@ import android.widget.TextClock
 import org.json.JSONArray
 import java.util.Locale
 
-// Finds the sources for one video. Normally it picks one and hands the player a short list to fall back on, so Play
-// is one click; with "pick" (held OK on Play, or after three sources failed) it lists them all.
+// Finds the sources for one video. Normally it picks one behind the starting screen and hands the player a short list
+// to fall back on, so Play goes straight to the picture; with "pick" (held OK on Play, or after three sources failed),
+// or when none of them fits, it lists them all.
 internal fun readyStreams(answers: Array<List<Stream>?>, allowGaps: Boolean): List<Stream> =
     (if (allowGaps) answers.asList() else answers.takeWhile { it != null }).flatMap { it.orEmpty() }
 
@@ -109,7 +110,7 @@ class StreamsActivity : Screen() {
             art.animate().alpha(1f).setDuration(250).start()
             refrost()
         }
-        setContentView(FrameLayout(this).apply {
+        val list = FrameLayout(this).apply {
             setBackgroundColor(BASE)
             addView(art, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
@@ -135,7 +136,12 @@ class StreamsActivity : Screen() {
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(36); rightMargin = dp(PAD)
             })
-        })
+        }
+        // Play: the starting screen until the player takes over; the list only when asked for, or when nothing fits.
+        val starting = startingScreen().apply { status.text = "Finding the best source" }
+        var listShown = pick
+        setContentView(if (pick) list else starting.view)
+        fun say(message: String) { status.text = message; starting.fail(message) }
         val tv = Device.of(this)
 
         val lenders = Profiles.streamLenders(this)
@@ -149,8 +155,8 @@ class StreamsActivity : Screen() {
             }.distinctBy { it.id }
             household + own.filterNot { mine -> household.any { it.id == mine.id } }
         }) { result ->
-            val addons = result.getOrElse { status.text = "Couldn't load sources. Check your connection and try again."; return@background }
-            if (addons.isEmpty()) { status.text = "No stream add-ons are connected. Add one in Stremio to find sources."; return@background }
+            val addons = result.getOrElse { say("Couldn't load sources. Check your connection and try again."); return@background }
+            if (addons.isEmpty()) { say("No stream add-ons are connected. Add one in Stremio to find sources."); return@background }
             val answers = arrayOfNulls<List<Stream>>(addons.size)
             // Why an add-on gave nothing to play, so an empty list can say so instead of blaming the TV.
             val failures = arrayOfNulls<Throwable>(addons.size)
@@ -184,6 +190,7 @@ class StreamsActivity : Screen() {
             }
             fun showList() {
                 listed = true
+                if (!listShown) { listShown = true; setContentView(list) }
                 val available = addons.flatMapIndexed { i, addon -> answers[i].orEmpty()
                     .filter { it.isVideo && it.playableOn(tv) }.map { it to addon.name } }
                 providers = available.toMap()
@@ -204,7 +211,10 @@ class StreamsActivity : Screen() {
                 started = true
                 startActivity(Intent(this, PlayerActivity::class.java).putExtras(intent)
                     .putExtra("sources", JSONArray(best.take(TRY).map { it.toJson() }).toString()))
+                // No slide between the two: the player opens on the same starting screen, so it reads as one.
+                @Suppress("DEPRECATION") overridePendingTransition(0, 0)
                 finish()
+                @Suppress("DEPRECATION") overridePendingTransition(0, 0)
             }
 
             addons.forEachIndexed { i, addon ->
