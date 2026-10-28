@@ -49,7 +49,7 @@ jobs:
           echo "CANOPY_KEYSTORE=$RUNNER_TEMP/canopy-release.jks" >> "$GITHUB_ENV"
           echo "KEY_FLAG=-PreleaseKey" >> "$GITHUB_ENV"
       - name: Unit tests
-        run: ./gradlew testReleaseUnitTest
+        run: ./gradlew testDebugUnitTest
       - name: Release APK
         run: |
           ./gradlew assembleRelease $KEY_FLAG
