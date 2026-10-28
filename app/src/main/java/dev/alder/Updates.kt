@@ -16,7 +16,9 @@ import java.net.URL
  */
 object Updates {
     private const val LATEST = "https://api.github.com/repos/danmanv/Canopy/releases/latest"
-    private const val DAY = 24 * 3600_000L
+    // An hour, not a day: with a day, a release published a few hours after Home last checked waited until the next
+    // day, so 1.2.1 never showed on a TV opened that afternoon. Hourly stays well inside GitHub's 60 calls an hour.
+    private const val CHECK_EVERY = 3600_000L
 
     class Release(val version: String, val apk: String)
 
@@ -35,8 +37,8 @@ object Updates {
         release.also { prefs(c).edit().putLong("checked", System.currentTimeMillis()).apply() }
     }.onFailure { android.util.Log.w("Canopy", "update check failed: $it") }.getOrNull()
 
-    /** A day since the last check: Home asks once a day, Settings whenever it's opened. */
-    fun due(c: Context) = System.currentTimeMillis() - prefs(c).getLong("checked", 0) > DAY
+    /** An hour since the last check: Home asks at most hourly, Settings whenever it's opened. */
+    fun due(c: Context) = System.currentTimeMillis() - prefs(c).getLong("checked", 0) > CHECK_EVERY
 
     /** Home offers each new version once; Settings always shows it. */
     fun offerOnce(c: Context, version: String): Boolean {
