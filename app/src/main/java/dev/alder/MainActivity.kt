@@ -670,7 +670,7 @@ class MainActivity : Screen() {
      * icon is emerald; the focused item gets an emerald-tinted face.
      */
     private fun styleNav() {
-        if (!::header.isInitialized) return
+        if (navItems.isEmpty()) return // header() fills navItems after it sets header
         val open = header.hasFocus()
         navItems.forEach { (p, item) ->
             val focused = item.isFocused
