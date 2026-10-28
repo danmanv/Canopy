@@ -157,6 +157,15 @@ class MainActivity : Screen() {
     private val hideTrack = Runnable { track.animate().alpha(0f).setDuration(250).start() }
     private var artTask = Runnable {}
     private val artW by lazy { resources.displayMetrics.widthPixels }
+    // The focused title's trailer, muted, once the remote rests on its card (Trailer.kt). It plays under the art, which
+    // fades away to show it, and has its own shades over it: the art's are painted into the picture.
+    private lateinit var artLayer: FrameLayout
+    private lateinit var trailerBox: FrameLayout
+    private lateinit var trailerShade: ImageView
+    private lateinit var trailer: Trailer
+    private var trailerItem: Item? = null // the title whose trailer is waiting to start, or playing
+    private var trailerOn = false // its picture shows
+    private val trailerTask = Runnable { startTrailer() }
 
     /**
      * The art cropped to the screen with its shades painted in, once per picture: the left darkening behind the words
@@ -294,6 +303,13 @@ class MainActivity : Screen() {
 
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         artBack = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
+        artLayer = FrameLayout(this).apply {
+            addView(artBack, FrameLayout.LayoutParams(-1, -1))
+            addView(art, FrameLayout.LayoutParams(-1, -1))
+        }
+        trailerBox = FrameLayout(this)
+        trailer = Trailer(this, trailerBox)
+        trailerShade = shadeForTrailer().apply { alpha = 0f }
         topShade = View(this).apply { background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xCC000000.toInt(), 0x66000000, 0x1A000000, 0)); alpha = 0f }
 
         // Black from the window alone: a black layout too would be one more full screen painted under the art.
@@ -301,8 +317,9 @@ class MainActivity : Screen() {
         // Everything but the art, the cinema and the side menu sits in a body that starts right of the menu.
         val body = FrameLayout(this)
         setContentView(FrameLayout(this).apply {
-            addView(artBack, FrameLayout.LayoutParams(-1, -1))
-            addView(art, FrameLayout.LayoutParams(-1, -1))
+            addView(trailerBox, FrameLayout.LayoutParams(-1, -1))
+            addView(artLayer, FrameLayout.LayoutParams(-1, -1))
+            addView(trailerShade, FrameLayout.LayoutParams(-1, -1))
             addView(topShade, FrameLayout.LayoutParams(-1, dp(HEADER_H + 180)))
             addView(body, FrameLayout.LayoutParams(-1, -1).apply { leftMargin = dp(RAIL) })
         })
@@ -444,6 +461,8 @@ class MainActivity : Screen() {
 
     override fun onResume() {
         super.onResume()
+        // Back from a title's page or the player: the card the remote is on waits for its trailer again.
+        if (::scroller.isInitialized && mode == Mode.BROWSE && scroller.hasFocus()) heroItem?.let(::armTrailer)
         // ponytail: idle dim and the cinema screensaver are off (2026-10-26, not wanted yet); post `idle` here to bring the cinema back.
         if (Updates.due(this)) background({ Updates.latest(applicationContext) }) { r ->
             val release = r.getOrNull()?.takeIf { newerVersion(it.version, Updates.mine(this)) } ?: return@background
@@ -454,6 +473,7 @@ class MainActivity : Screen() {
 
     override fun onPause() {
         super.onPause()
+        stopTrailer()
         main.removeCallbacks(idle)
         main.removeCallbacks(idleDim)
         main.removeCallbacks(advance)
@@ -463,6 +483,11 @@ class MainActivity : Screen() {
         if (event.action == KeyEvent.ACTION_DOWN) {
             touched = true
             dimHome(false)
+            // Any key ends the trailer. A card the remote moves to starts its own wait; one it stays on waits again.
+            if (trailerItem != null) {
+                stopTrailer()
+                main.post { if (mode == Mode.BROWSE && scroller.hasFocus()) heroItem?.let(::armTrailer) }
+            }
         }
         val ok = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER
         if (mode == Mode.CINEMA) {
@@ -843,6 +868,7 @@ class MainActivity : Screen() {
 
     private fun enterCinema() {
         if (cinema.isEmpty() || mode == Mode.CINEMA) return
+        stopTrailer()
         beforeCinema = currentFocus
         cinemaAt = 0
         cinemaAwake = false
@@ -963,8 +989,70 @@ class MainActivity : Screen() {
         }
         heroActions.visibility = if (page != Page.HOME && page != Page.LIBRARY && item.resume) View.VISIBLE else View.GONE
         if (page == Page.HOME || page.isCatalog) showCaption(item)
+        armTrailer(item)
         if (mode == Mode.BROWSE) browseInfo.animate().alpha(if (homeDimmed && (page == Page.HOME || page.isCatalog || page == Page.LIBRARY)) 0.3f else 1f).setDuration(150).start()
         showArt(item)
+    }
+
+    // ---------- trailers ----------
+
+    /** The remote is on [item]'s card: its trailer starts after a moment, if it has one and trailers are on. */
+    private fun armTrailer(item: Item) {
+        if (trailerItem === item) return
+        stopTrailer()
+        if (mode != Mode.BROWSE || page == Page.LIVE || !Settings.trailers(this)) return
+        trailerItem = item
+        main.postDelayed(trailerTask, TRAILER_WAIT)
+    }
+
+    private fun startTrailer() {
+        val item = trailerItem?.takeIf { it === heroItem && mode == Mode.BROWSE && scroller.hasFocus() } ?: return
+        val id = metas[item.id]?.trailer ?: run {
+            if (!item.settled) main.postDelayed(trailerTask, 1000) // its details aren't in yet
+            return
+        }
+        trailer.play(id, onPlaying = { if (trailerItem === item) showTrailer(true) }, onDone = { showTrailer(false) })
+    }
+
+    private fun stopTrailer() {
+        main.removeCallbacks(trailerTask)
+        trailerItem = null
+        trailer.stop()
+    }
+
+    /** The art fades away to show the trailer playing under it, and back when it ends. */
+    private fun showTrailer(on: Boolean) {
+        if (trailerOn == on) return
+        trailerOn = on
+        artLayer.animate().cancel()
+        trailerShade.animate().cancel()
+        if (on) {
+            trailerShade.animate().alpha(1f).setDuration(TRAILER_FADE).start()
+            // Hidden once it's faded: a full screen of art under the video would be painted every frame for nothing.
+            artLayer.animate().alpha(0f).setDuration(TRAILER_FADE).withEndAction { if (trailerOn) artLayer.visibility = View.INVISIBLE }.start()
+        } else {
+            artLayer.visibility = View.VISIBLE
+            artLayer.animate().alpha(1f).setDuration(TRAILER_FADE / 2).start()
+            trailerShade.animate().alpha(0f).setDuration(TRAILER_FADE / 2).start()
+        }
+    }
+
+    /**
+     * The art's shades (see [shaded]) for the trailer: the left darkening behind the words, the one down to the cards
+     * and the top edge's. Painted once, small, and stretched: gradients scale without a seam.
+     */
+    private fun shadeForTrailer(): ImageView {
+        val w = artW / 4
+        val h = resources.displayMetrics.heightPixels / 4
+        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(out)
+        val shade = Paint().apply { shader = LinearGradient(0f, 0f, w * 0.55f, 0f, 0xEB07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP) }
+        canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
+        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF707090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
+        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
+        return ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; setImageBitmap(out) }
     }
 
     private fun showCaption(item: Item) {
@@ -2039,7 +2127,14 @@ class MainActivity : Screen() {
         finish()
     }
 
+    override fun onDestroy() {
+        if (::trailer.isInitialized) trailer.destroy()
+        super.onDestroy()
+    }
+
     private companion object {
+        const val TRAILER_WAIT = 3_000L // ms the remote rests on a card before its trailer starts loading
+        const val TRAILER_FADE = 800L
         const val HEADER_H = 76 // dp: room kept clear at the top (the clock; the side menu took over from the top bar)
         const val RAIL = 44 // dp the body starts right of the screen's edge, clear of the closed side menu
         const val RAIL_ITEM = 44 // dp: a side menu item's height, and its width while closed

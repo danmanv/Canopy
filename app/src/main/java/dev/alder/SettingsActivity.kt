@@ -68,6 +68,7 @@ object Settings {
     fun matchFrameRate(c: Context) = prefs(c).getBoolean("matchFrameRate", true)
     fun passthrough(c: Context) = prefs(c).getBoolean("passthrough", false)
     fun subtitles(c: Context) = prefs(c).getBoolean("subtitles", true)
+    fun trailers(c: Context) = prefs(c).getBoolean("trailers", true)
     /** Two-letter code of the dub to start with: the TV's language unless one is picked. */
     fun audioLanguage(c: Context): String = prefs(c).getString(profileKey(c, "audioLang"), prefs(c).getString("audioLang", ""))
         .orEmpty().ifEmpty { Languages.code(Locale.getDefault().toLanguageTag()) ?: "en" }
@@ -165,6 +166,8 @@ class SettingsActivity : Screen() {
             listOf(true to "On", false to "Off")),
         Choice("passthrough", "Audio output", "Receiver sends Dolby and DTS untouched to a soundbar or receiver. TV speakers decodes the sound here, which always works.",
             listOf(false to "TV speakers", true to "Receiver")),
+        Choice("trailers", "Trailer previews", "Rest on a title for a few seconds and its trailer plays silently behind it.",
+            listOf(true to "On", false to "Off")),
     )
     private val dubbed = listOf(
         Choice("dub", "Dubbed releases", "Original first puts dubbed releases last; My language first uses this profile's audio language.",
