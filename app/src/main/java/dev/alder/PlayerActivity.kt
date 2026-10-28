@@ -381,7 +381,7 @@ class PlayerActivity : Screen() {
 
     private fun buildLoading() = FrameLayout(this).apply {
         visibility = View.GONE
-        addView(View(context).apply { setBackgroundColor(0x800E0C0A.toInt()) }, FrameLayout.LayoutParams(-1, -1))
+        addView(View(context).apply { setBackgroundColor(0x8007090A.toInt()) }, FrameLayout.LayoutParams(-1, -1))
         val center = column(Gravity.CENTER_HORIZONTAL).apply {
             addView(ring(), LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
@@ -908,11 +908,11 @@ class PlayerActivity : Screen() {
             alpha = 0f
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x990E0C0A.toInt(), 0x000E0C0A))
+                    intArrayOf(0x9907090A.toInt(), 0x0007090A))
             }, FrameLayout.LayoutParams(-1, dp(120), Gravity.TOP))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                    intArrayOf(0xE60E0C0A.toInt(), 0xA60E0C0A.toInt(), 0x000E0C0A))
+                    intArrayOf(0xE607090A.toInt(), 0xA607090A.toInt(), 0x0007090A))
             }, FrameLayout.LayoutParams(-1, dp(220), Gravity.BOTTOM))
             addView(playerLogo, FrameLayout.LayoutParams(dp(150), dp(50)).apply {
                 leftMargin = dp(PAD); topMargin = dp(26)
@@ -926,27 +926,29 @@ class PlayerActivity : Screen() {
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(34); rightMargin = dp(PAD)
             })
-            addView(pauseInfo, FrameLayout.LayoutParams(dp(520), -2, Gravity.BOTTOM or Gravity.START).apply {
-                leftMargin = dp(PAD); bottomMargin = dp(148)
-            })
-            addView(bar, FrameLayout.LayoutParams(-1, dp(24), Gravity.BOTTOM).apply {
-                leftMargin = dp(PAD); rightMargin = dp(PAD); bottomMargin = dp(111)
-            })
-            addView(elapsed, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
-                leftMargin = dp(PAD); bottomMargin = dp(91)
-            })
-            addView(length, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(PAD); bottomMargin = dp(91)
-            })
-            addView(trackStatus, FrameLayout.LayoutParams(dp(420), -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply {
-                bottomMargin = dp(91)
-            })
-            trackStatus.gravity = Gravity.CENTER
-            addView(buttons, FrameLayout.LayoutParams(-1, dp(76), Gravity.BOTTOM).apply {
-                bottomMargin = dp(11)
-            })
-            addView(column(Gravity.END, keyHint("OK", "Play / pause"), keyHint("◀ ▶", "Seek on the bar")), FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(PAD); bottomMargin = dp(35)
+            // The glass dock: what's playing, the timeline and the buttons together in one smoked panel at the foot.
+            val dock = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                clipChildren = false
+                clipToPadding = false
+                setPadding(dp(24), dp(18), dp(24), dp(4))
+                background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(DOCK_GLASS, DOCK_R), glass(DOCK_R)))
+                addView(LinearLayout(context).apply {
+                    gravity = Gravity.BOTTOM
+                    addView(pauseInfo, LinearLayout.LayoutParams(0, -2, 1f))
+                    trackStatus.gravity = Gravity.END
+                    addView(trackStatus, LinearLayout.LayoutParams(dp(300), -2).apply { marginStart = dp(16) })
+                }, LinearLayout.LayoutParams(-1, -2))
+                addView(LinearLayout(context).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    addView(elapsed)
+                    addView(bar, LinearLayout.LayoutParams(0, dp(24), 1f).apply { marginStart = dp(12); marginEnd = dp(12) })
+                    addView(length)
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+                addView(buttons, LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(10) })
+            }
+            addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+                leftMargin = dp(DOCK_INSET); rightMargin = dp(DOCK_INSET); bottomMargin = dp(DOCK_INSET - 4)
             })
         }
     }
@@ -972,11 +974,13 @@ class PlayerActivity : Screen() {
             foreground = centred(res, if (primary) 25 else 20, if (primary) BASE else TEXT)
             if (primary) {
                 fun face(focused: Boolean) = GradientDrawable().apply {
-                    setColor(TEXT); cornerRadius = dp(radius).toFloat()
+                    setColor(TUNGSTEN); cornerRadius = dp(radius).toFloat()
                 }
                 background = face(false)
+                if (android.os.Build.VERSION.SDK_INT >= 28) outlineSpotShadowColor = TUNGSTEN_GLOW
                 setOnFocusChangeListener { view, focused ->
                     view.background = face(focused)
+                    view.elevation = if (focused) dp(10).toFloat() else 0f // an emerald glow under the focused Play
                     view.grow(focused).start()
                     words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
                 }
@@ -1004,7 +1008,7 @@ class PlayerActivity : Screen() {
         main.removeCallbacks(hideTask)
         if (!shown) {
             shown = true
-            view.subtitleView?.setBottomPaddingFraction(0.28f) // keep captions above the seek bar and buttons
+            view.subtitleView?.setBottomPaddingFraction(0.36f) // keep captions above the dock
             controls.visibility = View.VISIBLE
             controls.animate().alpha(1f).setDuration(150).start()
             updateProgress()
@@ -1158,7 +1162,7 @@ class PlayerActivity : Screen() {
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
-            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(0xF00E0C0A.toInt(), 14), glass(14)))
+            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(0xF007090A.toInt(), 14), glass(14)))
         }, FrameLayout.LayoutParams(dp(310), resources.displayMetrics.heightPixels - dp(54)).apply {
             leftMargin = dp(27); topMargin = dp(27)
         })
@@ -1311,6 +1315,9 @@ class PlayerActivity : Screen() {
         const val TICK = 10_000L
         const val RESUME_SLACK = 10_000L // how far apart the saved and fresh resume points may be before it jumps
         const val SKIP = 10_000L // ms a Left/Right press on the bar moves
+        const val DOCK_INSET = 28 // dp the glass dock sits in from the screen's sides and foot
+        const val DOCK_R = 22 // dp: the dock's corners
+        const val DOCK_GLASS = 0xB30E1313.toInt() // smoked: dark enough to read over any picture
         const val SEEK_SETTLE = 600L // ms after the last skip before seeking
         const val SKIP_SHOWN = 10_000L // ms the Skip intro pill stays, as in NuvioTV
         const val HIDE = 5_000L // ms the controls stay up while playing
@@ -1349,8 +1356,8 @@ private class SeekBar(context: Context) : View(context) {
             canvas.drawRoundRect(knob, y - line / 2, to, y + line / 2, line / 2, line / 2, paint)
         }
         // A light track: the dark one vanished over a dark picture.
-        stretch(width - knob, 0x40F3EEE6)
-        stretch(x(buffered), 0x73F3EEE6)
+        stretch(width - knob, 0x40EEF4F1)
+        stretch(x(buffered), 0x73EEF4F1)
         paint.setShadowLayer(4 * d, 0f, 0f, Screen.TUNGSTEN_GLOW)
         stretch(x(position), Screen.TUNGSTEN)
         paint.clearShadowLayer()
