@@ -137,7 +137,7 @@ To release:
 
 1. In `app/build.gradle.kts`, raise `versionCode` by one and set `versionName` (for example `1.2`).
 1. In `CHANGELOG.md`, rename `## Unreleased` to `## 1.2`.
-1. Merge that to `main`, then `git tag v1.2 && git push origin v1.2`.
+1. Merge that to `main`. Then either press **Run workflow** on the [Release workflow](https://github.com/danmanv/Canopy/actions/workflows/release.yml) (it tags `v1.2` itself), or `git tag v1.2 && git push origin v1.2`.
 
 ### Set up the release key (once)
 
