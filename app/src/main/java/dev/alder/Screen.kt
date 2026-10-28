@@ -92,6 +92,20 @@ internal fun brightLeft(pixels: IntArray, width: Int): Boolean {
     return luminance / (left * (pixels.size / width) * 255) > 0.5
 }
 
+/**
+ * Once per process, before anything goes to the network: every screen, and the TV's screensaver, which can start
+ * without any screen open.
+ */
+internal fun prepareNetwork(c: Context) {
+    if (Http.saved != null) return
+    // Pictures load many at a time from a few hosts: keep enough connections open to reuse (Android keeps 5).
+    System.setProperty("http.maxConnections", "16")
+    // Disk cache for pictures (and anything else whose server allows caching), and last time's answers.
+    android.net.http.HttpResponseCache.install(java.io.File(c.cacheDir, "http"), 250L * 1024 * 1024)
+    Http.saved = java.io.File(c.cacheDir, "answers")
+    Http.userAgent = "Canopy/${Updates.mine(c)} (Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL})"
+}
+
 /** What every screen shares: the signed-in account, background work, and the few view helpers the plain UI uses. */
 abstract class Screen : Activity() {
     protected val main = Handler(Looper.getMainLooper())
@@ -100,13 +114,15 @@ abstract class Screen : Activity() {
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         super.onCreate(savedInstanceState)
-        if (Http.saved != null) return
-        // Pictures load many at a time from a few hosts: keep enough connections open to reuse (Android keeps 5).
-        System.setProperty("http.maxConnections", "16")
-        // Disk cache for pictures (and anything else whose server allows caching), and last time's answers.
-        android.net.http.HttpResponseCache.install(java.io.File(cacheDir, "http"), 250L * 1024 * 1024)
-        Http.saved = java.io.File(cacheDir, "answers")
-        Http.userAgent = "Canopy/${Updates.mine(this)} (Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL})"
+        prepareNetwork(this)
+        // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
+        val screen = window.callback
+        window.callback = object : android.view.Window.Callback by screen {
+            override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+                armScreensaver()
+                return screen.dispatchKeyEvent(event)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -141,8 +157,28 @@ abstract class Screen : Activity() {
     // An update waiting on the TV's permission to install apps: it goes on when the viewer comes back with it allowed.
     private var pendingInstall: Updates.Release? = null
 
+    /** False where the screensaver must never cover the screen: the player, and the profile picker (PINs). */
+    protected open val screensaver: Boolean get() = true
+
+    private val saverTimer = Runnable {
+        startActivity(android.content.Intent(this, ScreensaverActivity::class.java))
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
+    }
+
+    private fun armScreensaver() {
+        main.removeCallbacks(saverTimer)
+        val minutes = Screensaver.minutes(this)
+        if (screensaver && minutes > 0) main.postDelayed(saverTimer, minutes * 60_000L)
+    }
+
+    override fun onPause() {
+        main.removeCallbacks(saverTimer)
+        super.onPause()
+    }
+
     override fun onResume() {
         super.onResume()
+        armScreensaver()
         val release = pendingInstall ?: return
         pendingInstall = null
         if (Updates.canInstall(this)) installUpdate(release)

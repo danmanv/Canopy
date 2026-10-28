@@ -43,6 +43,22 @@
             android:name=".PlayerActivity"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|screenLayout" />
+        <activity
+            android:name=".ScreensaverActivity"
+            android:screenOrientation="landscape"
+            android:excludeFromRecents="true"
+            android:noHistory="true" />
+        <!-- The same slideshow as the TV's own screensaver (Settings › Screensaver on the TV) -->
+        <service
+            android:name=".CanopyDream"
+            android:exported="true"
+            android:label="Canopy"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
         <receiver android:name=".Updates$Status" android:exported="false" />
     </application>
 </manifest>

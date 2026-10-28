@@ -15,6 +15,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Screensaver.** After 5 minutes without a key press, Canopy shows the art of your Continue Watching and My List titles. The time shows on the art. Push any key to stop it. Push **OK** to open the title on the screen. To change the time, select **Settings → Picture & Sound → Screensaver**.
+- **TV screensaver.** The TV can also use the Canopy art when the TV is idle. Select **Settings → Picture & Sound → TV screensaver**. Then select **Canopy**.
 - **Subtitles in your language.** Select **Settings → Subtitles → Subtitle language**. Then select a language. Each profile keeps its own language. Subtitles in that language start with the video. They also start when the audio is in that language.
 - **All subtitle languages in the player.** **Audio & subtitles** shows all the languages from your subtitle add-ons. Your subtitle language and English are at the top. Before, Alder showed only the language of the TV and English.
 - **All audio languages.** **Settings → Picture & Sound → Audio language** has all the languages. Before, it had only 7. Frequently used languages are at the top.
