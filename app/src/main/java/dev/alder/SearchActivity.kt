@@ -1,5 +1,6 @@
 package dev.alder
 
+import android.app.SearchManager
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -83,7 +84,11 @@ class SearchActivity : Screen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val key = authKey ?: return finish()
+        val key = authKey ?: return run {
+            // Opened by the TV's own search before anyone has signed in: the profiles screen comes first.
+            startActivity(Intent(this, ProfilesActivity::class.java))
+            finish()
+        }
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         artBack = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
         val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
@@ -226,6 +231,53 @@ class SearchActivity : Screen() {
         // Our keyboard first: the field never takes focus on opening, so the Android keyboard stays shut until the keyboard key.
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         firstKey?.post { firstKey?.requestFocus() }
+        // Only on first opening: a screen recreated by Android keeps to itself rather than listening again.
+        if (savedInstanceState != null || !take(intent)) search(false)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        take(intent)
+    }
+
+    /**
+     * A search handed over by the TV (the Assistant's "search for … on Canopy", or global search) runs at once; the
+     * remote's Search button opens listening. Returns whether it started anything.
+     */
+    private fun take(intent: Intent): Boolean {
+        val query = intent.getStringExtra(SearchManager.QUERY)?.trim()
+        if (!query.isNullOrEmpty() && (intent.action == Intent.ACTION_SEARCH || intent.action == ASSISTANT_SEARCH)) {
+            heard(query)
+            return true
+        }
+        if (intent.getBooleanExtra(LISTEN, false)) {
+            search(false)
+            listen()
+            return true
+        }
+        return false
+    }
+
+    override fun onSearchRequested(): Boolean {
+        listen()
+        return true
+    }
+
+    private fun listen() {
+        runCatching {
+            startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                putExtra(RecognizerIntent.EXTRA_PROMPT, "Say a movie or show")
+            }, SPEECH)
+        }.onFailure { choose("Voice search is unavailable on this TV.", listOf("OK")) {} }
+    }
+
+    private fun heard(words: String) {
+        input.setText(words)
+        input.setSelection(input.length())
+        input.requestFocus()
+        main.removeCallbacks(typed)
         search(false)
     }
 
@@ -333,13 +385,7 @@ class SearchActivity : Screen() {
         val canSpeak = speech.resolveActivity(packageManager) != null
         key("SPACE", last, if (canSpeak) 4 else 6, !canSpeak) { append(" ") }
         if (canSpeak) {
-            key("", last, 2, true) {
-                runCatching {
-                    startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    }, SPEECH)
-                }.onFailure { choose("Voice search is unavailable on this TV.", listOf("OK")) {} }
-            }.apply {
+            key("", last, 2, true) { listen() }.apply {
                 contentDescription = "Voice search"
                 setCompoundDrawablesRelative(null, getDrawable(R.drawable.ic_mic)?.mutate()?.apply {
                     setTint(TUNGSTEN); setBounds(0, 0, dp(13), dp(17))
@@ -422,12 +468,7 @@ class SearchActivity : Screen() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != SPEECH || resultCode != RESULT_OK) return
-        val words = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: return
-        input.setText(words)
-        input.setSelection(input.length())
-        input.requestFocus()
-        main.removeCallbacks(typed)
-        search(false)
+        heard(data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull() ?: return)
     }
 
     private fun recentKey() = "recent:${Profiles.active(this)?.id.orEmpty()}"
@@ -731,13 +772,16 @@ class SearchActivity : Screen() {
         }
     }
 
-    private companion object {
-        const val RECENT = 6
-        const val LEFT_SHADE = 0.85f // the left shade's strength behind the field and keyboard
-        const val PER_TYPE = 12
-        const val TYPING_PAUSE = 500L
-        const val SEARCH_WAIT = 6000L
-        const val SPEECH = 31
-        val searchPool = Images.newestFirst(8)
+    companion object {
+        /** Opens listening straight away, for the remote's Search button. */
+        const val LISTEN = "listen"
+        private const val ASSISTANT_SEARCH = "com.google.android.gms.actions.SEARCH_ACTION"
+        private const val RECENT = 6
+        private const val LEFT_SHADE = 0.85f // the left shade's strength behind the field and keyboard
+        private const val PER_TYPE = 12
+        private const val TYPING_PAUSE = 500L
+        private const val SEARCH_WAIT = 6000L
+        private const val SPEECH = 31
+        private val searchPool = Images.newestFirst(8)
     }
 }
