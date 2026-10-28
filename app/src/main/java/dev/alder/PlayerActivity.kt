@@ -83,6 +83,8 @@ class PlayerActivity : Screen() {
     private var prepared = false
     private lateinit var status: android.widget.TextView
     private lateinit var loading: FrameLayout
+    // Until the first picture: the same starting screen the sources lookup showed, instead of a bar over black.
+    private lateinit var starting: Starting
     private lateinit var loadingBar: SeekBar
     private lateinit var loadingStart: TextView
     private lateinit var loadingLeft: TextView
@@ -118,7 +120,7 @@ class PlayerActivity : Screen() {
     private var seekedAt = 0L
     private val loadingTask = object : Runnable {
         override fun run() {
-            if (loading.visibility != View.VISIBLE || player.playbackState != Player.STATE_BUFFERING) return
+            if ((loading.visibility != View.VISIBLE && starting.view.visibility != View.VISIBLE) || player.playbackState != Player.STATE_BUFFERING) return
             showLoading(if (started) "Loading" else startMessage ?: "Starting · ${sources[at].label}")
         }
     }
@@ -175,6 +177,7 @@ class PlayerActivity : Screen() {
         upNextPanel = FrameLayout(this).apply { visibility = View.GONE }
         controls = buildControls()
         loading = buildLoading()
+        starting = startingScreen().apply { status.text = "Starting playback" }
         stallPanel = FrameLayout(this).apply { visibility = View.GONE }
         skip = text("", BODY, bold = true).onArt().apply {
             setPadding(dp(22), dp(12), dp(22), dp(12))
@@ -189,6 +192,7 @@ class PlayerActivity : Screen() {
             addView(controls, FrameLayout.LayoutParams(-1, -1))
             addView(options, FrameLayout.LayoutParams(-1, -1))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
+            addView(starting.view, FrameLayout.LayoutParams(-1, -1))
             addView(stallPanel, FrameLayout.LayoutParams(-1, -1))
             addView(upNextPanel, FrameLayout.LayoutParams(-1, -1))
             addView(skip, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(PAD), dp(PAD + 40)) })
@@ -410,7 +414,12 @@ class PlayerActivity : Screen() {
         loadingLeft.text = if (duration > 0) "−${clock((duration - position).coerceAtLeast(0))}" else ""
         status.text = if (message == "Loading" && player.bufferedPercentage in 1..99)
             "Loading · ${player.bufferedPercentage}%" else message
-        loading.visibility = View.VISIBLE
+        // Before any picture, a source starting (or the next one after a failure) stays on the starting screen, with
+        // no source names; a dead end ("choose another source") drops to the plain overlay so its panel reads.
+        val opening = !watched && (message.startsWith("Starting") || message.endsWith("trying the next one"))
+        starting.view.visibility = if (opening) View.VISIBLE else View.GONE
+        if (opening) starting.status.text = if (message.endsWith("trying the next one")) "Trying another source" else "Starting playback"
+        loading.visibility = if (opening) View.GONE else View.VISIBLE
         main.removeCallbacks(loadingTask)
         if (player.playbackState == Player.STATE_BUFFERING) main.postDelayed(loadingTask, 500)
     }
@@ -418,6 +427,7 @@ class PlayerActivity : Screen() {
     private fun hideLoading() {
         main.removeCallbacks(loadingTask)
         loading.visibility = View.GONE
+        starting.view.visibility = View.GONE
         status.text = ""
     }
 
@@ -528,7 +538,7 @@ class PlayerActivity : Screen() {
             lastPosition = player.currentPosition
             main.postDelayed(tickTask, TICK)
             main.post(skipTask)
-            if (loading.visibility == View.VISIBLE && player.playbackState == Player.STATE_BUFFERING)
+            if ((loading.visibility == View.VISIBLE || starting.view.visibility == View.VISIBLE) && player.playbackState == Player.STATE_BUFFERING)
                 main.post(loadingTask)
         }
     }
