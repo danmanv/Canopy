@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Focus glows are coloured spot shadows (lift() sets the colour); the device's default alpha left them invisible. -->
-    <style name="Alder" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+    <style name="Canopy" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:spotShadowAlpha">0.9</item>
         <item name="android:ambientShadowAlpha">0</item>
     </style>

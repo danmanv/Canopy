@@ -20,7 +20,7 @@ object Http {
         }
 
     /** Set once at start with the app's version. */
-    var userAgent = "Alder"
+    var userAgent = "Canopy"
 
     fun get(url: String, keep: Boolean = false, timeoutMs: Int = 20_000): String = text(url, null, keep, timeoutMs)
 

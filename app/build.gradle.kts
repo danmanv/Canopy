@@ -10,7 +10,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "dev.alder"
+        applicationId = "dev.canopy"
         minSdk = 26
         targetSdk = 36
         versionCode = 4

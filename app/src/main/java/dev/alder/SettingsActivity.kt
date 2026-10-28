@@ -340,14 +340,14 @@ class SettingsActivity : Screen() {
         firstDetail = null
         addonValue = null
         hint.text = when (group) {
-            Group.STREAMS -> "Choose how Alder finds and starts a source."
+            Group.STREAMS -> "Choose how Canopy finds and starts a source."
             Group.PICTURE -> "Choose the picture and sound this TV can play."
             Group.SUBTITLES -> "Set how subtitles start and appear."
             Group.ADDONS -> "Manage the add-ons connected to this profile."
             Group.PROFILE -> "Profile choices stay with the person watching."
-            Group.LANGUAGE -> "Alder follows the TV's language."
+            Group.LANGUAGE -> "Canopy follows the TV's language."
             Group.STORAGE -> "Storage on this TV only."
-            Group.ABOUT -> "About Alder."
+            Group.ABOUT -> "About Canopy."
         }
         when (group) {
             Group.STREAMS -> {
@@ -434,13 +434,13 @@ class SettingsActivity : Screen() {
                 detailRows.addView(brand(SERIF_TITLE), LinearLayout.LayoutParams(-2, -2).apply {
                     marginStart = dp(12); bottomMargin = dp(14)
                 })
-                actionRow("Alder", "Version " + Updates.mine(this),
-                    "Alder is a TV interface for your Stremio account.") {
-                    choose("Alder", listOf("OK"), "A TV interface for your Stremio account.") {}
+                actionRow("Canopy", "Version " + Updates.mine(this),
+                    "Canopy is a TV interface for your Stremio account.") {
+                    choose("Canopy", listOf("OK"), "A TV interface for your Stremio account.") {}
                 }
                 actionRow("What's new", "Version " + Updates.mine(this), "The changes in the version on this TV.") { whatsNew() }
                 var found: Updates.Release? = null
-                val value = actionRow("Updates", "Checking…", "New versions come from Alder's releases on GitHub.") {
+                val value = actionRow("Updates", "Checking…", "New versions come from Canopy's releases on GitHub.") {
                     found?.let(::installUpdate) ?: showGroup(Group.ABOUT)
                 }
                 background({ Updates.latest(applicationContext) }) { r ->

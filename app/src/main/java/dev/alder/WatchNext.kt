@@ -57,7 +57,7 @@ object WatchNext {
                 put(WatchNextPrograms.COLUMN_LOGO_URI, logoUri)
             })
         }
-    }.onFailure { android.util.Log.w("Alder", "Watch Next not updated", it) }
+    }.onFailure { android.util.Log.w("Canopy", "Watch Next not updated", it) }
 
     private fun backdrop(authKey: String, item: JSONObject): String? = runCatching {
         val type = item.optString("type")

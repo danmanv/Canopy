@@ -15,7 +15,7 @@ import java.net.URL
  * on an older version, and Android's package installer puts it in place (same signing key, so data stays).
  */
 object Updates {
-    private const val LATEST = "https://api.github.com/repos/aradhyas8/Alder/releases/latest"
+    private const val LATEST = "https://api.github.com/repos/danmanv/Canopy/releases/latest"
     private const val DAY = 24 * 3600_000L
 
     class Release(val version: String, val apk: String)
@@ -33,7 +33,7 @@ object Updates {
             Release(json.getString("tag_name").removePrefix("v"), apk)
         }
         release.also { prefs(c).edit().putLong("checked", System.currentTimeMillis()).apply() }
-    }.onFailure { android.util.Log.w("Alder", "update check failed: $it") }.getOrNull()
+    }.onFailure { android.util.Log.w("Canopy", "update check failed: $it") }.getOrNull()
 
     /** A day since the last check: Home asks once a day, Settings whenever it's opened. */
     fun due(c: Context) = System.currentTimeMillis() - prefs(c).getLong("checked", 0) > DAY
@@ -48,15 +48,15 @@ object Updates {
     fun canInstall(c: Context) = c.packageManager.canRequestPackageInstalls()
 
     /**
-     * Opens Android's page for letting Alder install apps. False when this TV has no such page (some Fire TV models
-     * keep it under Developer options instead): starting it there crashed Alder.
+     * Opens Android's page for letting Canopy install apps. False when this TV has no such page (some Fire TV models
+     * keep it under Developer options instead): starting it there crashed Canopy.
      */
     fun askToInstall(c: Context): Boolean = try {
         c.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
             android.net.Uri.parse("package:${c.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         true
     } catch (e: RuntimeException) { // ActivityNotFoundException, or a SecurityException from a locked-down settings app
-        android.util.Log.w("Alder", "no install permission page: $e")
+        android.util.Log.w("Canopy", "no install permission page: $e")
         false
     }
 
@@ -65,7 +65,7 @@ object Updates {
         val installer = c.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
         params.setAppPackageName(c.packageName)
-        // Android 12+ can skip the confirm box when Alder installed itself last time; otherwise Android asks.
+        // Android 12+ can skip the confirm box when Canopy installed itself last time; otherwise Android asks.
         if (Build.VERSION.SDK_INT >= 31) params.setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
         val id = installer.createSession(params)
         installer.openSession(id).use { session ->
@@ -78,7 +78,7 @@ object Updates {
                 if (c.responseCode !in 200..299) throw java.io.IOException("HTTP ${c.responseCode}")
                 val expected = c.contentLengthLong
                 val written = c.inputStream.use { input ->
-                    session.openWrite("Alder.apk", 0, -1).use { out -> input.copyTo(out).also { session.fsync(out) } }
+                    session.openWrite("Canopy.apk", 0, -1).use { out -> input.copyTo(out).also { session.fsync(out) } }
                 }
                 if (expected > 0 && written != expected) throw java.io.IOException("download cut short: $written of $expected bytes")
             } catch (e: Exception) {
@@ -101,7 +101,7 @@ object Updates {
                 }
                 PackageInstaller.STATUS_SUCCESS, PackageInstaller.STATUS_FAILURE_ABORTED -> {}
                 else -> {
-                    android.util.Log.w("Alder", "update install failed: $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
+                    android.util.Log.w("Canopy", "update install failed: $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
                     Toast.makeText(c, "Couldn't install the update", Toast.LENGTH_LONG).show()
                 }
             }

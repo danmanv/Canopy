@@ -124,7 +124,7 @@ class PlayerActivity : Screen() {
     }
     private val startTimeout = Runnable {
         if (started) return@Runnable
-        android.util.Log.w("Alder", "source ${at + 1}/${sources.size} timed out, state ${player.playbackState}")
+        android.util.Log.w("Canopy", "source ${at + 1}/${sources.size} timed out, state ${player.playbackState}")
         next()
     }
 
@@ -221,7 +221,7 @@ class PlayerActivity : Screen() {
                         player.trackSelectionParameters = player.trackSelectionParameters.buildUpon()
                             .setOverrideForType(TrackSelectionOverride(next.mediaTrackGroup, (0 until next.length).toList())).build()
                         player.prepare()
-                        android.util.Log.i("Alder", "Audio track changed after decoder error")
+                        android.util.Log.i("Canopy", "Audio track changed after decoder error")
                         return
                     }
                 }
@@ -239,7 +239,7 @@ class PlayerActivity : Screen() {
                     main.postDelayed({ if (!isFinishing) player.prepare() }, RETRY_WAIT)
                     return
                 }
-                android.util.Log.w("Alder", "source ${at + 1}/${sources.size} failed: ${e.errorCodeName}", e)
+                android.util.Log.w("Canopy", "source ${at + 1}/${sources.size} failed: ${e.errorCodeName}", e)
                 next(e.errorCodeName)
             }
 
@@ -345,13 +345,13 @@ class PlayerActivity : Screen() {
             // then one file for each other language by name, so the list stays short enough for a remote.
             val all = Stremio.addons(key).filter { it.serves("subtitles", type, videoId) }
                 .flatMap { a -> runCatching { a.subtitles(type, videoId) }
-                    .onFailure { android.util.Log.w("Alder", "subtitles from ${a.name} failed", it) }.getOrDefault(emptyList()) }
+                    .onFailure { android.util.Log.w("Canopy", "subtitles from ${a.name} failed", it) }.getOrDefault(emptyList()) }
             all.groupBy { Languages.code(it.lang) ?: it.lang }.entries
                 .sortedWith(compareBy({ it.key != wantSub }, { it.key != "en" }, { Languages.name(it.key) }))
                 .flatMap { (code, files) -> files.take(if (code == wantSub || code == "en") 3 else 1) }
         }) { r ->
             addonSubs = r.getOrDefault(emptyList())
-            android.util.Log.i("Alder", "addon subtitles: ${addonSubs.size}", r.exceptionOrNull())
+            android.util.Log.i("Canopy", "addon subtitles: ${addonSubs.size}", r.exceptionOrNull())
             if (subsAnswered) return@background // too late: playing already, offered in the list
             main.removeCallbacks(stopWaiting)
             if (chosenSub == null) chosenSub = addonSubs.firstOrNull { Languages.same(it.lang, wantSub) } // attached, picked above
@@ -470,7 +470,7 @@ class PlayerActivity : Screen() {
             audioPicked = false
             subsPicked = false
             failedAudio.clear()
-            android.util.Log.w("Alder", "Source failed: $reason; trying another")
+            android.util.Log.w("Canopy", "Source failed: $reason; trying another")
             return load(position, "That source failed · trying the next one")
         }
         if (intent.getBooleanExtra("picked", false)) {
