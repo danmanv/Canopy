@@ -16,6 +16,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 ## Unreleased
 
 - **Trailer previews.** Stop on a title for 3 seconds. Its trailer plays behind it without sound. Push a button to stop it. To turn it off, select **Settings → Picture & Sound → Trailer previews**.
+- **Play goes straight to the video.** Select **Play**. One loading screen shows the title and its picture until the video starts. Before, two screens with source details showed first. To choose a source yourself, hold OK on **Play**.
 - **Subtitles in your language.** Select **Settings → Subtitles → Subtitle language**. Then select a language. Each profile keeps its own language. Subtitles in that language start with the video. They also start when the audio is in that language.
 - **All subtitle languages in the player.** **Audio & subtitles** shows all the languages from your subtitle add-ons. Your subtitle language and English are at the top. Before, Alder showed only the language of the TV and English.
 - **All audio languages.** **Settings → Picture & Sound → Audio language** has all the languages. Before, it had only 7. Frequently used languages are at the top.
