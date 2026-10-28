@@ -47,6 +47,9 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
         view.loadDataWithBaseURL(ORIGIN, page(id), "text/html", "utf-8", null)
     }
 
+    /** Makes the WebView ahead of the first trailer: its first start is slow. */
+    fun warm() { if (web == null) make() }
+
     /** Stops the trailer, if one is on, and empties the page. */
     fun stop() {
         main.removeCallbacks(giveUp)
@@ -123,7 +126,7 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
         // YouTube's embedded player refuses pages with no origin (error 153), so the page is given Canopy's.
         const val ORIGIN = "https://danmanv.github.io/Canopy/"
         const val START_WAIT = 12_000L // ms a trailer may take to start before it's given up
-        const val REVEAL_DELAY = 700L
+        const val REVEAL_DELAY = 300L
         const val BLANK_AFTER = 600L // ms: past the art's fade back in
     }
 }

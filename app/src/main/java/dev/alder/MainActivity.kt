@@ -165,6 +165,8 @@ class MainActivity : Screen() {
     private var trailerItem: Item? = null // the title whose trailer is waiting to start, or playing
     private var trailerOn = false // its picture shows
     private val trailerTask = Runnable { startTrailer() }
+    private var trailerFrom = 0L // uptime ms the remote landed on the trailer's card
+    private val trailerReveal = Runnable { if (trailerItem != null) showTrailer(true) }
 
     /**
      * The art cropped to the screen with its shades painted in, once per picture: the left darkening behind the words
@@ -375,6 +377,8 @@ class MainActivity : Screen() {
         }
         showPage(Page.entries.firstOrNull { it.label == intent.getStringExtra("page") } ?: Page.HOME)
         main.postDelayed(::warmPages, WARM_AFTER)
+        // The WebView's first start takes a while: made now, while nothing moves, so the first trailer isn't late.
+        main.postDelayed({ if (!isFinishing && Settings.trailers(this)) trailer.warm() }, WARM_AFTER + 2000)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -964,20 +968,27 @@ class MainActivity : Screen() {
         stopTrailer()
         if (mode != Mode.BROWSE || page == Page.LIVE || !Settings.trailers(this)) return
         trailerItem = item
-        main.postDelayed(trailerTask, TRAILER_WAIT)
+        trailerFrom = android.os.SystemClock.uptimeMillis()
+        main.postDelayed(trailerTask, TRAILER_LOAD)
     }
 
     private fun startTrailer() {
         val item = trailerItem?.takeIf { it === heroItem && mode == Mode.BROWSE && scroller.hasFocus() } ?: return
         val id = metas[item.id]?.trailer ?: run {
-            if (!item.settled) main.postDelayed(trailerTask, 1000) // its details aren't in yet
+            if (!item.settled) main.postDelayed(trailerTask, 300) // its details aren't in yet
             return
         }
-        trailer.play(id, onPlaying = { if (trailerItem === item) showTrailer(true) }, onDone = { showTrailer(false) })
+        // It loads and starts out of sight under the art, and shows TRAILER_WAIT after the remote landed (or as soon
+        // as it plays, when YouTube is slower than that).
+        trailer.play(id, onPlaying = {
+            if (trailerItem === item) main.postDelayed(trailerReveal,
+                (trailerFrom + TRAILER_WAIT - android.os.SystemClock.uptimeMillis()).coerceAtLeast(0))
+        }, onDone = { showTrailer(false) })
     }
 
     private fun stopTrailer() {
         main.removeCallbacks(trailerTask)
+        main.removeCallbacks(trailerReveal)
         trailerItem = null
         trailer.stop()
     }
@@ -2124,7 +2135,8 @@ class MainActivity : Screen() {
     }
 
     private companion object {
-        const val TRAILER_WAIT = 3_000L // ms the remote rests on a card before its trailer starts loading
+        const val TRAILER_WAIT = 3_000L // ms the remote rests on a card before its trailer shows
+        const val TRAILER_LOAD = 800L // ms before it starts loading out of sight: racing along a row loads none
         const val TRAILER_FADE = 800L
         const val HEADER_H = 76 // dp
         const val WHATS_NEW_WAIT = 1_500L // ms after Home opens: its first row draws before the pop-up covers it

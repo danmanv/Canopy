@@ -15,6 +15,10 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+## 1.2.1
+
+- **Trailers start sooner.** A trailer shows 3 seconds after you stop on a title. Before, it showed after 5 seconds or more.
+
 ## 1.2
 
 - **Trailer previews.** Stop on a title for 3 seconds. Its trailer plays behind it without sound. Push a button to stop it. To turn it off, select **Settings → Picture & Sound → Trailer previews**.
