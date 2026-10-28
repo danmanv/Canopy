@@ -89,7 +89,7 @@ class ProfilesActivity : Screen() {
     // ---------- who's watching ----------
 
     private fun showPicker() {
-        // Opened from inside a profile (Switch profile, Manage profiles): Back returns to it instead of leaving Alder.
+        // Opened from inside a profile (Switch profile, Manage profiles): Back returns to it instead of leaving Canopy.
         val current = Profiles.active(this)?.takeIf { intent.getBooleanExtra("pick", false) }
         backTo = current?.let { { openHome(it) } }
         nameInput = null
@@ -397,7 +397,7 @@ class ProfilesActivity : Screen() {
             swatches.addView(mark, LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(8) })
         }
         val copy = column(Gravity.START,
-            text(if (first) "Welcome to Alder" else "New profile", SERIF_TITLE, serif = true),
+            text(if (first) "Welcome to Canopy" else "New profile", SERIF_TITLE, serif = true),
             text("Give this profile a name and colour.", BODY, color = TEXT_2).marginTop(4),
             name.apply { layoutParams = LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(16) } },
             keyboard.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) } },
@@ -549,7 +549,7 @@ class ProfilesActivity : Screen() {
             // Two people approving on one phone sign each other out: switching accounts there can end the other's sign-in.
             text("Sharing a phone? Approve each person's code on their own phone or in a private browser window. Signing out of Stremio there can sign this TV out too.",
                 SMALL, color = TEXT_2).onArt().marginTop(24),
-            text("New to Stremio? Make an account and add your add-ons in the Stremio app or at web.stremio.com. Alder brings them to the TV.",
+            text("New to Stremio? Make an account and add your add-ons in the Stremio app or at web.stremio.com. Canopy brings them to the TV.",
                 SMALL, color = TEXT_3).onArt().marginTop(10),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
         val first = Profiles.all(this).isEmpty()
@@ -704,7 +704,7 @@ class ProfilesActivity : Screen() {
             ?: return showReady(profile)
         val configure = Uri.parse(watchly.transportUrl).let { "${it.scheme}://${it.authority}/configure" }
         val qr = ImageView(this).apply { setImageBitmap(qrBitmap(configure, dp(220))) }
-        val done = onboardingButton("Continue to Alder").apply { setOnClickListener { openHome(profile) } }
+        val done = onboardingButton("Continue to Canopy").apply { setOnClickListener { openHome(profile) } }
         val steps = column(Gravity.START,
             text("Recommendations for ${profile.name}", SERIF_TITLE, bold = true, serif = true),
             text("1.  Scan with ${profile.name}'s phone to open Watchly\n" +
@@ -723,7 +723,7 @@ class ProfilesActivity : Screen() {
 
     private fun showReady(profile: Profile) {
         backTo = { openHome(profile) }
-        val done = onboardingButton("Continue to Alder").apply { setOnClickListener { openHome(profile) } }
+        val done = onboardingButton("Continue to Canopy").apply { setOnClickListener { openHome(profile) } }
         setWindowed(onboardingFrame("step 3 of 3", column(Gravity.CENTER,
             onboardingAvatar(profile.name.take(1).uppercase(), 100, profile.color),
             text(profile.name, SERIF_TITLE, serif = true).marginTop(12)

@@ -211,7 +211,7 @@ class StreamsActivity : Screen() {
                 background({ addon.streams(type, videoId) }) { streams ->
                     streams.exceptionOrNull()?.let { e ->
                         failures[i] = e
-                        android.util.Log.w("Alder", "streams from ${addon.name} failed", e)
+                        android.util.Log.w("Canopy", "streams from ${addon.name} failed", e)
                     }
                     torrents[i] = streams.getOrNull()?.torrents ?: 0
                     answers[i] = streams.getOrNull()?.playable.orEmpty()
@@ -282,7 +282,7 @@ class StreamsActivity : Screen() {
                 "Couldn't get sources from ${it.joinToString(", ")}. Check the add-on in Stremio, or try again later."
             },
             torrentOnly.takeIf { it.isNotEmpty() }?.let {
-                "${it.joinToString(", ")} found only torrents. Alder plays them through a debrid service: connect one in the add-on's settings."
+                "${it.joinToString(", ")} found only torrents. Canopy plays them through a debrid service: connect one in the add-on's settings."
             },
             unplayable.takeIf { it > 0 }?.let { "$it ${if (it == 1) "source needs" else "sources need"} a video format this TV can't decode." },
         ).ifEmpty { listOf("Your add-ons have no sources for this title.") }

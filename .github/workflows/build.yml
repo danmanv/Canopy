@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Unit tests
+        run: ./gradlew testDebugUnitTest
+      - name: Debug APK
+        run: ./gradlew assembleDebug
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Canopy-debug
+          path: app/build/outputs/apk/debug/*.apk

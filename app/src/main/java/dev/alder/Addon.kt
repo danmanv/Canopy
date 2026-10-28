@@ -150,7 +150,7 @@ class Addon(val descriptor: JSONObject) {
         return Streams(all.mapNotNull { Stream.from(it) }, all.count { it.text("url") == null && it.text("infoHash") != null })
     }
 
-    /** [torrents]: results Alder can't play, a torrent with no debrid link (an infoHash, no url); counted to say why. */
+    /** [torrents]: results Canopy can't play, a torrent with no debrid link (an infoHash, no url); counted to say why. */
     class Streams(val playable: List<Stream>, val torrents: Int)
 
     /** Subtitle files for one video (OpenSubtitles and co. through Stremio's `subtitles` resource). */
@@ -179,8 +179,8 @@ class Addon(val descriptor: JSONObject) {
 fun List<Addon>.meta(type: String, id: String, together: Boolean = false): Meta? {
     val serving = filter { it.serves("meta", type, id) }
     fun ask(a: Addon) = runCatching { a.meta(type, id) }
-        .onFailure { android.util.Log.w("Alder", "details from ${a.name} failed", it) }.getOrNull()
-        .also { if (it == null) android.util.Log.i("Alder", "no details for $type $id from ${a.name}") }
+        .onFailure { android.util.Log.w("Canopy", "details from ${a.name} failed", it) }.getOrNull()
+        .also { if (it == null) android.util.Log.i("Canopy", "no details for $type $id from ${a.name}") }
     if (!together || serving.size < 2) return serving.firstNotNullOfOrNull(::ask)
     return serving.map { a -> metaPool.submit<Meta?> { ask(a) } }.firstNotNullOfOrNull { it.get() }
 }

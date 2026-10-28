@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Working name; the app gets its real name later. -->
-    <string name="app_name">Alder</string>
+    <string name="app_name">Canopy</string>
 </resources>
