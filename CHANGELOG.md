@@ -17,10 +17,20 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 - **Screensaver.** After 5 minutes without a key press, Canopy shows the art of your Continue Watching and My List titles. The time shows on the art. Push any key to stop it. Push **OK** to open the title on the screen. To change the time, select **Settings → Picture & Sound → Screensaver**.
 - **TV screensaver.** The TV can also use the Canopy art when the TV is idle. Select **Settings → Picture & Sound → TV screensaver**. Then select **Canopy**.
+
+## 1.2.1
+
+- **Trailers start sooner.** A trailer shows 3 seconds after you stop on a title. Before, it showed after 5 seconds or more.
+
+## 1.2
+
+- **Trailer previews.** Stop on a title for 3 seconds. Its trailer plays behind it without sound. Push a button to stop it. To turn it off, select **Settings → Picture & Sound → Trailer previews**.
 - **Up next starts the next episode.** At the end of an episode, **Up next** counts down from 15 seconds. Then the next episode starts. Select **Watch the credits** to stop it. When you pause, the count stops.
+- **Play goes straight to the video.** Select **Play**. One loading screen shows the title and its picture until the video starts. Before, two screens with source details showed first. To choose a source yourself, hold OK on **Play**.
+- **Canopy updates itself from signed releases.** Each new version is a GitHub release. Canopy shows a message when a new version is available. Select **Install**. To install it later, select **Settings → About → Updates**.
+- If an update has a different signature, Canopy tells you to remove Canopy one time and then install the update.
 - **Skip intro for anime.** Anime from Kitsu or MyAnimeList also show **Skip intro** and **Skip recap**. The times come from AniSkip.
 - **Skip 85 s.** When no one has timed the intro of an episode, **Skip 85 s** shows in the first 3 minutes. Push OK to go 85 seconds forward.
-- **Play goes straight to the video.** Select **Play**. One loading screen shows the title and its picture until the video starts. Before, two screens with source details showed first. To choose a source yourself, hold OK on **Play**.
 - **Subtitles in your language.** Select **Settings → Subtitles → Subtitle language**. Then select a language. Each profile keeps its own language. Subtitles in that language start with the video. They also start when the audio is in that language.
 - **All subtitle languages in the player.** **Audio & subtitles** shows all the languages from your subtitle add-ons. Your subtitle language and English are at the top. Before, Alder showed only the language of the TV and English.
 - **All audio languages.** **Settings → Picture & Sound → Audio language** has all the languages. Before, it had only 7. Frequently used languages are at the top.

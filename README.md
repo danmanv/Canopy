@@ -111,9 +111,9 @@ Handy for trying a build from a pull request, or when you'd rather push updates 
    adb install -r <file>.apk  # -r keeps your profiles and sign-in
    ```
 
-Every debug build (CI or local) is signed with the same committed key, `app/canopy-debug.keystore`, so one PR's build installs over another's with `adb install -r` and keeps your data. For example, with the TV at 192.168.1.231: `adb -s 192.168.1.231:5555 install -r app-debug.apk`. The package is `dev.canopy`.
+Once the release key is in the repository's secrets (see [Releases](#releases)), CI signs every build, PRs included, with it, so a PR's build and a release install over each other. Until then, and for local builds, debug builds are signed with the committed key `app/canopy-debug.keystore`. Either way one build installs over another with `adb install -r` and keeps your data. For example, with the TV at 192.168.1.231: `adb -s 192.168.1.231:5555 install -r app-debug.apk`. The package is `dev.canopy`.
 
-If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the TV was signed with a different key: a release replaced by a debug build or the reverse, or a debug build from before the shared key. Uninstall with `adb uninstall dev.canopy` and install again. That signs you out, but only once.
+If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the TV was signed with a different key: a build from before the release key, or a local build over a CI one. Uninstall with `adb uninstall dev.canopy` and install again. That signs you out, but only once.
 
 ## Privacy
 
@@ -128,6 +128,39 @@ cd Canopy
 ```
 
 The APK is written to `app/build/outputs/apk/release/`.
+
+## Releases
+
+Pushing a tag such as `v1.2` runs the *Release* workflow: it checks the tag matches `versionName` in `app/build.gradle.kts`, builds `Canopy.apk` signed with the release key, and publishes it as a GitHub release with that version's notes from `CHANGELOG.md`. Every TV on an older version then offers it.
+
+To release:
+
+1. In `app/build.gradle.kts`, raise `versionCode` by one and set `versionName` (for example `1.2`).
+1. In `CHANGELOG.md`, rename `## Unreleased` to `## 1.2`.
+1. Merge that to `main`. Then either press **Run workflow** on the [Release workflow](https://github.com/danmanv/Canopy/actions/workflows/release.yml) (it tags `v1.2` itself), or `git tag v1.2 && git push origin v1.2`.
+
+### Set up the release key (once)
+
+The key never goes in the repository. Keep the `.jks` file and its password somewhere safe: an update signed with any other key will not install over Canopy.
+
+1. Make the key. `keytool` comes with any JDK (Android Studio has one in `jbr\bin`):
+
+   ```sh
+   keytool -genkeypair -keystore canopy-release.jks -alias canopy -keyalg RSA -keysize 4096 -validity 10000 -dname "CN=Canopy"
+   ```
+
+1. Add two secrets under the repository's **Settings › Secrets and variables › Actions**, or with the GitHub CLI:
+
+   ```powershell
+   [Convert]::ToBase64String([IO.File]::ReadAllBytes("canopy-release.jks")) | gh secret set CANOPY_KEYSTORE_BASE64 -R danmanv/Canopy
+   gh secret set CANOPY_KEYSTORE_PASSWORD -R danmanv/Canopy   # asks for the password you chose
+   ```
+
+   (Optional: `CANOPY_KEY_ALIAS` if you used an alias other than `canopy`, and `CANOPY_KEY_PASSWORD` if the key's password differs from the keystore's.)
+
+1. Switch each TV once. Builds made before the key are signed differently, so the first release-signed build will not install over them: run `adb uninstall dev.canopy`, then install the new build. You sign in again once; after that every build and release updates in place.
+
+To sign a local release build with the same key, put `storeFile`, `storePassword`, `keyAlias` and `keyPassword` in a git-ignored `keystore.properties` at the repository root.
 
 ## Credits
 

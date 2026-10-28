@@ -205,6 +205,10 @@ class Meta(json: JSONObject) {
     val rating = json.text("imdbRating")
     val genres = json.optJSONArray("genres").strings().take(3)
     val cast = json.optJSONArray("cast").strings()
+    /** The trailer's YouTube id: Cinemeta sends `trailerStreams` (ytId), older add-ons `trailers` (source), trailers first. */
+    val trailer = (json.optJSONArray("trailerStreams").objects().map { it.text("ytId") } +
+        json.optJSONArray("trailers").objects().sortedBy { if (it.optString("type", "Trailer") == "Trailer") 0 else 1 }.map { it.text("source") })
+        .firstNotNullOfOrNull(::youTubeId)
     val info = listOfNotNull(year, runtime, genres.joinToString(" · ").ifEmpty { null }).joinToString("   ")
 
     /** Episodes in play order: by season then episode, specials (season 0) last. */
