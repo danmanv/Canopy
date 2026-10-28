@@ -100,6 +100,13 @@ object Updates {
                     intent.getParcelableExtra<Intent>(Intent.EXTRA_INTENT)?.let { c.startActivity(it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
                 }
                 PackageInstaller.STATUS_SUCCESS, PackageInstaller.STATUS_FAILURE_ABORTED -> {}
+                // Signed with a different key: this TV has a debug build, or one from before the release key.
+                // Only a one-time uninstall fixes that; the plain "couldn't install" left no way forward.
+                PackageInstaller.STATUS_FAILURE_CONFLICT -> {
+                    android.util.Log.w("Canopy", "update conflicts: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
+                    Toast.makeText(c, "This update is signed with a different key. Uninstall Canopy once, then install " +
+                        "Canopy.apk from github.com/danmanv/Canopy/releases.", Toast.LENGTH_LONG).show()
+                }
                 else -> {
                     android.util.Log.w("Canopy", "update install failed: $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
                     Toast.makeText(c, "Couldn't install the update", Toast.LENGTH_LONG).show()
