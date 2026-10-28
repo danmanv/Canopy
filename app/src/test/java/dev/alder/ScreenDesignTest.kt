@@ -177,6 +177,13 @@ class ScreenDesignTest {
         assertEquals(null, lowerSourceHeight(480))
     }
 
+    @Test fun animeEpisodesAreAskedOfAniSkipByTheirShowAndEpisode() {
+        assertEquals(Triple("kitsu", "7442", 5), animeEpisode("kitsu:7442:5"))
+        assertEquals(Triple("mal", "21", 1000), animeEpisode("mal:21:1000"))
+        assertEquals(null, animeEpisode("tt0903747:1:2"))
+        assertEquals(null, animeEpisode("kitsu:7442"))
+    }
+
     @Test fun upNextNeverInterruptsMoreThanTheFinalMinute() {
         assertEquals(30_000L, upNextWindow(10 * 60_000L))
         assertEquals(60_000L, upNextWindow(60 * 60_000L))
