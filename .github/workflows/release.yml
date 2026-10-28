@@ -1,11 +1,13 @@
 name: Release
 
-# Push a tag like v1.2 (matching versionName in app/build.gradle.kts) and this publishes Canopy.apk, signed with the
-# release key, as a GitHub release. Every TV on an older version then offers it (Updates.kt).
+# Push a tag like v1.2 (matching versionName in app/build.gradle.kts), or press "Run workflow" on main, and this
+# publishes Canopy.apk, signed with the release key, as a GitHub release (the button tags v<versionName> itself).
+# Every TV on an older version then offers it (Updates.kt).
 # A pull request that changes this file runs it as a dry run: it builds the release APK but publishes nothing.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
   pull_request:
     paths: [.github/workflows/release.yml]
 
@@ -31,14 +33,19 @@ jobs:
         run: |
           version=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' app/build.gradle.kts)
           echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "TAG=v$version" >> "$GITHUB_ENV"
           if [ "$GITHUB_EVENT_NAME" = push ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version in app/build.gradle.kts. Bump the version first, then tag v$version."
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && git ls-remote --exit-code --tags origin "v$version" > /dev/null; then
+            echo "::error::v$version is already released. Bump versionName in app/build.gradle.kts first."
             exit 1
           fi
       - name: Release key
         run: |
           if [ -z "$CANOPY_KEYSTORE_BASE64" ]; then
-            if [ "$GITHUB_EVENT_NAME" = push ]; then
+            if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
               echo "::error::No release key. Add the CANOPY_KEYSTORE_BASE64 and CANOPY_KEYSTORE_PASSWORD secrets (README, Releases)."
               exit 1
             fi
@@ -66,13 +73,14 @@ jobs:
           name: Canopy-release
           path: Canopy.apk
       - name: Publish
-        if: github.event_name == 'push'
+        if: github.event_name != 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           # A release drafted by hand on GitHub for this tag gets the APK added; otherwise the release is made here.
-          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" Canopy.apk --clobber
+          # From the button, creating the release also creates its tag on this commit.
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            gh release upload "$TAG" Canopy.apk --clobber
           else
-            gh release create "$GITHUB_REF_NAME" Canopy.apk --title "Canopy $VERSION" --notes-file notes.md
+            gh release create "$TAG" Canopy.apk --target "$GITHUB_SHA" --title "Canopy $VERSION" --notes-file notes.md
           fi
