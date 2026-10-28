@@ -1,0 +1,78 @@
+name: Release
+
+# Push a tag like v1.2 (matching versionName in app/build.gradle.kts) and this publishes Canopy.apk, signed with the
+# release key, as a GitHub release. Every TV on an older version then offers it (Updates.kt).
+# A pull request that changes this file runs it as a dry run: it builds the release APK but publishes nothing.
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths: [.github/workflows/release.yml]
+
+permissions:
+  contents: write
+
+env:
+  CANOPY_KEYSTORE_BASE64: ${{ secrets.CANOPY_KEYSTORE_BASE64 }}
+  CANOPY_KEYSTORE_PASSWORD: ${{ secrets.CANOPY_KEYSTORE_PASSWORD }}
+  CANOPY_KEY_ALIAS: ${{ secrets.CANOPY_KEY_ALIAS }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v5
+      - name: Check the tag matches the app's version
+        run: |
+          version=$(sed -n 's/^ *versionName = "\(.*\)"$/\1/p' app/build.gradle.kts)
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_EVENT_NAME" = push ] && [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match versionName $version in app/build.gradle.kts. Bump the version first, then tag v$version."
+            exit 1
+          fi
+      - name: Release key
+        run: |
+          if [ -z "$CANOPY_KEYSTORE_BASE64" ]; then
+            if [ "$GITHUB_EVENT_NAME" = push ]; then
+              echo "::error::No release key. Add the CANOPY_KEYSTORE_BASE64 and CANOPY_KEYSTORE_PASSWORD secrets (README, Releases)."
+              exit 1
+            fi
+            echo "::warning::No release key in this run's secrets: the dry run signs with the debug key."
+            exit 0
+          fi
+          echo "$CANOPY_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/canopy-release.jks"
+          echo "CANOPY_KEYSTORE=$RUNNER_TEMP/canopy-release.jks" >> "$GITHUB_ENV"
+          echo "KEY_FLAG=-PreleaseKey" >> "$GITHUB_ENV"
+      - name: Unit tests
+        run: ./gradlew testReleaseUnitTest
+      - name: Release APK
+        run: |
+          ./gradlew assembleRelease $KEY_FLAG
+          cp app/build/outputs/apk/release/app-release.apk Canopy.apk
+          "$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner" verify --print-certs Canopy.apk
+      - name: Release notes from CHANGELOG.md
+        run: |
+          # The lines under "## <version>", up to the next heading.
+          awk -v v="## $VERSION" '$0 == v { on = 1; next } /^## / { on = 0 } on' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Canopy $VERSION." > notes.md
+          cat notes.md
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Canopy-release
+          path: Canopy.apk
+      - name: Publish
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # A release drafted by hand on GitHub for this tag gets the APK added; otherwise the release is made here.
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" Canopy.apk --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" Canopy.apk --title "Canopy $VERSION" --notes-file notes.md
+          fi
