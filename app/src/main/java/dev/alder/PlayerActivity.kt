@@ -54,6 +54,13 @@ internal fun lowerSourceHeight(height: Int): Int? = listOf(1080, 720, 480).first
 internal fun upNextWindow(durationMs: Long) = minOf(60_000L, maxOf(30_000L, durationMs / 25))
 internal fun plausibleEpisode(durationMs: Long) = durationMs >= 2 * 60_000L
 
+/** An anime episode AniSkip can be asked about: ("kitsu" or "mal", the show's id, the episode), from "kitsu:7442:5". */
+internal fun animeEpisode(videoId: String): Triple<String, String, Int>? {
+    val parts = videoId.split(":")
+    if (parts.size < 3 || parts[0] !in listOf("kitsu", "mal")) return null
+    return Triple(parts[0], parts[1], parts.last().toIntOrNull() ?: return null)
+}
+
 // ExoPlayer with our own controls (buildControls) and audio/subtitle panel (openOptions). Resumes where Stremio says you stopped and
 // writes progress back to the account, so Continue Watching matches on every device.
 // It gets a short list of sources: one that fails, or hasn't shown a picture after START_WAIT, gives way to the next
@@ -112,6 +119,21 @@ class PlayerActivity : Screen() {
     // "Up next": offered during credits; the current episode keeps playing until the viewer chooses the next one.
     private lateinit var upNextPanel: FrameLayout
     private var upNextDismissed = false
+    // Up next counts down while the episode plays (held while paused), then starts the next one.
+    private var countdownLeft = 0L
+    private lateinit var countdownText: TextView
+    private lateinit var countdownBar: SeekBar
+    private val countdownTask = object : Runnable {
+        override fun run() {
+            if (upNextPanel.visibility != View.VISIBLE || isFinishing) return
+            val playing = player.playWhenReady && player.playbackState == Player.STATE_READY
+            if (playing) countdownLeft -= COUNTDOWN_STEP
+            if (countdownLeft <= 0) return playNext()
+            countdownText.text = if (playing) "Starts in ${(countdownLeft + 999) / 1000} s" else "Paused · starts when you play"
+            countdownBar.set(UP_NEXT_COUNTDOWN - countdownLeft, 0, UP_NEXT_COUNTDOWN)
+            main.postDelayed(this, COUNTDOWN_STEP)
+        }
+    }
     // The pill's other use: a source that keeps stalling (three times in a minute) is offered a lower quality once.
     private var offeringLower = false
     private val stalls = ArrayDeque<Long>()
@@ -528,6 +550,7 @@ class PlayerActivity : Screen() {
             lastPosition = player.currentPosition
             main.postDelayed(tickTask, TICK)
             main.post(skipTask)
+            if (upNextPanel.visibility == View.VISIBLE) main.postDelayed(countdownTask, COUNTDOWN_STEP)
             if (loading.visibility == View.VISIBLE && player.playbackState == Player.STATE_BUFFERING)
                 main.post(loadingTask)
         }
@@ -651,17 +674,25 @@ class PlayerActivity : Screen() {
             addView(text(next.title.ifBlank { "Episode ${next.episode}" }, SERIF_HERO, serif = true).onArt(),
                 wrap().apply { topMargin = dp(6) })
             addView(text("S${next.season} E${next.episode}", SMALL, color = TEXT_2).onArt(), wrap().apply { topMargin = dp(5) })
-            addView(actions, wrap().apply { topMargin = dp(16) })
+            countdownText = text("", SMALL, color = TEXT_2).onArt()
+            addView(countdownText, wrap().apply { topMargin = dp(12) })
+            countdownBar = SeekBar(this@PlayerActivity).apply { isFocusable = false }
+            addView(countdownBar, LinearLayout.LayoutParams(-1, dp(12)).apply { topMargin = dp(4) })
+            addView(actions, wrap().apply { topMargin = dp(12) })
         }
         upNextPanel.addView(content, FrameLayout.LayoutParams(dp(500), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(68)
         })
         upNextPanel.visibility = View.VISIBLE
         playNow.requestFocus()
+        countdownLeft = UP_NEXT_COUNTDOWN + COUNTDOWN_STEP
+        main.removeCallbacks(countdownTask)
+        countdownTask.run()
     }
 
     private fun dismissUpNext() {
         upNextDismissed = true
+        main.removeCallbacks(countdownTask)
         upNextPanel.visibility = View.GONE
     }
 
@@ -738,7 +769,10 @@ class PlayerActivity : Screen() {
         // The OK that woke the controls: its repeats and release would otherwise press the button it focused.
         // Skip intro: OK jumps past it while the pill shows over the picture (the controls down).
         if (skip.visibility == View.VISIBLE && !shown && down && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
-            (skip.tag as? Segment)?.takeIf { canSeek() }?.let { player.seekTo(it.end) }
+            (skip.tag as? Segment)?.takeIf { canSeek() }?.let { s ->
+                if (s.jump == 0L) player.seekTo(s.end)
+                else { segments = segments - s; player.seekTo(player.currentPosition + s.jump) } // the guess is used once
+            }
             skip.visibility = View.GONE
             wakeKey = event.keyCode
             return true
@@ -763,10 +797,12 @@ class PlayerActivity : Screen() {
 
     // ---------- skip intro, as NuvioTV does it ----------
     // IntroDB (api.introdb.app, community timings by IMDb id, season and episode; no key, nothing personal sent) says where
-    // an episode's intro, recap and credits are. Inside an intro or recap a "Skip intro" pill shows for 10 s, and OK
-    // jumps to its end. The credits start, when known, is when Up next appears, rather than the last 4% guess.
-    // ponytail: series with IMDb ids only; anime (AniSkip by MAL id) and films' credits aren't asked for.
-    private class Segment(val label: String, val start: Long, val end: Long)
+    // an episode's intro, recap and credits are; AniSkip (api.aniskip.com, by MyAnimeList id, Kitsu's ids mapped through
+    // Kitsu) says the same for anime. Inside an intro or recap a "Skip intro" pill shows for 10 s, and OK jumps to its
+    // end. The credits start, when known, is when Up next appears, rather than the last 4% guess. An episode neither
+    // knows gets a plain "Skip 85 s" for its first minutes instead, used once. ponytail: films' credits aren't asked for.
+    private class Segment(val label: String, val start: Long, val end: Long, val jump: Long = 0) // jump: ms forward, not to the end
+    private class SkipTimes(val intro: Pair<Long, Long>?, val recap: Pair<Long, Long>?, val outro: Long?)
     private lateinit var skip: TextView
     private var segments = emptyList<Segment>()
     private var outroAt = 0L
@@ -775,18 +811,45 @@ class PlayerActivity : Screen() {
     private val skipTask = Runnable { checkSegments() }
 
     private fun fetchSegments() {
+        if (type != "series") return
         val parts = videoId.split(":")
-        if (type != "series" || !metaId.startsWith("tt") || parts.size < 3) return
+        val anime = animeEpisode(videoId)
         background({
-            val json = JSONObject(Http.get("https://api.introdb.app/segments?imdb_id=${parts[0]}&season=${parts[1]}&episode=${parts[2]}"))
-            fun part(name: String) = json.optJSONObject(name)?.let { it.optDouble("start_sec", -1.0) to it.optDouble("end_sec", -1.0) }
-                ?.takeIf { (a, b) -> a >= 0 && b > a }?.let { (a, b) -> (a * 1000).toLong() to (b * 1000).toLong() }
-            Triple(part("intro"), part("recap"), part("outro"))
+            when {
+                anime != null -> aniSkip(anime.first, anime.second, anime.third)
+                metaId.startsWith("tt") && parts.size >= 3 -> introDb(parts[0], parts[1], parts[2])
+                else -> null
+            }
         }) { r ->
-            val (intro, recap, outro) = r.getOrNull() ?: return@background
-            segments = listOfNotNull(recap?.let { Segment("Skip recap", it.first, it.second) }, intro?.let { Segment("Skip intro", it.first, it.second) })
-            outroAt = outro?.first ?: 0L
+            r.exceptionOrNull()?.let { android.util.Log.w("Canopy", "skip times failed", it) }
+            val times = r.getOrNull()
+            segments = listOfNotNull(times?.recap?.let { Segment("Skip recap", it.first, it.second) },
+                times?.intro?.let { Segment("Skip intro", it.first, it.second) })
+                .ifEmpty { listOf(Segment("Skip ${GUESS_JUMP / 1000} s", 0, GUESS_WINDOW, jump = GUESS_JUMP)) }
+            outroAt = times?.outro ?: 0L
         }
+    }
+
+    private fun introDb(imdb: String, season: String, episode: String): SkipTimes {
+        val json = JSONObject(Http.get("https://api.introdb.app/segments?imdb_id=$imdb&season=$season&episode=$episode"))
+        fun part(name: String) = json.optJSONObject(name)?.let { it.optDouble("start_sec", -1.0) to it.optDouble("end_sec", -1.0) }
+            ?.takeIf { (a, b) -> a >= 0 && b > a }?.let { (a, b) -> (a * 1000).toLong() to (b * 1000).toLong() }
+        return SkipTimes(part("intro"), part("recap"), part("outro")?.first)
+    }
+
+    private fun aniSkip(site: String, id: String, episode: Int): SkipTimes? {
+        val mal = if (site == "mal") id else JSONObject(Http.get("https://kitsu.app/api/edge/anime/$id/mappings" +
+            "?filter%5BexternalSite%5D=myanimelist%2Fanime", keep = true)).optJSONArray("data").objects()
+            .map { it.optJSONObject("attributes") }.firstOrNull { it?.optString("externalSite") == "myanimelist/anime" }
+            ?.optString("externalId")?.ifBlank { null } ?: return null
+        val json = JSONObject(Http.get("https://api.aniskip.com/v2/skip-times/$mal/$episode" +
+            "?types%5B%5D=op&types%5B%5D=mixed-op&types%5B%5D=recap&types%5B%5D=ed&types%5B%5D=mixed-ed&episodeLength=0"))
+        val found = json.optJSONArray("results").objects().mapNotNull { r ->
+            val i = r.optJSONObject("interval") ?: return@mapNotNull null
+            val (a, b) = i.optDouble("startTime", -1.0) to i.optDouble("endTime", -1.0)
+            if (a < 0 || b <= a) null else r.optString("skipType") to ((a * 1000).toLong() to (b * 1000).toLong())
+        }.toMap()
+        return SkipTimes(found["op"] ?: found["mixed-op"], found["recap"], (found["ed"] ?: found["mixed-ed"])?.first)
     }
 
     private fun checkSegments() {
@@ -801,7 +864,7 @@ class PlayerActivity : Screen() {
             skip.text = "${now.label}   OK"
             skip.visibility = View.VISIBLE
         }
-        if (now != null && skip.tag === now && System.currentTimeMillis() - skipShownAt > SKIP_SHOWN) { skipped += now; skip.visibility = View.GONE }
+        if (now != null && now.jump == 0L && skip.tag === now && System.currentTimeMillis() - skipShownAt > SKIP_SHOWN) { skipped += now; skip.visibility = View.GONE }
         if (outroAt > 0 && position >= outroAt && player.duration - position < 60_000 &&
             !upNextDismissed && upNextPanel.visibility != View.VISIBLE && player.duration > 0) showUpNext()
         main.postDelayed(skipTask, 500)
@@ -1295,6 +1358,7 @@ class PlayerActivity : Screen() {
         main.removeCallbacks(progressTask)
         main.removeCallbacks(skipTask)
         main.removeCallbacks(loadingTask)
+        main.removeCallbacks(countdownTask)
         player.pause()
         if (!watched || player.isCurrentMediaItemLive || type == "series" && !plausibleEpisode(player.duration)) return
         record()
@@ -1320,6 +1384,10 @@ class PlayerActivity : Screen() {
         const val DOCK_GLASS = 0xB30E1313.toInt() // smoked: dark enough to read over any picture
         const val SEEK_SETTLE = 600L // ms after the last skip before seeking
         const val SKIP_SHOWN = 10_000L // ms the Skip intro pill stays, as in NuvioTV
+        const val GUESS_JUMP = 85_000L // ms "Skip 85 s" moves when no one has timed the intro: a typical opening's length
+        const val GUESS_WINDOW = 180_000L // ms from the start that "Skip 85 s" is offered
+        const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
+        const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under
