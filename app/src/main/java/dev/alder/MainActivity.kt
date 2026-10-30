@@ -186,12 +186,12 @@ class MainActivity : Screen() {
         val bright = samplePixels(src, 16, 24)?.let { brightLeft(it, 16) } ?: false
         val shade = Paint().apply {
             shader = LinearGradient(0f, 0f, w * 0.55f, 0f,
-                if (bright) 0xF7070B16.toInt() else 0xEB070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
+                if (bright) baseAt(0xF7) else baseAt(0xEB), baseAt(0x00), Shader.TileMode.CLAMP)
         }
         canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF7070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, baseAt(0xF7), baseAt(0x00), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, baseAt(0x8C), baseAt(0x00), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
         for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
             GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
@@ -1027,11 +1027,11 @@ class MainActivity : Screen() {
         val h = resources.displayMetrics.heightPixels / 4
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
-        val shade = Paint().apply { shader = LinearGradient(0f, 0f, w * 0.55f, 0f, 0xEB070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP) }
+        val shade = Paint().apply { shader = LinearGradient(0f, 0f, w * 0.55f, 0f, baseAt(0xEB), baseAt(0x00), Shader.TileMode.CLAMP) }
         canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF7070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, baseAt(0xF7), baseAt(0x00), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, baseAt(0x8C), baseAt(0x00), Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
         return ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; setImageBitmap(out) }
     }

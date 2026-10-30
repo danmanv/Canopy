@@ -99,9 +99,9 @@ class SaverView(context: Context) : FrameLayout(context) {
         frames.forEach { stage.addView(it, LayoutParams(-1, -1)) }
         addView(stage, LayoutParams(-1, -1))
         // Smoke's shade: dark at the bottom and left under the words, a little at the top under the time.
-        addView(shade(GradientDrawable.Orientation.BOTTOM_TOP, 0xE6070B16.toInt(), 0x66070B16, 0x00070B16, 0x00070B16))
-        addView(shade(GradientDrawable.Orientation.LEFT_RIGHT, 0xB3070B16.toInt(), 0x00070B16, 0x00070B16))
-        addView(shade(GradientDrawable.Orientation.TOP_BOTTOM, 0x8C070B16.toInt(), 0x00070B16, 0x00070B16, 0x00070B16))
+        addView(shade(GradientDrawable.Orientation.BOTTOM_TOP, baseAt(0xE6), baseAt(0x66), baseAt(0x00), baseAt(0x00)))
+        addView(shade(GradientDrawable.Orientation.LEFT_RIGHT, baseAt(0xB3), baseAt(0x00), baseAt(0x00)))
+        addView(shade(GradientDrawable.Orientation.TOP_BOTTOM, baseAt(0x8C), baseAt(0x00), baseAt(0x00), baseAt(0x00)))
 
         caption.addView(logo, LinearLayout.LayoutParams(-2, -2))
         caption.addView(title, LinearLayout.LayoutParams(dp(520), -2))
@@ -224,6 +224,7 @@ class ScreensaverActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         prepareNetwork(this)
+        Theme.load(this)
         window.setBackgroundDrawable(ColorDrawable(Screen.BASE))
         saver = SaverView(this)
         setContentView(saver)
@@ -272,6 +273,7 @@ class CanopyDream : DreamService() {
         isInteractive = false
         isFullscreen = true
         prepareNetwork(this)
+        Theme.load(this)
         setContentView(SaverView(this).also { saver = it })
     }
 
