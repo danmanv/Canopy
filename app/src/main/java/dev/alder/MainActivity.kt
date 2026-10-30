@@ -186,12 +186,12 @@ class MainActivity : Screen() {
         val bright = samplePixels(src, 16, 24)?.let { brightLeft(it, 16) } ?: false
         val shade = Paint().apply {
             shader = LinearGradient(0f, 0f, w * 0.55f, 0f,
-                if (bright) 0xF707090A.toInt() else 0xEB07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+                if (bright) 0xF7070B16.toInt() else 0xEB070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
         }
         canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF707090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF7070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
         for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
             GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
@@ -585,14 +585,15 @@ class MainActivity : Screen() {
             }
         }.apply { setPadding(dp(PAD), dp(18), dp(PAD), dp(6)) }
 
-        // The profile: a small round avatar on the margin. OK opens a small menu (switch profile, settings).
-        val avatar = text(profile.name.take(1).uppercase(), SMALL, bold = true, color = TUNGSTEN).apply {
+        // The profile: a small lit square on the margin. OK opens a small menu (switch profile, settings).
+        val avatar = text(profile.name.take(1).uppercase(), SMALL, bold = true, color = BASE).apply {
             gravity = Gravity.CENTER
             contentDescription = "Profile"
-            val rest = glassOver(this, 20)
             fun style(focused: Boolean) {
-                background = if (focused) glass(20, true) else rest
-                setTextColor(TUNGSTEN)
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(ICE, TUNGSTEN)).apply {
+                    cornerRadius = dp(CORNER).toFloat()
+                    if (focused) setStroke(dp(2), TEXT)
+                }
                 grow(focused).start()
             }
             style(false)
@@ -664,7 +665,7 @@ class MainActivity : Screen() {
     private val switchPage = Runnable { if (pending != page && navItems[pending]?.isFocused == true) { jump = false; showPage(pending) } }
 
     private fun profileMenu() {
-        choose(profile.name, listOf("Switch profile", "Settings")) { i ->
+        choose(profile.name, listOf("Switch profile", "Settings"), "Watching now", dropDown = true) { i ->
             if (i == 0) switchProfile() else startActivity(Intent(this, SettingsActivity::class.java))
         }
     }
@@ -678,6 +679,8 @@ class MainActivity : Screen() {
             val focused = item.isFocused
             item.background = tabFace(focused, open = p == page)
             item.setTextColor(if (p == page || focused) TEXT else TEXT_2)
+            // The focused name glows softly, as if lit by its line.
+            item.setShadowLayer(if (focused) dp(10).toFloat() else 0f, 0f, 0f, if (focused) 0x99FFFFFF.toInt() else 0)
         }
         search?.let {
             it.background = tabFace(it.isFocused, open = false)
@@ -685,21 +688,15 @@ class MainActivity : Screen() {
         }
     }
 
-    /** A tab's background: the glass face while focused, and the emerald underline on the open page. */
+    /** A tab's background, Light line: a white line under the focused name, the mint line under the open page's. */
     private fun tabFace(focused: Boolean, open: Boolean): Drawable? {
-        val layers = listOfNotNull(
-            if (focused) GradientDrawable().apply { setColor(TAB_FOCUSED); cornerRadius = dp(TAB_R).toFloat() } else null,
-            if (open) GradientDrawable().apply { setColor(TUNGSTEN); cornerRadius = dp(2).toFloat() } else null,
-        )
-        if (layers.isEmpty()) return null
-        return android.graphics.drawable.LayerDrawable(layers.toTypedArray()).apply {
-            if (open) {
-                val line = layers.lastIndex
-                setLayerGravity(line, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
-                setLayerHeight(line, dp(3))
-                setLayerInsetLeft(line, dp(TAB_PAD))
-                setLayerInsetRight(line, dp(TAB_PAD))
-            }
+        if (!focused && !open) return null
+        val line = GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN); cornerRadius = dp(2).toFloat() }
+        return android.graphics.drawable.LayerDrawable(arrayOf(line)).apply {
+            setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+            setLayerHeight(0, dp(3))
+            setLayerInsetLeft(0, dp(TAB_PAD))
+            setLayerInsetRight(0, dp(TAB_PAD))
         }
     }
 
@@ -1030,11 +1027,11 @@ class MainActivity : Screen() {
         val h = resources.displayMetrics.heightPixels / 4
         val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(out)
-        val shade = Paint().apply { shader = LinearGradient(0f, 0f, w * 0.55f, 0f, 0xEB07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP) }
+        val shade = Paint().apply { shader = LinearGradient(0f, 0f, w * 0.55f, 0f, 0xEB070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP) }
         canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF707090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, 0xF7070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C07090A.toInt(), 0x0007090A, Shader.TileMode.CLAMP)
+        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, 0x8C070B16.toInt(), 0x00070B16, Shader.TileMode.CLAMP)
         canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
         return ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_XY; setImageBitmap(out) }
     }
@@ -2168,8 +2165,6 @@ class MainActivity : Screen() {
         const val NAV_GAP = 4 // dp between them
         const val TAB_H = 38 // dp: a tab's height; the open page's underline sits at its foot
         const val TAB_PAD = 14 // dp either side of a tab's name, and the underline's inset
-        const val TAB_R = 10 // dp: the focused tab's glass corners
-        const val TAB_FOCUSED = 0x1FFFFFFF // the focused tab's soft glass face
         const val BRAND_GAP = 40 // dp from the wordmark to the first tab
         const val WORDMARK_BAR = 19f // sp: "canopy" beside its mark in the top bar
         const val BODY_LARGE = 16f // sp: the tabs' names

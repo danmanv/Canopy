@@ -3,7 +3,7 @@ package dev.alder
 import android.content.Context
 import android.app.ActivityManager
 import android.content.Intent
-import android.content.res.ColorStateList
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -198,7 +198,6 @@ class SettingsActivity : Screen() {
     private lateinit var profileName: TextView
     private lateinit var avatar: TextView
     private val groupViews = mutableMapOf<Group, View>()
-    private val groupDots = mutableMapOf<Group, TextView>()
     private val groupLabels = mutableMapOf<Group, TextView>()
     private val choiceRows = mutableSetOf<View>()
     private val refresh = mutableListOf<() -> Unit>()
@@ -209,48 +208,44 @@ class SettingsActivity : Screen() {
     private var homeBuild = 0
     private val prefs by lazy { getSharedPreferences("settings", MODE_PRIVATE) }
 
+    override val fullChoices get() = true
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Settings.hdrPref(this) // migrate the old HDR switch before any row reads it
         val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
         val height = resources.displayMetrics.heightPixels / resources.displayMetrics.density
-        val root = FrameLayout(this).apply { setBackgroundColor(BASE); clipChildren = false; clipToPadding = false }
+        // Full screen, like Netflix's: no panels. Big section names on the left, a hairline, then the settings as rows.
+        val root = FrameLayout(this).apply { background = sky(); clipChildren = false; clipToPadding = false }
 
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        avatar = text(Profiles.active(this)?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = TUNGSTEN).apply {
+        header.addView(ImageView(this).apply { setImageResource(R.drawable.logo_transparent) }, LinearLayout.LayoutParams(dp(34), dp(34)))
+        header.addView(text("Settings", SERIF_TITLE, serif = true), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        profileName = text("", BODY, bold = true, color = TEXT_2)
+        header.addView(profileName, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
+        avatar = text(Profiles.active(this)?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = BASE).apply {
             gravity = Gravity.CENTER
-            background = glass(15)
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(ICE, TUNGSTEN)).apply { cornerRadius = dp(CORNER).toFloat() }
         }
         header.addView(avatar, LinearLayout.LayoutParams(dp(30), dp(30)))
-        header.addView(text("Settings", SERIF_TITLE, serif = true), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(12) })
-        profileName = text("", SMALL, color = TEXT_3).apply { setPadding(dp(14), dp(8), 0, 0) }
-        header.addView(profileName)
-        header.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
-        header.addView(android.widget.TextClock(this).apply {
-            format12Hour = "h:mm a"
-            format24Hour = "HH:mm"
-            textSize = SMALL
-            setTextColor(TEXT_2)
-            typeface = text("", SMALL).typeface
-        })
-        root.addView(header, FrameLayout.LayoutParams(-1, dp(40), Gravity.TOP).apply {
-            leftMargin = dp(48); rightMargin = dp(48); topMargin = dp(24)
+        root.addView(header, FrameLayout.LayoutParams(-1, dp(44), Gravity.TOP).apply {
+            leftMargin = dp(48); rightMargin = dp(48); topMargin = dp(26)
         })
 
-        groups = column(Gravity.START).apply {
-            setPadding(dp(7), dp(9), dp(7), dp(9))
-            background = glassOver(this, 14)
-        }
-        Group.entries.forEach { group ->
-            if (group == Group.STORAGE) groups.addView(View(this).apply { setBackgroundColor(GLASS_EDGE) },
-                LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(dp(6), dp(8), dp(6), dp(8)) })
-            addGroup(group)
-        }
-        root.addView(groups, FrameLayout.LayoutParams(dp(200), dp((height - 115).toInt()), Gravity.TOP or Gravity.START).apply {
-            leftMargin = dp(48); topMargin = dp(88)
+        groups = column(Gravity.START)
+        Group.entries.forEach(::addGroup)
+        root.addView(groups, FrameLayout.LayoutParams(dp(220), -2, Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(36); topMargin = dp(96)
+        })
+        // The hairline between the sections and their settings, fading out at both ends.
+        root.addView(View(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0x2EFFFFFF, 0x2EFFFFFF, 0))
+        }, FrameLayout.LayoutParams(dp(1), dp((height - 120).toInt()), Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(272); topMargin = dp(96)
         })
 
-        detailTitle = text("", BODY, bold = true).apply { setPadding(dp(12), 0, 0, 0) }
+        detailTitle = text("", SERIF_TITLE, serif = true).apply { setPadding(dp(16), 0, 0, 0) }
         detailRows = column(Gravity.START)
         rowsScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
@@ -258,20 +253,20 @@ class SettingsActivity : Screen() {
             clipToPadding = false
             addView(detailRows)
         }
-        hint = text("", SMALL, color = TEXT_2).onArt().apply { setPadding(dp(12), 0, dp(20), 0) }
-        // The help follows the rows, so a long group (Streams has six) never runs under it.
+        // Under the section's name: what it's for, then what the focused setting does.
+        hint = text("", SMALL, color = TEXT_2).apply { setPadding(dp(16), 0, dp(20), 0); minLines = 2 }
         val detail = column(Gravity.START).apply {
             clipChildren = false
-            addView(detailTitle, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
-            addView(rowsScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
-            addView(hint, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+            addView(detailTitle, LinearLayout.LayoutParams(-1, -2))
+            addView(hint, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            addView(rowsScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
-        root.addView(detail, FrameLayout.LayoutParams(dp((width - 328).toInt()), dp((height - 110).toInt()), Gravity.TOP or Gravity.START).apply {
-            leftMargin = dp(280); topMargin = dp(88)
+        root.addView(detail, FrameLayout.LayoutParams(dp((width - 344).toInt()), dp((height - 120).toInt()), Gravity.TOP or Gravity.START).apply {
+            leftMargin = dp(296); topMargin = dp(92)
         })
         window.setBackgroundDrawable(null)
         setContentView(root)
-        profileName.text = Profiles.active(this)?.name?.let { "Profile " + it } ?: ""
+        profileName.text = Profiles.active(this)?.name.orEmpty()
         showGroup(Group.STREAMS)
         groupViews[Group.STREAMS]?.post { groupViews[Group.STREAMS]?.requestFocus() }
     }
@@ -280,7 +275,7 @@ class SettingsActivity : Screen() {
         super.onResume()
         if (::profileName.isInitialized) {
             val name = Profiles.active(this)?.name
-            profileName.text = name?.let { "Profile " + it } ?: ""
+            profileName.text = name.orEmpty()
             avatar.text = name?.take(1)?.uppercase() ?: "A"
             refresh.forEach { it() }
         }
@@ -311,37 +306,41 @@ class SettingsActivity : Screen() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** A section's name, large: the open one is white with the mint line beside it; the remote's also gets the wash. */
     private fun addGroup(group: Group) {
-        val dot = text("•", SMALL, color = TUNGSTEN).apply { gravity = Gravity.CENTER; visibility = View.INVISIBLE }
-        val icon = if (group.icon != 0) ImageView(this).apply {
-            setImageResource(group.icon)
-            imageTintList = ColorStateList.valueOf(TEXT_3)
-        } else text(group.glyph, BODY, color = TEXT_3).apply { gravity = Gravity.CENTER }
-        val label = text(group.label, BODY, bold = true, color = TEXT_2)
-        val row = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            addView(dot, LinearLayout.LayoutParams(dp(10), -1))
-            addView(icon, LinearLayout.LayoutParams(dp(14), dp(14)).apply { marginStart = dp(4) })
-            addView(label, LinearLayout.LayoutParams(-1, -2).apply { marginStart = dp(10) })
-            setPadding(dp(2), 0, dp(4), 0)
-            rowFocus(8, rest = { if (selectedGroup == group) tile(8) else null }) { has ->
+        val label = text(group.label, GROUP_SP, serif = true, color = TEXT_3).apply { setPadding(dp(14), 0, dp(8), 0) }
+        val row = FrameLayout(this).apply {
+            addView(label, FrameLayout.LayoutParams(-1, -2, Gravity.CENTER_VERTICAL))
+            rowFocus(rest = { if (selectedGroup == group) openLine() else null }) { has ->
+                label.setTextColor(if (has || selectedGroup == group) TEXT else TEXT_3)
+                label.setShadowLayer(if (has) dp(10).toFloat() else 0f, 0f, 0f, if (has) 0x73FFFFFF else 0)
                 if (has) showGroup(group)
             }
             setOnClickListener { showGroup(group); firstDetail?.requestFocus() }
         }
         groupViews[group] = row
-        groupDots[group] = dot
         groupLabels[group] = label
-        groups.addView(row, LinearLayout.LayoutParams(-1, dp(34)).apply { bottomMargin = dp(1) })
+        groups.addView(row, LinearLayout.LayoutParams(-1, dp(GROUP_H)))
+    }
+
+    /** The open section's mint line, without the focus wash. */
+    private fun openLine() = android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(TUNGSTEN))).apply {
+        setLayerWidth(0, dp(3)); setLayerInsetTop(0, dp(10)); setLayerInsetBottom(0, dp(10))
+    }
+
+    /** A settings row at rest: only the hairline under it. */
+    private fun hairline() = android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(0x17FFFFFF))).apply {
+        setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(1))
     }
 
     private fun showGroup(group: Group) {
         if (selectedGroup == group && detailRows.childCount > 0) return
         selectedGroup = group
         groupViews.forEach { (item, view) ->
-            groupDots[item]?.visibility = if (item == group) View.VISIBLE else View.INVISIBLE
-            groupLabels[item]?.setTextColor(if (item == group) TEXT else if (item == Group.STORAGE || item == Group.ABOUT) TEXT_3 else TEXT_2)
-            if (!view.hasFocus()) view.background = if (item == group) tile(8) else null
+            if (!view.hasFocus()) {
+                groupLabels[item]?.setTextColor(if (item == group) TEXT else TEXT_3)
+                view.background = if (item == group) openLine() else null
+            }
         }
         detailTitle.text = group.label
         detailRows.removeAllViews()
@@ -551,26 +550,28 @@ class SettingsActivity : Screen() {
                            focus: (Boolean) -> Unit = {}, click: () -> Unit): View {
         val line = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(text(label, BODY, bold = true), LinearLayout.LayoutParams(-2, -2))
+            addView(text(label, ROW_SP, bold = true), LinearLayout.LayoutParams(-2, -2))
             if (perProfile) addView(text("THIS PROFILE", 8f, color = TUNGSTEN).apply {
                 setPadding(dp(5), dp(2), dp(5), dp(2))
                 background = glass(6)
             }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
             addView(View(this@SettingsActivity), LinearLayout.LayoutParams(0, 1, 1f))
             addView(value, LinearLayout.LayoutParams(-2, -2))
-            setPadding(dp(12), 0, dp(12), 0)
+            setPadding(dp(16), 0, dp(16), 0)
         }
+        // Light line, glossy: the focused row gets a bright top edge, the mint edge and a sheen fading to the right.
         val row = FrameLayout(this).apply {
             addView(line, FrameLayout.LayoutParams(-1, -1))
-            rowFocus(9) { has ->
+            isFocusable = true
+            background = hairline()
+            setOnFocusChangeListener { _, has ->
+                background = if (has) lineFocus(gloss = true) else hairline()
                 if (has) hint.text = help
-                elevation = if (has) dp(8).toFloat() else 0f
-                if (has && android.os.Build.VERSION.SDK_INT >= 28) outlineSpotShadowColor = TUNGSTEN_GLOW
                 focus(has)
             }
             setOnClickListener { click() }
         }
-        detailRows.addView(row, LinearLayout.LayoutParams(-1, dp(42)))
+        detailRows.addView(row, LinearLayout.LayoutParams(-1, dp(SETTING_H)))
         if (firstDetail == null) firstDetail = row
         return row
     }
@@ -598,8 +599,8 @@ class SettingsActivity : Screen() {
     }
 
     private fun actionRow(label: String, value: String, help: String, click: () -> Unit): TextView {
-        val display = text(if (value.isEmpty()) "›" else "$value  ›", BODY, color = TEXT_2)
-        settingRow(label, display, help, focus = { display.setTextColor(if (it) TUNGSTEN else TEXT_2) }, click = click)
+        val display = text(if (value.isEmpty()) "›" else "$value  ›", ROW_SP, bold = true, color = ICE)
+        settingRow(label, display, help, focus = { display.setTextColor(if (it) TEXT else ICE) }, click = click)
         return display
     }
 
@@ -620,30 +621,28 @@ class SettingsActivity : Screen() {
 
     private fun choiceRow(c: Choice) {
         fun current() = c.values.indexOfFirst { it.first == stored(c) }.coerceAtLeast(0)
-        // A switch only where the choice is On or Off; "Best source / Show sources" is a choice with words.
+        // Off and On side by side where the choice is only that (no round switch); other choices are words.
         val isSwitch = c.values.map { it.second } == listOf("On", "Off")
-        val words = text("", BODY, color = TEXT_2)
-        val track = FrameLayout(this).apply { background = rounded(GLASS_EDGE, 9) }
-        val knob = View(this)
-        if (isSwitch) track.addView(knob)
+        val words = text("", ROW_SP, bold = true, color = ICE)
+        val off = text("Off", ROW_SP, bold = true).apply { setPadding(0, dp(3), 0, dp(3)) }
+        val on = text("On", ROW_SP, bold = true).apply { setPadding(0, dp(3), 0, dp(3)) }
         val value = if (isSwitch) LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(words, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(8) })
-            addView(track, LinearLayout.LayoutParams(dp(32), dp(17)))
+            addView(off, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(16) })
+            addView(on, LinearLayout.LayoutParams(-2, -2))
         } else words
         var focused = false
         fun draw() {
             val index = current()
-            val on = isSwitch && c.values[index].first == true
-            words.setTextColor(if (focused) TEXT else TEXT_2)
-            words.text = if (isSwitch) c.values[index].second
-                else if (focused) "‹  " + c.values[index].second + "  ›" else c.values[index].second
+            words.setTextColor(if (focused) TEXT else ICE)
+            words.text = if (focused) "‹  " + c.values[index].second + "  ›" else c.values[index].second
             if (isSwitch) {
-                track.background = rounded(if (on) TUNGSTEN else GLASS_EDGE, 9)
-                knob.background = rounded(if (on) BASE else TEXT_2, 7)
-                knob.layoutParams = FrameLayout.LayoutParams(dp(13), dp(13),
-                    Gravity.CENTER_VERTICAL or (if (on) Gravity.END else Gravity.START)).apply {
-                    leftMargin = dp(2); rightMargin = dp(2)
+                val isOn = c.values[index].first == true
+                for ((word, lit) in listOf(off to !isOn, on to isOn)) {
+                    word.setTextColor(if (lit) TEXT else TEXT_3)
+                    word.background = if (!lit) null else android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(TUNGSTEN))).apply {
+                        setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(2))
+                    }
                 }
             }
         }
@@ -671,9 +670,9 @@ class SettingsActivity : Screen() {
         // Audio language was once shared by every profile: that pick stands until this profile makes its own.
         fun current() = prefs.getString(Settings.profileKey(this, key), if (key == "audioLang") prefs.getString(key, "") else "").orEmpty()
         fun name(code: String) = if (code.isEmpty()) "TV language" else Languages.name(code)
-        val value = text("", BODY, color = TEXT_2)
+        val value = text("", ROW_SP, bold = true, color = ICE)
         fun draw() { value.text = name(current()) + "  ›" }
-        settingRow(label, value, help, perProfile = true, focus = { value.setTextColor(if (it) TUNGSTEN else TEXT_2) }) {
+        settingRow(label, value, help, perProfile = true, focus = { value.setTextColor(if (it) TEXT else ICE) }) {
             choose(label, codes.map(::name), checked = codes.indexOf(current()).coerceAtLeast(0)) { i ->
                 prefs.edit().putString(Settings.profileKey(this, key), codes[i]).apply()
                 refresh.forEach { it() }
@@ -684,10 +683,13 @@ class SettingsActivity : Screen() {
     }
 
     private fun presetRow() {
-        val value = text("", BODY, color = TEXT_2)
+        val value = text("", ROW_SP, bold = true, color = ICE)
         fun current() = PRESETS.indexOfFirst { (_, rows) -> rows.all { (key, v) -> stored(choice(key)) == v } }
         var focused = false
-        fun draw() { value.text = (if (focused) "‹  " else "") + (PRESETS.getOrNull(current())?.first ?: "Custom") + (if (focused) "  ›" else "") }
+        fun draw() {
+            value.setTextColor(if (focused) TEXT else ICE)
+            value.text = (if (focused) "‹  " else "") + (PRESETS.getOrNull(current())?.first ?: "Custom") + (if (focused) "  ›" else "")
+        }
         fun shift(by: Int) {
             val next = nextSettingIndex(current(), PRESETS.size, by)
             PRESETS[next].second.forEach { (key, v) -> store(choice(key), v) }
@@ -709,6 +711,10 @@ class SettingsActivity : Screen() {
     }
 
     private companion object {
+        const val GROUP_SP = 17f // a section's name
+        const val GROUP_H = 40 // dp
+        const val ROW_SP = 15.5f // a setting's name and value
+        const val SETTING_H = 52 // dp
         val PRESETS = listOf(
             "Add-on's order" to mapOf("release" to "", "hdrPref" to "", "maxHeight" to 0, "maxSizeGb" to 0),
             "Best picture" to mapOf("release" to "remux", "hdrPref" to "dv", "maxHeight" to 0, "maxSizeGb" to 0),

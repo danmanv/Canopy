@@ -99,9 +99,9 @@ class SaverView(context: Context) : FrameLayout(context) {
         frames.forEach { stage.addView(it, LayoutParams(-1, -1)) }
         addView(stage, LayoutParams(-1, -1))
         // Smoke's shade: dark at the bottom and left under the words, a little at the top under the time.
-        addView(shade(GradientDrawable.Orientation.BOTTOM_TOP, 0xE607090A.toInt(), 0x6607090A, 0x0007090A, 0x0007090A))
-        addView(shade(GradientDrawable.Orientation.LEFT_RIGHT, 0xB307090A.toInt(), 0x0007090A, 0x0007090A))
-        addView(shade(GradientDrawable.Orientation.TOP_BOTTOM, 0x8C07090A.toInt(), 0x0007090A, 0x0007090A, 0x0007090A))
+        addView(shade(GradientDrawable.Orientation.BOTTOM_TOP, 0xE6070B16.toInt(), 0x66070B16, 0x00070B16, 0x00070B16))
+        addView(shade(GradientDrawable.Orientation.LEFT_RIGHT, 0xB3070B16.toInt(), 0x00070B16, 0x00070B16))
+        addView(shade(GradientDrawable.Orientation.TOP_BOTTOM, 0x8C070B16.toInt(), 0x00070B16, 0x00070B16, 0x00070B16))
 
         caption.addView(logo, LinearLayout.LayoutParams(-2, -2))
         caption.addView(title, LinearLayout.LayoutParams(dp(520), -2))

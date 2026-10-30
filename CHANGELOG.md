@@ -15,6 +15,12 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **New look.** Canopy has new colors and new fonts. The colors are midnight blue with mint and ice light. Titles use Sora, and other text uses Manrope.
+- **New Settings.** Settings fills the screen. The section names are on the left. The selected setting has a bright line and a soft light. Settings with only **On** and **Off** show the two words. Before, they showed a switch.
+- **New player controls.** The title, a wide time bar and the buttons show directly on the picture. Before, they were in a glass panel.
+- The menus, buttons and profile pictures have square corners. The remote shows the selected item with a line of light.
+- Select your profile picture to open a menu below it. Before, the menu opened in the center of the screen.
+
 ## 1.2.2
 
 - **New Home menu.** The top of **Home** shows the Canopy name and text tabs. Before, the tabs were round buttons.
