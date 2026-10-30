@@ -201,7 +201,7 @@ abstract class Screen : Activity() {
         // showed the toggle of another profile): opening that page again only went round in a loop.
         choose("Canopy can't install updates on this TV", listOf("OK"),
             "Android doesn't let Canopy install apps here. Install the update with the Downloader app instead: " +
-                "open ${Updates.DIRECT_APK} in Downloader. Your profiles and settings stay.") {}
+                "enter code ${Updates.DOWNLOADER_CODE} in Downloader. Your profiles and settings stay.") {}
     }
 
     /** Runs [work] off the main thread and hands its result back on it, unless the screen is gone. */

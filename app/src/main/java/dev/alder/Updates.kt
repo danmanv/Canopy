@@ -16,8 +16,8 @@ import java.net.URL
  */
 object Updates {
     private const val LATEST = "https://api.github.com/repos/danmanv/Canopy/releases/latest"
-    /** The newest Canopy.apk, for a TV where Canopy can't install it itself. */
-    const val DIRECT_APK = "github.com/danmanv/Canopy/releases/latest/download/Canopy.apk"
+    /** Downloader's code for the newest Canopy.apk (aftv.news/7470748), for a TV where Canopy can't install it itself. */
+    const val DOWNLOADER_CODE = "7470748"
     // An hour, not a day: with a day, a release published a few hours after Home last checked waited until the next
     // day, so 1.2.1 never showed on a TV opened that afternoon. Hourly stays well inside GitHub's 60 calls an hour.
     private const val CHECK_EVERY = 3600_000L

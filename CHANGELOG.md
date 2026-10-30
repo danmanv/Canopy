@@ -15,7 +15,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
-- When the TV does not let Canopy install an update, Canopy tells you to install it with the Downloader app. Before, Canopy opened the **Install unknown apps** page again and again.
+- When the TV does not let Canopy install an update, Canopy tells you to install it with code 7470748 in the Downloader app. Before, Canopy opened the **Install unknown apps** page again and again.
 
 ## 1.2.2
 
