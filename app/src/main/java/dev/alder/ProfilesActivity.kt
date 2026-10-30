@@ -24,6 +24,7 @@ import android.widget.TextView
 // Profile picker, Stremio sign-in, and setting up Watchly.
 // The app starts here; with a single profile it goes straight on to Home.
 class ProfilesActivity : Screen() {
+    override val screensaver: Boolean get() = false // it would show a profile's titles before its PIN
     // The sign-in code being waited on; anything else stops its polling loop.
     private var waitingCode: String? = null
     private var signingIn = false

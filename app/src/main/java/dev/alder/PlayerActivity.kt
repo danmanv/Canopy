@@ -67,6 +67,7 @@ internal fun animeEpisode(videoId: String): Triple<String, String, Int>? {
 // at the same second, and when the list runs out the sources page opens. Network blips are retried first, twice
 // after 1.5 s (NuvioTV's rule), so a dropped connection doesn't cost the source.
 class PlayerActivity : Screen() {
+    override val screensaver: Boolean get() = false // the film is the picture; the TV keeps the screen on while it plays
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
     private val type by lazy { intent.getStringExtra("type") ?: "movie" }

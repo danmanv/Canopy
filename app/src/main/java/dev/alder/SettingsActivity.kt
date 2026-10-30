@@ -170,6 +170,11 @@ class SettingsActivity : Screen() {
         Choice("trailers", "Trailer previews", "Rest on a title for a few seconds and its trailer plays silently behind it.",
             listOf(true to "On", false to "Off")),
     )
+    private val saver = listOf(
+        Choice("saverMinutes", "Screensaver", "Art from Continue Watching and My List, after this long without a key press.",
+            listOf(5 to "After 5 minutes", 10 to "After 10 minutes", 15 to "After 15 minutes", 30 to "After 30 minutes",
+                2 to "After 2 minutes", 0 to "Off")),
+    )
     private val dubbed = listOf(
         Choice("dub", "Dubbed releases", "Original first puts dubbed releases last; My language first uses this profile's audio language.",
             listOf("" to "No preference", "original" to "Original first", "mine" to "My language first"), true),
@@ -387,6 +392,11 @@ class SettingsActivity : Screen() {
                 pictureAndSound.forEach(::choiceRow)
                 languageRow("audioLang", "Audio language", "The dub to start with when a file has several. Changeable while watching.")
                 dubbed.forEach(::choiceRow)
+                saver.forEach(::choiceRow)
+                actionRow("Preview screensaver", "", "Any key ends it. OK opens the title on screen.") {
+                    startActivity(Intent(this, ScreensaverActivity::class.java))
+                }
+                actionRow("TV screensaver", "", "Use Canopy's art when the TV itself is idle, outside Canopy too.") { useAsTvScreensaver() }
             }
             Group.SUBTITLES -> {
                 subtitles.forEach(::choiceRow)
@@ -461,6 +471,15 @@ class SettingsActivity : Screen() {
                     }
                 }
             }
+        }
+    }
+
+    /** The TV's screensaver settings, where Canopy is listed; TVs that hide them (Google TV) get the ADB command. */
+    private fun useAsTvScreensaver() {
+        runCatching { startActivity(Intent(android.provider.Settings.ACTION_DREAM_SETTINGS)) }.onFailure {
+            choose("Set the TV screensaver", listOf("OK"),
+                "This TV hides its screensaver settings. From a computer, run: adb shell settings put secure " +
+                    "screensaver_components $packageName/${CanopyDream::class.java.name}") {}
         }
     }
 
