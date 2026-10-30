@@ -17,6 +17,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 - **Screensaver.** After 5 minutes without a key press, Canopy shows the art of your Continue Watching and My List titles. The time shows on the art. Push any key to stop it. Push **OK** to open the title on the screen. To change the time, select **Settings → Picture & Sound → Screensaver**.
 - **TV screensaver.** The TV can also use the Canopy art when the TV is idle. Select **Settings → Picture & Sound → TV screensaver**. Then select **Canopy**.
+- Canopy looks for a new version each hour when **Home** opens. Before, it looked one time each day, and a new version did not show until the next day.
 
 ## 1.2.1
 

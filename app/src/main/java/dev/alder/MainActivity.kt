@@ -10,6 +10,7 @@ import android.graphics.Paint
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.text.TextUtils
@@ -599,30 +600,17 @@ class MainActivity : Screen() {
             setOnFocusChangeListener { _, has -> style(has) }
             setOnClickListener { profileMenu() }
         }
-        // Every destination in one dark capsule, Search first as an icon (Left from Home), like Google TV's top bar.
-        val nav = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-        }
-        // A gap between pills, so the open page's and the focused one never touch.
-        fun <V : View> V.inNav(width: Int = -2, height: Int = -2) = apply {
+        // Wordmark tabs: the canopy mark and name, then the pages as plain words; no capsule behind them.
+        val tabs = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        fun <V : View> V.inTabs() = apply {
             isFocusable = true
-            nav.addView(this, LinearLayout.LayoutParams(width, height).apply { if (nav.childCount > 0) marginStart = dp(NAV_GAP) })
+            tabs.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)).apply { if (tabs.childCount > 0) marginStart = dp(NAV_GAP) })
         }
-        // As tall as the words' pills (match parent), the glyph 18 dp inside it.
-        search = ImageView(this).apply {
-            setImageResource(R.drawable.ic_search)
-            contentDescription = "Search"
-            setPadding(dp(13), dp(7), dp(13), dp(7))
-            setOnFocusChangeListener { _, _ -> styleNav() }
-            setOnClickListener { startActivity(Intent(this@MainActivity, SearchActivity::class.java)) }
-        }.inNav(width = dp(44), height = -1)
         // A page opens as soon as the remote rests on its name. OK on Shows or Movies goes to its genres.
         Page.entries.filter { it != Page.LIVE }.forEach { p ->
-            navItems[p] = text(p.label, BODY).apply {
+            navItems[p] = text(p.label, BODY_LARGE).apply {
                 gravity = Gravity.CENTER
-                compoundDrawablePadding = dp(2)
-                setPadding(dp(12), dp(4), dp(12), dp(2))
+                setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
                 setOnFocusChangeListener { _, has ->
                     styleNav()
                     main.removeCallbacks(switchPage)
@@ -637,18 +625,36 @@ class MainActivity : Screen() {
                         else -> firstRow()?.focusFirst()
                     }
                 }
-            }.inNav()
+            }.inTabs()
         }
-        nav.background = glassOver(nav, NAV_R + 4, shade = NAV_SHADE) // smoked: names read over a bright picture
-        header.addView(avatar, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.START or Gravity.CENTER_VERTICAL))
-        header.addView(nav, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
-        header.addView(TextClock(this).apply {
-            format12Hour = "h:mm a"
-            format24Hour = "HH:mm"
-            typeface = text("", SMALL).typeface
-            textSize = SMALL
-            setTextColor(TEXT_2)
-        }, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL))
+        val left = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(brand(WORDMARK_BAR))
+            addView(tabs, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(BRAND_GAP) })
+        }
+        // Search, the clock and the profile on the right.
+        search = ImageView(this).apply {
+            setImageResource(R.drawable.ic_search)
+            contentDescription = "Search"
+            isFocusable = true
+            setPadding(dp(10), dp(8), dp(10), dp(8))
+            setOnFocusChangeListener { _, _ -> styleNav() }
+            setOnClickListener { startActivity(Intent(this@MainActivity, SearchActivity::class.java)) }
+        }
+        val right = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(search, LinearLayout.LayoutParams(dp(40), dp(TAB_H)))
+            addView(TextClock(context).apply {
+                format12Hour = "h:mm a"
+                format24Hour = "HH:mm"
+                typeface = text("", SMALL).typeface
+                textSize = SMALL
+                setTextColor(TEXT_2)
+            }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(14); marginEnd = dp(16) })
+            addView(avatar, LinearLayout.LayoutParams(dp(30), dp(30)))
+        }
+        header.addView(left, FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL))
+        header.addView(right, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL))
         styleNav()
         return header
     }
@@ -664,32 +670,37 @@ class MainActivity : Screen() {
     }
 
     /**
-     * An emerald-lit pill follows the remote (as on Search); an emerald dot marks the open page.
+     * The open page is underlined in emerald; a soft glass face follows the remote. The names are bright on the open
+     * page and the focused one, quiet on the rest.
      */
     private fun styleNav() {
         navItems.forEach { (p, item) ->
             val focused = item.isFocused
-            item.background = if (focused) navFace() else null
+            item.background = tabFace(focused, open = p == page)
             item.setTextColor(if (p == page || focused) TEXT else TEXT_2)
-            item.text = p.label
-            // The open page's dot hangs under its name; the others keep an empty one, so every name sits on one line.
-            item.setCompoundDrawablesRelative(null, null, null, GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(if (p == page) TUNGSTEN else Color.TRANSPARENT)
-                setBounds(0, 0, dp(4), dp(4))
-            })
         }
         search?.let {
-            it.background = if (it.isFocused) navFace() else null
+            it.background = tabFace(it.isFocused, open = false)
             it.setColorFilter(if (it.isFocused) TEXT else TEXT_2)
         }
     }
 
-    /** Smoke's lit pill: an emerald-tinted face with an emerald rim, on the top bar's smoked glass. */
-    private fun navFace() = GradientDrawable().apply {
-        setColor(0x295FE3A8)
-        cornerRadius = dp(NAV_R).toFloat()
-        setStroke(dp(1), 0x805FE3A8.toInt())
+    /** A tab's background: the glass face while focused, and the emerald underline on the open page. */
+    private fun tabFace(focused: Boolean, open: Boolean): Drawable? {
+        val layers = listOfNotNull(
+            if (focused) GradientDrawable().apply { setColor(TAB_FOCUSED); cornerRadius = dp(TAB_R).toFloat() } else null,
+            if (open) GradientDrawable().apply { setColor(TUNGSTEN); cornerRadius = dp(2).toFloat() } else null,
+        )
+        if (layers.isEmpty()) return null
+        return android.graphics.drawable.LayerDrawable(layers.toTypedArray()).apply {
+            if (open) {
+                val line = layers.lastIndex
+                setLayerGravity(line, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+                setLayerHeight(line, dp(3))
+                setLayerInsetLeft(line, dp(TAB_PAD))
+                setLayerInsetRight(line, dp(TAB_PAD))
+            }
+        }
     }
 
     // ---------- the art, and what shows over it ----------
@@ -2154,9 +2165,14 @@ class MainActivity : Screen() {
         const val LIST_TOP_ROOM = 8 // dp above a grid row for the focused poster's growth (4% of 180 dp) and rim
         const val LIST_TOP = 280 - LIST_TOP_ROOM
         const val INFO_W = 360 // the cinema's line
-        const val NAV_R = 18 // dp: the top bar's pills
         const val NAV_GAP = 4 // dp between them
-        const val NAV_SHADE = 0.35f // the top bar's smoked glass, darkened like the episode panel's
+        const val TAB_H = 38 // dp: a tab's height; the open page's underline sits at its foot
+        const val TAB_PAD = 14 // dp either side of a tab's name, and the underline's inset
+        const val TAB_R = 10 // dp: the focused tab's glass corners
+        const val TAB_FOCUSED = 0x1FFFFFFF // the focused tab's soft glass face
+        const val BRAND_GAP = 40 // dp from the wordmark to the first tab
+        const val WORDMARK_BAR = 19f // sp: "canopy" beside its mark in the top bar
+        const val BODY_LARGE = 16f // sp: the tabs' names
         const val WARM_AFTER = 3000L // ms after launch before other pages' posters are fetched ahead
         const val SWITCH_WAIT = 300L // ms the remote rests on a page's name before it opens: passing over names opens nothing
         const val LOGO_W = 360 // the cinema's title logo
