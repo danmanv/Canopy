@@ -15,6 +15,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- Canopy looks for a new version each hour when **Home** opens. Before, it looked one time each day, and a new version did not show until the next day.
+
 ## 1.2.1
 
 - **Trailers start sooner.** A trailer shows 3 seconds after you stop on a title. Before, it showed after 5 seconds or more.
