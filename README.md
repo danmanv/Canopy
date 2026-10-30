@@ -172,6 +172,7 @@ Alder borrows from open-source projects:
 - [Just Player](https://github.com/moneytoo/Player) (Unlicense): frame-rate matching, audio passthrough, subtitle styling
 - [stremio-core](https://github.com/Stremio/stremio-core) (MIT): library format, sync and Continue Watching rules
 - [AndroidX Media](https://github.com/androidx/media) (Apache-2.0): ExoPlayer
+- [Sora](https://github.com/sora-xor/sora-font), [Manrope](https://github.com/sharanda/manrope) and [Outfit](https://github.com/Outfitio/Outfit-Fonts) (SIL Open Font License 1.1): the app's fonts
 
 Canopy is not affiliated with Stremio.
 

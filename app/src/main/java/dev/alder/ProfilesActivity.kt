@@ -174,7 +174,7 @@ class ProfilesActivity : Screen() {
             gravity = Gravity.CENTER
             alpha = 0.6f
             background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL; setColor(profile?.color ?: GLASS)
+                cornerRadius = dp(PORTRAIT_R).toFloat(); setColor(profile?.color ?: GLASS)
                 if (add) setStroke(dp(1), GLASS_EDGE, dp(2).toFloat(), dp(3).toFloat())
             }
         }
@@ -182,9 +182,10 @@ class ProfilesActivity : Screen() {
             clipChildren = false
             addView(face, FrameLayout.LayoutParams(dp(100), dp(100), Gravity.CENTER))
         }
-        // No ring: like the top bar, a dot under the name marks the remote's portrait.
+        // No ring: like the top bar, a line of light under the name marks the remote's portrait.
         val dot = View(this).apply {
-            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TUNGSTEN) }
+            background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(TEXT) }
+            if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = 0xFFFFFFFF.toInt(); elevation = dp(4).toFloat() }
             visibility = View.INVISIBLE
         }
         val name = text(if (add) "Add" else profile?.name.orEmpty().replaceFirstChar { it.titlecase() } + if (profile?.pin != null) "  🔒" else "",
@@ -193,7 +194,7 @@ class ProfilesActivity : Screen() {
             addView(circle, LinearLayout.LayoutParams(dp(112), dp(112)))
             addView(name, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             if (last != null) addView(last, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
-            addView(dot, LinearLayout.LayoutParams(dp(5), dp(5)).apply { topMargin = dp(8); gravity = Gravity.CENTER_HORIZONTAL })
+            addView(dot, LinearLayout.LayoutParams(dp(28), dp(3)).apply { topMargin = dp(8); gravity = Gravity.CENTER_HORIZONTAL })
             isFocusable = true
             clipChildren = false
             setOnFocusChangeListener { _, has ->
@@ -383,14 +384,14 @@ class ProfilesActivity : Screen() {
                 gravity = Gravity.CENTER
                 isFocusable = true
                 fun face(focused: Boolean) = GradientDrawable().apply {
-                    shape = GradientDrawable.OVAL; setColor(color)
-                    if (focused) setStroke(dp(2), TUNGSTEN)
+                    cornerRadius = dp(CORNER).toFloat(); setColor(color)
+                    if (focused) setStroke(dp(2), TEXT)
                 }
                 background = face(false)
                 setOnFocusChangeListener { view, focused -> view.background = face(focused) }
                 setOnClickListener {
                     draftColor = color
-                    avatar.background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(color) }
+                    avatar.background = GradientDrawable().apply { cornerRadius = dp(PORTRAIT_R).toFloat(); setColor(color) }
                     marks.forEachIndexed { i, view -> view.text = if (i == index) "✓" else "" }
                 }
             }
@@ -632,7 +633,7 @@ class ProfilesActivity : Screen() {
         serif = true, color = BASE).apply {
         gravity = Gravity.CENTER
         background = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
+            cornerRadius = dp(if (size > 50) PORTRAIT_R else CORNER).toFloat()
             setColor(color)
         }
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
@@ -752,6 +753,7 @@ class ProfilesActivity : Screen() {
     }
 
     private companion object {
+        const val PORTRAIT_R = 18 // dp: portraits are softened squares, not circles
         const val LIFT_ROOM = 8 // dp above the portraits for the focused one's 10% lift and ring
         const val KEY_H = 25 // dp a key row on the name step, so Continue fits under the colours
     }
