@@ -15,6 +15,19 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **New look.** Canopy has new colors and new fonts. The default colors are dark gray with orange and apricot light. Titles use Sora, and other text uses Manrope.
+- **Themes.** Select **Settings** > **Theme** to change the colors of Canopy. There are 16 themes. The first theme, **Aurora**, has the mint colors of the first new look.
+- **Genres.** On **Shows** and **Movies**, select **All genres** to show a list of genres. Select a genre to go to its row. Before, the page showed only **All**.
+- **Larger posters.** Posters on **Home**, **Shows** and **Movies** are 20% larger. The name of the selected title shows only at the top of the screen.
+- **Faster pages.** A page does not flash after it opens. Before, the rows and the title page showed blank tiles for a moment when new data came in.
+- **Faster start.** Canopy opens and changes pages more quickly.
+- **Smooth screens.** A new screen fades in, and a closed screen fades out. Before, a gray frame showed between screens.
+- **End time.** While a title plays, the top right corner shows the time that it ends, next to the clock. The audio and subtitle names no longer show above the timeline.
+- **Player buttons.** The player has two buttons on each side of **Play**. A movie shows **Start over** where a show shows **Next episode**.
+- **New Settings.** Settings fills the screen. The section names are on the left. The selected setting has a bright line and a soft light. Settings with only **On** and **Off** show the two words. Before, they showed a switch.
+- **New player controls.** The title, a wide time bar and the buttons show directly on the picture. Before, they were in a glass panel.
+- The menus, buttons and profile pictures have square corners. The remote shows the selected item with a line of light.
+- Select your profile picture to open a menu below it. Before, the menu opened in the center of the screen.
 - When the TV does not let Canopy install an update, Canopy tells you to install it with code 7470748 in the Downloader app. Before, Canopy opened the **Install unknown apps** page again and again.
 
 ## 1.2.2

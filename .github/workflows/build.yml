@@ -37,3 +37,11 @@ jobs:
         with:
           name: Canopy-debug
           path: app/build/outputs/apk/debug/*.apk
+      # The build to put on a TV: optimised and shrunk like the releases. A debug build runs noticeably slower (Android
+      # skips most of its compiler work for a debuggable app), so it showed jank a release wouldn't have.
+      - name: Fast APK
+        run: ./gradlew assembleRelease $KEY_FLAG
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Canopy-fast
+          path: app/build/outputs/apk/release/*.apk

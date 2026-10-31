@@ -10,7 +10,9 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
 import android.graphics.Canvas
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.Shader
 import android.graphics.drawable.GradientDrawable
 import android.text.TextUtils
 import android.widget.FrameLayout
@@ -213,6 +215,7 @@ class PlayerActivity : Screen() {
             addView(view, FrameLayout.LayoutParams(-1, -1))
             addView(pausedShade, FrameLayout.LayoutParams(-1, -1))
             addView(controls, FrameLayout.LayoutParams(-1, -1))
+            addView(buildAmbient(), FrameLayout.LayoutParams(-1, -1))
             addView(options, FrameLayout.LayoutParams(-1, -1))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
             addView(starting.view, FrameLayout.LayoutParams(-1, -1))
@@ -235,6 +238,7 @@ class PlayerActivity : Screen() {
                 playerLogo.visibility = View.VISIBLE; topName.visibility = View.GONE
             }
             nextCell.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
+            startOverCell.visibility = if (nextVideo() == null) View.VISIBLE else View.GONE
         }
 
         player.addListener(object : Player.Listener {
@@ -300,12 +304,16 @@ class PlayerActivity : Screen() {
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Back pauses the player on its way out: nothing on the closing screen changes (Play lit up as it faded).
+                if (isFinishing) return
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
+                main.removeCallbacks(ambientTask)
+                if (playWhenReady) hideAmbient() else main.postDelayed(ambientTask, AMBIENT_WAIT)
                 if (playWhenReady) { if (shown) showControls(null) }
-                else if (options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
+                else if (!stopping && options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
             }
 
@@ -317,7 +325,6 @@ class PlayerActivity : Screen() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                trackStatus.text = trackStatus(tracks)
                 if (selectAddonSub) tracks.groups.firstOrNull(::isAddonSub)?.let { g ->
                     selectAddonSub = false
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
@@ -408,7 +415,7 @@ class PlayerActivity : Screen() {
 
     private fun buildLoading() = FrameLayout(this).apply {
         visibility = View.GONE
-        addView(View(context).apply { setBackgroundColor(0x8007090A.toInt()) }, FrameLayout.LayoutParams(-1, -1))
+        addView(View(context).apply { setBackgroundColor(baseAt(0x80)) }, FrameLayout.LayoutParams(-1, -1))
         val center = column(Gravity.CENTER_HORIZONTAL).apply {
             addView(ring(), LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
@@ -750,6 +757,19 @@ class PlayerActivity : Screen() {
     override fun onSearchRequested() = false
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Paused, every key starts the wait for the pause screen again; on the pause screen, a key only wakes it.
+        if (::player.isInitialized && !player.playWhenReady) {
+            main.removeCallbacks(ambientTask)
+            main.postDelayed(ambientTask, AMBIENT_WAIT)
+        }
+        if (::ambient.isInitialized && ambient.visibility == View.VISIBLE && event.action == KeyEvent.ACTION_DOWN) {
+            hideAmbient()
+            if (event.keyCode !in listOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY)) {
+                showControls(playPause)
+                wakeKey = event.keyCode
+                return true
+            }
+        }
         if (upNextPanel.visibility == View.VISIBLE) {
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_DOWN) {
@@ -884,6 +904,70 @@ class PlayerActivity : Screen() {
         main.postDelayed(skipTask, 500)
     }
 
+    // ---------- the pause screen ----------
+    // Paused a while with no key pressed: the controls fade, the picture dims, and a calm card says what this is,
+    // what happens in it, and when it would end. Any key brings the controls straight back.
+    private lateinit var ambient: FrameLayout
+    private lateinit var ambientKicker: TextView
+    private lateinit var ambientTitle: TextView
+    private lateinit var ambientAbout: TextView
+    private lateinit var ambientEnds: TextView
+    private val ambientTask = Runnable { showAmbient() }
+
+    private fun buildAmbient(): FrameLayout {
+        ambientKicker = caps("Paused", TUNGSTEN).onArt()
+        ambientTitle = text("", SERIF_HERO, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+        ambientAbout = text("", BODY, color = TEXT_2).onArt().apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
+        ambientEnds = text("", SMALL, color = TEXT).onArt()
+        ambient = FrameLayout(this).apply {
+            visibility = View.GONE
+            alpha = 0f
+            addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xF2), baseAt(0x99), baseAt(0x73)))
+            }, FrameLayout.LayoutParams(-1, -1))
+            addView(TextClock(this@PlayerActivity).apply {
+                format12Hour = "h:mm a"; format24Hour = "HH:mm"
+                typeface = text("", SERIF_TITLE, serif = true).typeface
+                textSize = SERIF_TITLE
+                setTextColor(TEXT)
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { topMargin = dp(30); rightMargin = dp(PAD) })
+            addView(column(Gravity.START).apply {
+                addView(ambientKicker)
+                addView(ambientTitle, LinearLayout.LayoutParams(dp(620), -2).apply { topMargin = dp(8) })
+                addView(ambientAbout, LinearLayout.LayoutParams(dp(560), -2).apply { topMargin = dp(10) })
+                addView(ambientEnds, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { leftMargin = dp(PAD); bottomMargin = dp(PAD + 16) })
+        }
+        return ambient
+    }
+
+    private fun showAmbient() {
+        if (isFinishing || player.playWhenReady || !started) return
+        if (options.visibility == View.VISIBLE || upNextPanel.visibility == View.VISIBLE || stallPanel.visibility == View.VISIBLE) return
+        val episode = meta?.videos?.firstOrNull { it.id == videoId }
+        ambientKicker.text = listOfNotNull("PAUSED", subtitle.text.toString().takeIf { it.isNotBlank() }?.uppercase()).joinToString(DOT)
+        ambientTitle.text = pauseTitle.text
+        val about = episode?.overview?.takeIf { it.isNotBlank() } ?: meta?.description
+        ambientAbout.text = about.orEmpty()
+        ambientAbout.visibility = if (about.isNullOrBlank()) View.GONE else View.VISIBLE
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+        val remaining = (duration - player.currentPosition).coerceAtLeast(0)
+        ambientEnds.text = if (duration <= 0 || player.isCurrentMediaItemLive) ""
+            else "Ends ${SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(System.currentTimeMillis() + remaining))} if you carry on"
+        hideControls(force = true)
+        pausedShade.visibility = View.GONE
+        ambient.visibility = View.VISIBLE
+        ambient.animate().cancel()
+        ambient.animate().alpha(1f).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+    }
+
+    private fun hideAmbient() {
+        if (!::ambient.isInitialized || ambient.visibility != View.VISIBLE) return
+        if (!player.playWhenReady) pausedShade.visibility = View.VISIBLE
+        ambient.animate().cancel()
+        ambient.animate().alpha(0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).withEndAction { ambient.visibility = View.GONE }.start()
+    }
+
     // ---------- player controls ----------
     private lateinit var controls: FrameLayout
     private lateinit var bar: SeekBar
@@ -891,8 +975,9 @@ class PlayerActivity : Screen() {
     private lateinit var length: TextView
     private lateinit var playPause: TextView
     private lateinit var audioButton: TextView
-    private lateinit var trackStatus: TextView // "English  ·  Spanish subtitles", under the bar whenever the controls are up
+    private lateinit var endsAt: TextView // "  ·  Ends 11:20 AM" beside the clock, top right
     private lateinit var nextCell: FrameLayout
+    private lateinit var startOverCell: FrameLayout
     private lateinit var playerLogo: ImageView
     private lateinit var topName: TextView
     private lateinit var pauseTitle: TextView
@@ -905,7 +990,12 @@ class PlayerActivity : Screen() {
     private var scrubTo = -1L
     private val hideTask = Runnable { hideControls() }
     private val progressTask = Runnable { updateProgress() }
-    private val seekTask = Runnable { if (scrubTo >= 0) { player.seekTo(scrubTo); scrubTo = -1 } }
+    private val seekTask = Runnable { if (scrubTo >= 0) { player.seekTo(scrubTo); scrubTo = -1 }; endScrub() }
+    /** Where the current scrub started (-1: not scrubbing), and the time readout that floats over the bar meanwhile. */
+    private var scrubFrom = -1L
+    private lateinit var scrubBubble: LinearLayout
+    private lateinit var scrubTime: TextView
+    private lateinit var scrubJump: TextView
 
     private fun buildControls(): FrameLayout {
         val name = intent.getStringExtra("name").orEmpty()
@@ -925,7 +1015,7 @@ class PlayerActivity : Screen() {
             addView(pauseFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         }
 
-        trackStatus = text("", SMALL, color = TEXT_2).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        endsAt = text("", SMALL, color = TEXT).onArt().apply { maxLines = 1 }
         elapsed = text("", SMALL).onArt()
         length = text("", SMALL).onArt()
         bar = SeekBar(this).apply {
@@ -961,7 +1051,10 @@ class PlayerActivity : Screen() {
                 .putExtra("background", intent.getStringExtra("background")))
             finish()
         }
+        // Two a side, so Play sits in the middle: Next episode when there is one, else Start over in its place.
+        val startOverButton = button("Start over", R.drawable.ic_restart) { if (canSeek()) { player.seekTo(0); player.play() } }
         nextCell = buttonCell(nextButton).apply { visibility = View.GONE }
+        startOverCell = buttonCell(startOverButton)
         val buttons = LinearLayout(this).apply {
             clipChildren = false // a focused button's label is wider than its cell
             gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
@@ -973,9 +1066,10 @@ class PlayerActivity : Screen() {
             addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
                 LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginStart = dp(10) })
             addView(nextCell)
+            addView(startOverCell)
             addView(buttonCell(infoButton))
         }
-        for (button in listOf(audioButton, streamButton, playPause, nextButton, infoButton))
+        for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton))
             button.nextFocusUpId = bar.id
         playPause.id = View.generateViewId()
         bar.nextFocusDownId = playPause.id
@@ -985,44 +1079,56 @@ class PlayerActivity : Screen() {
             alpha = 0f
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x9907090A.toInt(), 0x0007090A))
+                    intArrayOf(baseAt(0x99), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, dp(120), Gravity.TOP))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                    intArrayOf(0xE607090A.toInt(), 0xA607090A.toInt(), 0x0007090A))
-            }, FrameLayout.LayoutParams(-1, dp(220), Gravity.BOTTOM))
+                    intArrayOf(baseAt(0xF2), baseAt(0xB3), baseAt(0x00)))
+            }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
             addView(playerLogo, FrameLayout.LayoutParams(dp(150), dp(50)).apply {
                 leftMargin = dp(PAD); topMargin = dp(26)
             })
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
                 leftMargin = dp(PAD); topMargin = dp(31)
             })
-            addView(TextClock(this@PlayerActivity).apply {
-                format12Hour = "h:mm a"; format24Hour = "HH:mm"
-                textSize = SMALL; setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+            // The time now, then when this finishes if it played straight through from here.
+            addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextClock(this@PlayerActivity).apply {
+                    format12Hour = "h:mm a"; format24Hour = "HH:mm"
+                    textSize = SMALL; setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+                })
+                addView(endsAt)
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(34); rightMargin = dp(PAD)
             })
-            // The glass dock: what's playing, the timeline and the buttons together in one smoked panel at the foot.
+            // Straight on the picture, no panel: what's playing at the lower left, a full-width timeline with the times
+            // under its ends, then the buttons in the middle.
             val dock = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
                 clipChildren = false
                 clipToPadding = false
-                setPadding(dp(24), dp(18), dp(24), dp(4))
-                background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(DOCK_GLASS, DOCK_R), glass(DOCK_R)))
+                addView(pauseInfo, LinearLayout.LayoutParams(-1, -2))
+                // The bar, with the scrub time floating above its head while a seek is being lined up.
+                scrubTime = text("", BODY, bold = true).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubJump = text("", SMALL, color = ICE).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubBubble = column(Gravity.CENTER_HORIZONTAL, scrubTime, scrubJump).apply {
+                    setPadding(dp(12), dp(5), dp(12), dp(6))
+                    background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xD9), 2), glass(2)))
+                    alpha = 0f
+                }
+                addView(FrameLayout(context).apply {
+                    clipChildren = false
+                    clipToPadding = false
+                    addView(bar, FrameLayout.LayoutParams(-1, -1))
+                    addView(scrubBubble, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+                }, LinearLayout.LayoutParams(-1, dp(26)).apply { topMargin = dp(14) })
                 addView(LinearLayout(context).apply {
-                    gravity = Gravity.BOTTOM
-                    addView(pauseInfo, LinearLayout.LayoutParams(0, -2, 1f))
-                    trackStatus.gravity = Gravity.END
-                    addView(trackStatus, LinearLayout.LayoutParams(dp(300), -2).apply { marginStart = dp(16) })
-                }, LinearLayout.LayoutParams(-1, -2))
-                addView(LinearLayout(context).apply {
-                    gravity = Gravity.CENTER_VERTICAL
                     addView(elapsed)
-                    addView(bar, LinearLayout.LayoutParams(0, dp(24), 1f).apply { marginStart = dp(12); marginEnd = dp(12) })
+                    addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(length)
-                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
-                addView(buttons, LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(10) })
+                }, LinearLayout.LayoutParams(-1, -2))
+                addView(buttons, LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(2) })
             }
             addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
                 leftMargin = dp(DOCK_INSET); rightMargin = dp(DOCK_INSET); bottomMargin = dp(DOCK_INSET - 4)
@@ -1043,26 +1149,33 @@ class PlayerActivity : Screen() {
             gravity = Gravity.CENTER; visibility = View.INVISIBLE
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
-        val radius = if (primary) 25 else 20
+        val radius = CORNER // square-cornered: no round buttons
         val control = text("", BODY).apply {
             gravity = Gravity.CENTER
             contentDescription = label
             isFocusable = true
             foreground = centred(res, if (primary) 25 else 20, if (primary) BASE else TEXT)
             if (primary) {
+                // White at rest, mint and glowing with the remote on it.
                 fun face(focused: Boolean) = GradientDrawable().apply {
-                    setColor(TUNGSTEN); cornerRadius = dp(radius).toFloat()
+                    setColor(if (focused) TUNGSTEN else TEXT); cornerRadius = dp(minOf(radius, CORNER)).toFloat()
                 }
                 background = face(false)
                 if (android.os.Build.VERSION.SDK_INT >= 28) outlineSpotShadowColor = TUNGSTEN_GLOW
                 setOnFocusChangeListener { view, focused ->
                     view.background = face(focused)
-                    view.elevation = if (focused) dp(10).toFloat() else 0f // an emerald glow under the focused Play
+                    view.elevation = if (focused) dp(10).toFloat() else 0f // a mint glow under the focused Play
                     view.grow(focused).start()
                     words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
                 }
-            } else rowFocus(radius, rest = { glass(radius) }) { focused ->
-                words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
+            } else {
+                // Light line: a quiet glass square, outlined in white with the remote on it.
+                background = rounded(0x1FFFFFFF, radius)
+                setOnFocusChangeListener { view, focused ->
+                    view.background = if (focused) outline(true) else rounded(0x1FFFFFFF, radius)
+                    view.grow(focused).start()
+                    words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
+                }
             }
             setOnClickListener { onClick() }
         }
@@ -1087,7 +1200,7 @@ class PlayerActivity : Screen() {
             shown = true
             view.subtitleView?.setBottomPaddingFraction(0.36f) // keep captions above the dock
             controls.visibility = View.VISIBLE
-            controls.animate().alpha(1f).setDuration(150).start()
+            controls.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             updateProgress()
             (focus ?: playPause).requestFocus()
         } else focus?.requestFocus()
@@ -1099,7 +1212,7 @@ class PlayerActivity : Screen() {
         shown = false
         main.removeCallbacks(hideTask)
         main.removeCallbacks(progressTask)
-        controls.animate().alpha(0f).setDuration(250).withEndAction {
+        controls.animate().alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             if (!shown) {
                 controls.visibility = View.GONE
                 view.subtitleView?.setBottomPaddingFraction(0.08f)
@@ -1125,10 +1238,31 @@ class PlayerActivity : Screen() {
         }
         val remaining = (duration - position).coerceAtLeast(0)
         val end = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(System.currentTimeMillis() + remaining))
+        endsAt.text = if (live || duration <= 0) "" else "${DOT}Ends $end"
         pauseFacts.text = listOfNotNull(subtitle.text.toString().takeIf { it.isNotBlank() },
-            if (live || duration <= 0) null else runtime("${(remaining / 60_000).coerceAtLeast(1)} min") + " left",
-            if (live || duration <= 0) null else "Ends $end").joinToString(DOT)
+            if (live || duration <= 0) null else runtime("${(remaining / 60_000).coerceAtLeast(1)} min") + " left").joinToString(DOT)
         main.postDelayed(progressTask, 500)
+    }
+
+    /** The time a scrub will land on, above the bar's head, with how far it jumps under it; the start stays marked. */
+    private fun showScrub() {
+        if (scrubTo < 0 || scrubFrom < 0) return
+        bar.from = scrubFrom
+        scrubTime.text = clock(scrubTo)
+        val jump = scrubTo - scrubFrom
+        scrubJump.text = (if (jump < 0) "\u2212" else "+") + clock(kotlin.math.abs(jump))
+        scrubBubble.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val w = scrubBubble.measuredWidth
+        scrubBubble.translationX = (bar.xOf(scrubTo) - w / 2f).coerceIn(0f, maxOf(0f, bar.width - w.toFloat()))
+        scrubBubble.translationY = -(scrubBubble.measuredHeight + dp(8)).toFloat()
+        if (scrubBubble.alpha < 1f) scrubBubble.animate().alpha(1f).setDuration(Motion.QUICK).start()
+    }
+
+    /** The seek landed (or was dropped): the readout and the start mark go. */
+    private fun endScrub() {
+        scrubFrom = -1
+        bar.from = -1
+        scrubBubble.animate().alpha(0f).setDuration(Motion.STANDARD).start()
     }
 
     private fun clock(ms: Long): String {
@@ -1140,8 +1274,10 @@ class PlayerActivity : Screen() {
     private fun scrub(by: Long) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         if (player.isCurrentMediaItemLive || !canSeek()) return
+        if (scrubTo < 0) scrubFrom = player.currentPosition
         scrubTo = ((if (scrubTo >= 0) scrubTo else player.currentPosition) + by).coerceIn(0, maxOf(0, duration - 1_000))
         updateProgress()
+        showScrub()
         main.removeCallbacks(seekTask)
         main.postDelayed(seekTask, SEEK_SETTLE)
     }
@@ -1152,7 +1288,7 @@ class PlayerActivity : Screen() {
         if (player.isCurrentMediaItemSeekable) return true
         if (!toldUnseekable) {
             toldUnseekable = true
-            android.widget.Toast.makeText(this, "This source can't skip ahead · Change stream to try another", android.widget.Toast.LENGTH_LONG).show()
+            notice("Can't skip ahead in this source", "Change stream to pick one that can.")
         }
         return false
     }
@@ -1239,7 +1375,7 @@ class PlayerActivity : Screen() {
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
-            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(0xF007090A.toInt(), 14), glass(14)))
+            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
         }, FrameLayout.LayoutParams(dp(310), resources.displayMetrics.heightPixels - dp(54)).apply {
             leftMargin = dp(27); topMargin = dp(27)
         })
@@ -1280,7 +1416,7 @@ class PlayerActivity : Screen() {
             }
             // The choice in use: the tungsten dot before its name, as on chips and filters, and its name at full strength.
             val check = View(this).apply {
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TUNGSTEN) }
+                background = GradientDrawable().apply { setColor(TUNGSTEN) } // a small square, not a round dot
                 visibility = if (index == chosen) View.VISIBLE else View.INVISIBLE
             }
             checks += check
@@ -1310,18 +1446,6 @@ class PlayerActivity : Screen() {
     private fun closeOptions() {
         options.visibility = View.GONE
         showControls(audioButton)
-    }
-
-    /** What's playing, in a few words: "English  ·  Spanish subtitles", or "English  ·  Subtitles off". */
-    private fun trackStatus(tracks: Tracks): String {
-        fun name(language: String?) = Languages.code(language)?.let(Languages::name)
-        val audio = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }?.getTrackFormat(0)?.language
-        val text = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
-        val subtitles = when {
-            text == null || C.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes -> "Subtitles off"
-            else -> name(if (isAddonSub(text)) chosenSub?.lang else text.getTrackFormat(0).language)?.let { "$it subtitles" } ?: "Subtitles on"
-        }
-        return listOfNotNull(name(audio), subtitles).joinToString(DOT)
     }
 
     /** "English · Dolby Digital 5.1": the language, then the release's own name for the track or, for audio, its format. */
@@ -1365,6 +1489,8 @@ class PlayerActivity : Screen() {
         return listOfNotNull(language, label ?: format).joinToString("  ·  ").ifEmpty { "Track ${f.id ?: ""}".trim() }
     }
 
+    private var stopping = false // onStop's own pause: not the viewer's, so the controls stay as they are
+
     override fun onStop() {
         super.onStop()
         if (!::status.isInitialized) return
@@ -1373,7 +1499,9 @@ class PlayerActivity : Screen() {
         main.removeCallbacks(skipTask)
         main.removeCallbacks(loadingTask)
         main.removeCallbacks(countdownTask)
+        stopping = true
         player.pause()
+        stopping = false
         if (!watched || player.isCurrentMediaItemLive || type == "series" && !plausibleEpisode(player.duration)) return
         record()
         // The player's own episode list first: Home's Resume passes no next episode when the title's details weren't in
@@ -1394,8 +1522,6 @@ class PlayerActivity : Screen() {
         const val RESUME_SLACK = 10_000L // how far apart the saved and fresh resume points may be before it jumps
         const val SKIP = 10_000L // ms a Left/Right press on the bar moves
         const val DOCK_INSET = 28 // dp the glass dock sits in from the screen's sides and foot
-        const val DOCK_R = 22 // dp: the dock's corners
-        const val DOCK_GLASS = 0xB30E1313.toInt() // smoked: dark enough to read over any picture
         const val SEEK_SETTLE = 600L // ms after the last skip before seeking
         const val SKIP_SHOWN = 10_000L // ms the Skip intro pill stays, as in NuvioTV
         const val GUESS_JUMP = 85_000L // ms "Skip 85 s" moves when no one has timed the intro: a typical opening's length
@@ -1403,6 +1529,7 @@ class PlayerActivity : Screen() {
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
+        const val AMBIENT_WAIT = 8_000L // ms paused with no key before the calm pause screen takes over
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under
         const val SUB_WAIT = 2_000L // ms the start waits for the addon's subtitles
@@ -1411,11 +1538,17 @@ class PlayerActivity : Screen() {
     }
 }
 
-/** Tungsten playback progress over a dark track, with a warm-white knob on focus. */
+/**
+ * Playback progress over a light track, chunky and square-ended, with a slim upright line of light as its head on
+ * focus (Light line, no round knob). While scrubbing, [from] marks where the seek started.
+ */
 private class SeekBar(context: Context) : View(context) {
     private var position = 0L
     private var buffered = 0L
     private var duration = 0L
+    /** Where a scrub started, drawn as a faint upright mark; -1 when not scrubbing. */
+    var from = -1L
+        set(value) { field = value; invalidate() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val d = context.resources.displayMetrics.density
 
@@ -1428,22 +1561,42 @@ private class SeekBar(context: Context) : View(context) {
         invalidate()
     }
 
+    /** The x of [t] along the bar, for anything that rides above it (the scrub time). */
+    fun xOf(t: Long): Float {
+        val edge = 2 * d
+        return edge + (width - 2 * edge) * (if (duration > 0) t.coerceIn(0, duration) / duration.toFloat() else 0f)
+    }
+
     override fun onDraw(canvas: Canvas) {
-        val knob = (if (isFocused) 9 else 6) * d
-        val line = (if (isFocused) 4 else 3) * d
+        val edge = 2 * d
+        val line = (if (isFocused) 10 else 8) * d // chunky, Daybreak's bar
         val y = height / 2f
-        fun x(t: Long) = knob + (width - 2 * knob) * (if (duration > 0) t.coerceIn(0, duration) / duration.toFloat() else 0f)
         fun stretch(to: Float, color: Int) {
             paint.color = color
-            canvas.drawRoundRect(knob, y - line / 2, to, y + line / 2, line / 2, line / 2, paint)
+            canvas.drawRect(edge, y - line / 2, to, y + line / 2, paint)
         }
         // A light track: the dark one vanished over a dark picture.
-        stretch(width - knob, 0x40EEF4F1)
-        stretch(x(buffered), 0x73EEF4F1)
-        paint.setShadowLayer(4 * d, 0f, 0f, Screen.TUNGSTEN_GLOW)
-        stretch(x(position), Screen.TUNGSTEN)
+        stretch(width - edge, 0x29FFFFFF)
+        stretch(xOf(buffered), 0x40FFFFFF)
+        // Accent into its lighter partner, glowing.
+        paint.shader = LinearGradient(edge, 0f, maxOf(xOf(position), edge + 1), 0f, Screen.TUNGSTEN, Screen.ICE, Shader.TileMode.CLAMP)
+        paint.setShadowLayer(8 * d, 0f, 0f, Screen.TUNGSTEN_GLOW)
+        stretch(xOf(position), Screen.TUNGSTEN)
         paint.clearShadowLayer()
-        paint.color = Screen.TEXT
-        if (duration > 0) canvas.drawCircle(x(position), y, knob, paint)
+        paint.shader = null
+        if (duration <= 0) return
+        if (from >= 0) {
+            paint.color = 0x73FFFFFF
+            val x = xOf(from)
+            canvas.drawRect(x - d, y - line / 2 - 4 * d, x + d, y + line / 2 + 4 * d, paint)
+        }
+        if (isFocused) {
+            // The head: a slim upright line of light, standing past the bar's edges.
+            paint.color = Screen.TEXT
+            paint.setShadowLayer(6 * d, 0f, 0f, 0x99FFFFFF.toInt())
+            val x = xOf(position)
+            canvas.drawRect(x - 1.5f * d, y - line / 2 - 7 * d, x + 1.5f * d, y + line / 2 + 7 * d, paint)
+            paint.clearShadowLayer()
+        }
     }
 }

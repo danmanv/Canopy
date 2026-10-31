@@ -87,15 +87,27 @@ class DetailsActivity : Screen() {
 
         (initialArt ?: poster)?.let { Images.load(it, heroArt, artWidth, urgent = true) { heroArt.alpha = 1f; refrost() } }
 
+        // The title page is drawn once from last time's details and then hears from the meta add-on and the library.
+        // Each answer used to rebuild the whole block: the logo went and came back and Play lost its light for a
+        // frame, the flicker just after the page opened. Now only what changed is redrawn.
         fun show(m: Meta) {
             meta = m
             val art = m.background ?: initialArt ?: poster
-            if (heroArt.tag != art) Images.load(art, heroArt, artWidth, urgent = true) {
-                heroArt.animate().alpha(1f).setDuration(250).start()
-                refrost()
+            // The art the page opened on stays: swapping it for the add-on's own a moment later blanked the screen for
+            // a frame (Images.load clears the picture first) and then cut to a different one. Only a stand-in (the
+            // poster, or nothing) is replaced, once the new art is in memory so it cuts straight across.
+            val keep = heroArt.drawable != null && heroArt.tag == initialArt && initialArt != null
+            if (!keep && art != null && heroArt.tag != art) {
+                fun put() = Images.load(art, heroArt, artWidth, urgent = true) {
+                    heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+                    refrost()
+                }
+                if (heroArt.drawable == null || Images.cached(art, artWidth)) put()
+                else background({ Images.warm(art, artWidth) }) { if (meta === m) put() }
             }
-            showHero(m)
-            if (type == "series" && m.videos.isNotEmpty()) buildGuide(m.videos)
+            if (!::playButton.isInitialized || heroKey != heroKey(m)) showHero(m)
+            else { fillWatch(m); updateMoreCaption(m) }
+            if (type == "series" && m.videos.isNotEmpty() && guideFor != m.videos.map { it.id }) buildGuide(m.videos)
             if (type == "movie" && !similarRequested) { similarRequested = true; loadSimilar() }
         }
         background({
@@ -114,14 +126,25 @@ class DetailsActivity : Screen() {
         background({ Stremio.library(key, listOf(metaId)).firstOrNull() }) { result ->
             if (!itemChangedHere) {
                 item = result.getOrNull() ?: item
-                if (meta != null) showHero(meta)
+                // Progress and My List only: the watch line and buttons change in place.
+                meta?.let { m -> if (::playButton.isInitialized && heroKey == heroKey(m)) fillWatch(m) else showHero(m) }
             }
         }
     }
 
     // ---------- title and watch window ----------
 
+    /** Everything the title block shows of [m] apart from the watch line: a change here redraws the block. */
+    private fun heroKey(m: Meta) = listOf(m.id, m.name, m.logo, m.year, m.genres.firstOrNull(), m.rating, m.runtime,
+        m.description, m.videos.map { it.season }.filter { it > 0 }.distinct().size, m.videos.isNotEmpty()).joinToString("\u0000")
+
+    private var heroKey: String? = null
+    private var guideFor: List<String>? = null
+    private var moreCaption: View? = null
+
     private fun showHero(m: Meta?) {
+        heroKey = m?.let(::heroKey)
+        moreCaption = null
         hero.removeAllViews()
         val title = text(m?.name ?: name, SERIF_HERO, serif = true).onArt().apply {
             maxLines = 2; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_VERTICAL
@@ -158,9 +181,7 @@ class DetailsActivity : Screen() {
             })
             m.rating?.let { rating ->
                 factRow.addView(text("·", SMALL, color = TEXT_2), wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
-                factRow.addView(text("IMDb", 9f, bold = true, color = BASE).apply {
-                    setPadding(dp(4), dp(1), dp(4), dp(1)); background = rounded(RATING, 3)
-                })
+                factRow.addView(imdbTag()) // the same size as the words beside it
                 factRow.addView(text(rating, SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(6) })
             }
             stack.addView(factRow, wrap().apply { topMargin = dp(12) })
@@ -174,20 +195,66 @@ class DetailsActivity : Screen() {
         hero.addView(stack, FrameLayout.LayoutParams(dp(HERO_W), -2, Gravity.BOTTOM or Gravity.START).apply {
             leftMargin = dp(PAD); bottomMargin = dp(118)
         })
+        updateMoreCaption(m)
+    }
+
+    /** "▾ Episodes" or "▾ More like this" under the block, added on its own when the similar titles come in. */
+    private fun updateMoreCaption(m: Meta?) {
         val hasEpisodes = type == "series" && m?.videos?.isNotEmpty() == true
-        if (hasEpisodes || ::similarOverlay.isInitialized) {
-            hero.addView(caps(if (hasEpisodes) "▾  Episodes" else "▾  More like this", TEXT_2).onArt().apply {
-                isFocusable = true
-                setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
-                rowFocus(rest = { null })
-            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+        val words = if (hasEpisodes) "▾  Episodes" else if (::similarOverlay.isInitialized) "▾  More like this" else null
+        val current = moreCaption as? TextView
+        if (current?.text?.toString() == words?.uppercase()) return
+        current?.let { if (it.hasFocus() && ::playButton.isInitialized) playButton.requestFocus(); hero.removeView(it) }
+        moreCaption = null
+        if (words == null) return
+        moreCaption = caps(words, TEXT_2).onArt().apply {
+            isFocusable = true
+            setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
+            rowFocus(rest = { null })
+        }.also {
+            hero.addView(it, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
                 leftMargin = dp(PAD); bottomMargin = dp(28)
             })
         }
     }
 
+    private lateinit var whereLine: TextView
+    private lateinit var progressSlot: FrameLayout
+    private lateinit var startOverButton: TextView
+
     /** Where you are, then the main action and three small glass controls. */
     private fun addWatch(m: Meta, stack: LinearLayout) {
+        whereLine = text("", SMALL, bold = true).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        stack.addView(whereLine.marginTop(16))
+        progressSlot = FrameLayout(this)
+        stack.addView(progressSlot, LinearLayout.LayoutParams(dp(240), dp(3)).apply { topMargin = dp(8) })
+        // Each press asks what to open then, so a refreshed watch line never leaves a button pointing at the old episode.
+        fun target() = playTarget(meta)?.first ?: metaId
+        playButton = pill("Play", R.drawable.ic_play).apply {
+            setOnClickListener { openSources(target(), startOver = false) }
+            // Held OK: every source, to choose one by hand.
+            setOnLongClickListener { openSources(target(), startOver = false, pick = true); true }
+        }
+        startOverButton = iconButton(R.drawable.ic_restart, "Start over") { openSources(target(), startOver = true) }
+        infoButton = iconButton(R.drawable.ic_info, "More info") { showInfo() }
+        listButton = iconButton(R.drawable.ic_add, "Add to My List") { toggleList() }
+        stack.addView(LinearLayout(this).apply {
+            clipChildren = false
+            gravity = Gravity.CENTER_VERTICAL
+            addView(playButton, wrap().apply { marginEnd = dp(14) })
+            addView(cell(startOverButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
+            addView(cell(listButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
+            addView(cell(infoButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)))
+        }, wrap().apply { topMargin = dp(16) })
+        fillWatch(m)
+        playButton.post { if (!guideOpen && !infoOpen && !similarOpen) playButton.requestFocus() }
+    }
+
+    /**
+     * The watch line and buttons for where the viewer is now. Back from the player only changes these words in place:
+     * rebuilding the page reloaded the logo and re-lit Play, a visible flash.
+     */
+    private fun fillWatch(m: Meta) {
         val target = playTarget(m)
         val episode = target?.second
         // Under a minute in is not started: a title opened and closed at 0:00 offers Play, not Resume.
@@ -195,37 +262,62 @@ class DetailsActivity : Screen() {
         val duration = item?.optJSONObject("state")?.optLong("duration") ?: 0L
         val remaining = if (resumeAt > 0 && duration > resumeAt) runtime("${(duration - resumeAt) / 60_000} min") + " left" else null
         val where = listOfNotNull(episode?.let { "S${it.season} E${it.episode}" }, episode?.title?.takeIf { it.isNotBlank() }, remaining).joinToString(DOT)
-        if (where.isNotEmpty() && resumeAt > 0) stack.addView(text(where, SMALL, bold = true).onArt().apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-        }.marginTop(16))
-        if (remaining != null) stack.addView(progressBar(resumeAt.toFloat() / duration), LinearLayout.LayoutParams(dp(240), dp(3)).apply { topMargin = dp(8) })
-
-        playButton = pill(if (resumeAt > 0) "Resume" else "Play", R.drawable.ic_play).apply {
-            setOnClickListener { openSources(target?.first ?: metaId, startOver = false) }
-            // Held OK: every source, to choose one by hand.
-            setOnLongClickListener { openSources(target?.first ?: metaId, startOver = false, pick = true); true }
-        }
-        val startOver = if (resumeAt > 0) iconButton("↺", "Start over") {
-            openSources(target?.first ?: metaId, startOver = true)
-        } else null
-        infoButton = iconButton("ⓘ", "More information") { showInfo() }
-        listButton = iconButton(if (Library.inList(item)) "✓" else "+", "My List") { toggleList() }
-        stack.addView(LinearLayout(this).apply {
-            clipChildren = false
-            addView(playButton, wrap().apply { marginEnd = dp(14) })
-            startOver?.let { addView(it, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) }) }
-            addView(listButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
-            addView(infoButton)
-        }, wrap().apply { topMargin = dp(16) })
-        playButton.post { if (!guideOpen && !infoOpen && !similarOpen) playButton.requestFocus() }
+        whereLine.text = where
+        whereLine.visibility = if (where.isNotEmpty() && resumeAt > 0) View.VISIBLE else View.GONE
+        progressSlot.removeAllViews()
+        if (remaining != null) progressSlot.addView(progressBar(resumeAt.toFloat() / duration), FrameLayout.LayoutParams(-1, -1))
+        progressSlot.visibility = if (remaining != null) View.VISIBLE else View.GONE
+        playButton.text = if (resumeAt > 0) "Resume" else "Play"
+        // Start over goes when there's nothing to start over; the remote moves to Play rather than into nothing.
+        if (resumeAt <= 0 && startOverButton.hasFocus()) playButton.requestFocus()
+        (startOverButton.parent as? View)?.visibility = if (resumeAt > 0) View.VISIBLE else View.GONE
+        listButton.icon(if (Library.inList(item)) R.drawable.ic_check else R.drawable.ic_add)
+        labelOf(listButton, if (Library.inList(item)) "In My List" else "Add to My List")
     }
 
-    private fun iconButton(symbol: String, description: String, action: () -> Unit) = text(symbol, 18f).apply {
-        gravity = Gravity.CENTER
-        contentDescription = description
-        rowFocus(16, rest = { glass(16) })
-        setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+    // Drawn icons, dead centre in their squares: the font's ↺, + and ⓘ sat off-centre, each by a different amount.
+    // As in the player: the focused button says its name underneath, so a ↺ or an ⓘ never has to be guessed.
+    private val iconLabels = mutableMapOf<View, TextView>()
+
+    private fun iconButton(icon: Int, description: String, action: () -> Unit): TextView {
+        val label = text(description, SMALL, color = TEXT).onArt().apply {
+            gravity = Gravity.CENTER_HORIZONTAL; maxLines = 1; alpha = 0f
+        }
+        return text("", 18f).apply {
+            gravity = Gravity.CENTER
+            icon(icon)
+            contentDescription = description
+            iconLabels[this] = label
+            rowFocus(16, rest = { glass(16) }) { has ->
+                grow(has, 1.06f).start()
+                label.animate().alpha(if (has) 1f else 0f).setDuration(Motion.QUICK).start()
+            }
+            setOnClickListener { action() }
+        }
+    }
+
+    /** A button in its square, with its name hung below it (outside the square, so the row doesn't move). */
+    private fun cell(button: TextView) = FrameLayout(this).apply {
+        clipChildren = false
+        clipToPadding = false
+        addView(button, FrameLayout.LayoutParams(-1, -1))
+        addView(iconLabels.getValue(button), FrameLayout.LayoutParams(dp(160), -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = dp(ICON_BUTTON + 6)
+        })
+    }
+
+    private fun labelOf(button: TextView, words: String) {
+        button.contentDescription = words
+        iconLabels[button]?.text = words
+    }
+
+    private fun TextView.icon(res: Int) {
+        foreground = getDrawable(res)?.mutate()?.let { d ->
+            d.setTint(TEXT)
+            android.graphics.drawable.LayerDrawable(arrayOf(d)).apply {
+                setLayerSize(0, dp(18), dp(18)); setLayerGravity(0, Gravity.CENTER)
+            }
+        }
     }
 
     /** What Play opens: the episode Continue Watching points at, or the first episode, or the movie itself. */
@@ -242,8 +334,10 @@ class DetailsActivity : Screen() {
         val entry = item ?: Library.newItem(metaId, type, meta?.name ?: name, meta?.poster ?: poster)
         Library.setInList(entry, !Library.inList(item))
         item = entry
-        listButton.text = if (Library.inList(entry)) "✓" else "+"
-        listButton.contentDescription = if (Library.inList(entry)) "Remove from My List" else "Add to My List"
+        val inList = Library.inList(entry)
+        listButton.icon(if (inList) R.drawable.ic_check else R.drawable.ic_add)
+        labelOf(listButton, if (inList) "In My List" else "Add to My List")
+        notice(if (inList) "Added to My List" else "Removed from My List", meta?.name ?: name)
         val snapshot = JSONObject(entry.toString())
         background({ Stremio.saveLibrary(key, listOf(snapshot)) }) {}
     }
@@ -255,11 +349,12 @@ class DetailsActivity : Screen() {
         clipToOutline = true
         outlineProvider = object : android.view.ViewOutlineProvider() {
             override fun getOutline(view: View, outline: android.graphics.Outline) =
-                outline.setRoundRect(0, 0, view.width, view.height, dp(14).toFloat())
+                outline.setRect(0, 0, view.width, view.height)
         }
     }
 
     private fun buildGuide(videos: List<Video>) {
+        guideFor = videos.map { it.id }
         if (::guide.isInitialized) root.removeView(guide)
         guideOpen = false
         val x = dp(PAD)
@@ -430,9 +525,9 @@ class DetailsActivity : Screen() {
         guide.visibility = View.VISIBLE
         guide.alpha = 0f
         guide.translationY = dp(28).toFloat()
-        guide.animate().alpha(1f).translationY(0f).setDuration(260).start()
+        guide.animate().alpha(1f).translationY(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         // The film steps back behind the guide, so the chips and panel read over a bright backdrop.
-        heroArt.animate().alpha(GUIDE_ART).setDuration(260).withEndAction { refrost() }.start()
+        heroArt.animate().alpha(GUIDE_ART).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction { refrost() }.start()
         leftShade(false) // the episode list sits on glass: the art can run to the left edge as it does on the right
         val currentId = playTarget(meta)?.first
         (episodeRows.firstOrNull { it.tag == currentId } ?: episodeRows.firstOrNull())?.requestFocus()
@@ -440,9 +535,9 @@ class DetailsActivity : Screen() {
 
     private fun hideGuide() {
         guideOpen = false
-        heroArt.animate().alpha(1f).setDuration(220).withEndAction { refrost() }.start()
+        heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction { refrost() }.start()
         leftShade(true)
-        guide.animate().alpha(0f).translationY(dp(24).toFloat()).setDuration(220).withEndAction {
+        guide.animate().alpha(0f).translationY(dp(24).toFloat()).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             guide.visibility = View.GONE
             hero.visibility = View.VISIBLE
             if (::playButton.isInitialized) playButton.requestFocus()
@@ -519,7 +614,7 @@ class DetailsActivity : Screen() {
         similarOverlay = FrameLayout(this).apply { visibility = View.GONE }
         similarOverlay.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(0xF707090A.toInt(), 0xA607090A.toInt(), 0x0007090A))
+                intArrayOf(baseAt(0xF7), baseAt(0xA6), baseAt(0x00)))
         }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
         val content = column(Gravity.START)
         content.addView(caps(heading).onArt(), LinearLayout.LayoutParams(-1, -2).apply {
@@ -529,10 +624,10 @@ class DetailsActivity : Screen() {
         similarFirst = null
         titles.forEachIndexed { index, title ->
             val card = FrameLayout(this).apply {
-                background = rounded(BASE, 6)
+                background = rounded(TILE, 6) // held for the poster
                 outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) =
-                        outline.setRoundRect(0, 0, view.width, view.height, dp(6).toFloat())
+                        outline.setRect(0, 0, view.width, view.height)
                 }
                 clipToOutline = true
                 val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
@@ -567,7 +662,7 @@ class DetailsActivity : Screen() {
             leftMargin = dp(PAD); rightMargin = dp(PAD); bottomMargin = dp(38)
         })
         root.addView(similarOverlay, FrameLayout.LayoutParams(-1, -1))
-        showHero(meta)
+        updateMoreCaption(meta)
     }
 
     private fun showSimilar() {
@@ -577,13 +672,13 @@ class DetailsActivity : Screen() {
         similarOverlay.visibility = View.VISIBLE
         similarOverlay.alpha = 0f
         similarOverlay.translationY = dp(20).toFloat()
-        similarOverlay.animate().alpha(1f).translationY(0f).setDuration(220).start()
+        similarOverlay.animate().alpha(1f).translationY(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         similarFirst?.requestFocus()
     }
 
     private fun hideSimilar() {
         similarOpen = false
-        similarOverlay.animate().alpha(0f).translationY(dp(20).toFloat()).setDuration(180).withEndAction {
+        similarOverlay.animate().alpha(0f).translationY(dp(20).toFloat()).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).withEndAction {
             similarOverlay.visibility = View.GONE
             hero.visibility = View.VISIBLE
             playButton.requestFocus()
@@ -612,11 +707,12 @@ class DetailsActivity : Screen() {
         super.onRestart()
         background({ runCatching { Stremio.library(key, listOf(metaId)).firstOrNull() }.getOrNull() }) { result ->
             item = result.getOrNull() ?: item
+            val m = meta
             val wasGuide = guideOpen
-            if (infoOpen) { root.removeView(infoOverlay); infoOpen = false }
-            hero.visibility = View.VISIBLE
-            showHero(meta)
-            meta?.videos?.takeIf { type == "series" && it.isNotEmpty() }?.let(::buildGuide)
+            if (infoOpen) { root.removeView(infoOverlay); infoOpen = false; hero.visibility = View.VISIBLE }
+            // Only the watch line and buttons change: the page stays as it was, focus included.
+            if (m != null && ::playButton.isInitialized) fillWatch(m) else showHero(m)
+            m?.videos?.takeIf { type == "series" && it.isNotEmpty() }?.let(::buildGuide)
             if (wasGuide) showGuide()
         }
     }
@@ -661,5 +757,6 @@ class DetailsActivity : Screen() {
         const val PANE_SHADE = 0.55f // the episode panel's frost, darkened to the mock's smoked glass
         const val GUIDE_ART = 0.6f // the film's brightness behind the episode guide
         const val STARTED = 60_000L // ms watched before a title counts as started
+        const val ICON_BUTTON = Screen.BUTTON_H // the small square buttons beside Play are as tall as Play
     }
 }

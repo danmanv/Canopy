@@ -102,9 +102,16 @@ internal fun prepareNetwork(c: Context) {
     if (Http.saved != null) return
     // Pictures load many at a time from a few hosts: keep enough connections open to reuse (Android keeps 5).
     System.setProperty("http.maxConnections", "16")
-    // Disk cache for pictures (and anything else whose server allows caching), and last time's answers.
-    android.net.http.HttpResponseCache.install(java.io.File(c.cacheDir, "http"), 250L * 1024 * 1024)
-    Http.saved = java.io.File(c.cacheDir, "answers")
+    // Disk cache for pictures (and anything else whose server allows caching), and last time's answers. Opening the
+    // cache reads its journal and the answers are trimmed by listing every file: both off the main thread, so the first
+    // screen isn't held up by the disk. The first few pictures may miss the disk cache; they're fetched as usual.
+    val dir = c.cacheDir
+    Http.saved = java.io.File(dir, "answers")
+    Thread {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        runCatching { android.net.http.HttpResponseCache.install(java.io.File(dir, "http"), 250L * 1024 * 1024) }
+        Http.trim()
+    }.start()
     Http.userAgent = "Canopy/${Updates.mine(c)} (Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL})"
 }
 
@@ -113,9 +120,14 @@ abstract class Screen : Activity() {
     protected val main = Handler(Looper.getMainLooper())
     /** The Stremio account of the profile in use. */
     protected val authKey: String? get() = Profiles.active(this)?.authKey
+    /** The colours this screen was drawn in; when Settings changes them, the screen draws itself again on return. */
+    private var drawnIn: Theme? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        Theme.load(this)
+        drawnIn = Theme.now
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback
@@ -162,8 +174,7 @@ abstract class Screen : Activity() {
             }
             return
         }
-        android.widget.Toast.makeText(this, "Downloading Canopy ${release.version}… Canopy closes to update. Open it again after.",
-            android.widget.Toast.LENGTH_LONG).show()
+        notice("Downloading Canopy ${release.version}", "Canopy closes to update. Open it again after.")
         background({ Updates.install(applicationContext, release) }) { r ->
             if (r.isFailure) choose("Couldn't download the update", listOf("OK"), "Check the TV's connection and try again from Settings › About.") {}
         }
@@ -188,11 +199,15 @@ abstract class Screen : Activity() {
 
     override fun onPause() {
         main.removeCallbacks(saverTimer)
+        if (front?.get() === this) front = null
         super.onPause()
     }
 
     override fun onResume() {
         super.onResume()
+        front = java.lang.ref.WeakReference(this)
+        openingOnce()
+        if (drawnIn != null && drawnIn !== Theme.now) return recreate()
         armScreensaver()
         val release = pendingInstall ?: return
         pendingInstall = null
@@ -202,6 +217,58 @@ abstract class Screen : Activity() {
         choose("Canopy can't install updates on this TV", listOf("OK"),
             "Android doesn't let Canopy install apps here. Install the update with the Downloader app instead: " +
                 "enter code ${Updates.DOWNLOADER_CODE} in Downloader. Your profiles and settings stay.") {}
+    }
+
+    /**
+     * The first screen Canopy shows after it starts: the canopy mark and name fade up in the middle, then the whole
+     * cover dissolves into the screen drawn behind it. Under a second, once per start, never over the player.
+     */
+    private fun openingOnce() {
+        if (opened) return
+        opened = true
+        if (this is PlayerActivity) return
+        val root = window.decorView as? FrameLayout ?: return
+        val mark = brand(WORDMARK * 1.8f).apply { alpha = 0f; scaleX = 0.94f; scaleY = 0.94f }
+        val cover = FrameLayout(this).apply {
+            setBackgroundColor(BASE)
+            addView(mark, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        root.addView(cover, FrameLayout.LayoutParams(-1, -1))
+        mark.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(OPENING_IN).setInterpolator(Motion.EASE).withEndAction {
+            cover.animate().alpha(0f).setStartDelay(OPENING_HOLD).setDuration(OPENING_OUT).setInterpolator(Motion.EASE)
+                .withEndAction { root.removeView(cover) }.start()
+        }.start()
+    }
+
+    /**
+     * Canopy's own message, in place of Android's grey toast: a square glass card top right with a line of the accent
+     * along its top, a bold [title] and an optional plain [line] under it. It slides in, stays a few seconds and fades.
+     * A new one replaces any still showing.
+     */
+    fun notice(title: String, line: String? = null, stay: Long = NOTICE_MS) {
+        val root = window.decorView as? FrameLayout ?: return
+        root.findViewWithTag<View>(NOTICE_TAG)?.let { it.animate().cancel(); root.removeView(it) }
+        val card = column(Gravity.START, text(title, BODY, bold = true).apply { maxWidth = dp(NOTICE_W) }).apply {
+            tag = NOTICE_TAG
+            line?.let { addView(text(it, SMALL, color = TEXT_2).apply { maxWidth = dp(NOTICE_W) }.marginTop(3)) }
+            setPadding(dp(18), dp(13), dp(20), dp(14))
+            val edge = GradientDrawable().apply { setColor(TUNGSTEN) }
+            background = LayerDrawable(arrayOf(rounded(baseAt(0xF0), 2), glass(2), edge)).apply {
+                setLayerGravity(2, Gravity.TOP or Gravity.FILL_HORIZONTAL)
+                setLayerHeight(2, dp(3))
+            }
+            elevation = dp(16).toFloat()
+            alpha = 0f
+            translationY = -dp(14).toFloat()
+        }
+        root.addView(card, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
+            topMargin = dp(26); rightMargin = dp(PAD)
+        })
+        card.animate().alpha(1f).translationY(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+        card.postDelayed({
+            card.animate().alpha(0f).translationY(-dp(8).toFloat()).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE)
+                .withEndAction { (card.parent as? android.view.ViewGroup)?.removeView(card) }.start()
+        }, stay)
     }
 
     /** Runs [work] off the main thread and hands its result back on it, unless the screen is gone. */
@@ -252,7 +319,7 @@ abstract class Screen : Activity() {
 
     /** The left shade is for text over bare art; a screen that puts its text on glass can lift it off the art. */
     protected fun leftShade(on: Boolean) {
-        windowShade?.animate()?.alpha(if (on) 1f else 0f)?.setDuration(260)?.start()
+        windowShade?.animate()?.alpha(if (on) 1f else 0f)?.setDuration(Motion.STANDARD)?.setInterpolator(Motion.EASE)?.start()
     }
 
     private fun updateWindowShade() {
@@ -265,8 +332,8 @@ abstract class Screen : Activity() {
             if (art !== shadeSource) return@background
             // A bright film keeps the shade dark across the whole text column, not just at the screen's edge.
             windowShade?.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                if (bright) intArrayOf(0xF707090A.toInt(), 0xE007090A.toInt(), 0x8007090A.toInt(), 0x0007090A)
-                else intArrayOf(0xEB07090A.toInt(), 0x0007090A, 0x0007090A))
+                if (bright) intArrayOf(baseAt(0xF7), baseAt(0xE0), baseAt(0x80), baseAt(0x00))
+                else intArrayOf(baseAt(0xEB), baseAt(0x00), baseAt(0x00)))
         }
     }
 
@@ -278,14 +345,14 @@ abstract class Screen : Activity() {
         setContentView(FrameLayout(this).apply {
             addView(backdrop, FrameLayout.LayoutParams(-1, -1))
             windowShade = View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xEB07090A.toInt(), 0x0007090A, 0x0007090A))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(baseAt(0xEB), baseAt(0x00), baseAt(0x00)))
             }.also { addView(it, FrameLayout.LayoutParams(-1, -1)) }
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF707090A.toInt(), 0x0007090A, 0x0007090A))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xF7), baseAt(0x00), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x8C07090A.toInt(), 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A, 0x0007090A))
+                    intArrayOf(baseAt(0x8C), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
                 GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
@@ -302,19 +369,20 @@ abstract class Screen : Activity() {
     /** A quiet tinted row on the pane (episodes, sources): no edge, no glass of its own. */
     protected fun tile(radiusDp: Int = TILE_RADIUS) = GradientDrawable().apply {
         setColor(0x14FFFFFF)
-        cornerRadius = dp(radiusDp).toFloat()
+        cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
     }
 
     /** Solid fallback until a title's art is available. */
     private fun mood() = rounded(BASE, 0)
 
-    protected fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(radiusDp).toFloat() }
+    protected fun rounded(color: Int, radiusDp: Int) = GradientDrawable().apply { setColor(color); cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat() }
 
     /** House Lights' single glass recipe; focus brightens the face (no rim: dots are the only indicator). */
-    protected fun glass(radiusDp: Int, focused: Boolean = false): Drawable {
+    protected fun glass(radius: Int, focused: Boolean = false): Drawable {
+        val radiusDp = minOf(radius, CORNER)
         val face = GradientDrawable().apply {
             setColor(if (focused) GLASS_FOCUSED else GLASS)
-            cornerRadius = dp(radiusDp).toFloat()
+            cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
             setStroke(dp(1), GLASS_EDGE)
         }
         return LayerDrawable(arrayOf(face, Highlight(dp(radiusDp).toFloat())))
@@ -348,7 +416,7 @@ abstract class Screen : Activity() {
         fun style(focused: Boolean) {
             background = GradientDrawable().apply {
                 setColor(if (focused) TUNGSTEN else TEXT)
-                cornerRadius = dp(BUTTON_H / 2).toFloat()
+                cornerRadius = dp(minOf(BUTTON_R, CORNER)).toFloat()
             }
             setTextColor(BASE)
             compoundDrawablesRelative[0]?.setTint(BASE)
@@ -372,7 +440,7 @@ abstract class Screen : Activity() {
         if (on) generateSequence(parent as? android.view.ViewGroup) { it.parent as? android.view.ViewGroup }
             .takeWhile { it !is android.widget.ScrollView && it !is android.widget.HorizontalScrollView && it !is android.widget.AbsListView }
             .forEach { it.clipChildren = false; it.clipToPadding = false }
-        return animate().scaleX(if (on) by else 1f).scaleY(if (on) by else 1f).setDuration(150)
+        return animate().scaleX(if (on) by else 1f).scaleY(if (on) by else 1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE)
     }
 
     /** A persistent choice: its dot remains after remote focus moves. */
@@ -382,14 +450,14 @@ abstract class Screen : Activity() {
         gravity = Gravity.CENTER
         minHeight = dp(CHIP_H)
         setPadding(dp(16), 0, dp(16), 0)
-        background = glass(CHIP_H / 2)
-        setOnFocusChangeListener { v, has -> v.background = glass(CHIP_H / 2, has); v.grow(has, CHIP_GROW).start() }
+        background = outline(false)
+        setOnFocusChangeListener { v, has -> v.background = outline(has); v.grow(has, CHIP_GROW).start() }
     }
 
     /** A [chip]'s open state: the tungsten dot and full-strength words. */
     protected fun TextView.select(label: String, selected: Boolean) {
         setTextColor(if (selected) TEXT else TEXT_2)
-        text = if (!selected) label else android.text.SpannableString("•  $label").apply {
+        text = if (!selected) label else android.text.SpannableString("\u25AA  $label").apply {
             setSpan(android.text.style.ForegroundColorSpan(TUNGSTEN), 0, 1, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
@@ -399,14 +467,25 @@ abstract class Screen : Activity() {
         background = glassOver(this, 16)
     }
 
+    /**
+     * Canopy's one tag style ("BEST MATCH", "NEW EPISODE", "OK", "RD ⚡"): small bold capitals, never under [TAG_SP],
+     * square-cornered. [filled] tags are solid [color] with dark words; the others are outlined in it.
+     */
+    protected fun badge(label: String, color: Int = TUNGSTEN, filled: Boolean = true) = text(label, TAG_SP, bold = true, color = if (filled) BASE else color).apply {
+        includeFontPadding = false
+        maxLines = 1
+        letterSpacing = 0.04f
+        setPadding(dp(5), dp(2), dp(5), dp(2))
+        background = GradientDrawable().apply {
+            cornerRadius = dp(minOf(2, CORNER)).toFloat()
+            if (filled) setColor(color) else setStroke(dp(1), withAlpha(color, 0x99))
+        }
+    }
+
     /** "[OK] Play / pause": the key in a small box, then what it does. */
     protected fun keyHint(key: String, does: String) = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(text(key, 9f, bold = true, color = BASE).apply {
-            background = rounded(TEXT_2, 3)
-            includeFontPadding = false
-            setPadding(dp(4), dp(1), dp(4), dp(1))
-        })
+        addView(badge(key, TEXT_2))
         addView(text(does, SMALL, color = TEXT_2).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
     }
 
@@ -416,7 +495,7 @@ abstract class Screen : Activity() {
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
         setPadding(dp(5), dp(2), dp(5), dp(2))
-        background = GradientDrawable().apply { cornerRadius = dp(4).toFloat(); setStroke(dp(1), GLASS_EDGE) }
+        background = GradientDrawable().apply { cornerRadius = dp(minOf(4, CORNER)).toFloat(); setStroke(dp(1), GLASS_EDGE) }
     }
 
     /** A hairline under a list row. */
@@ -427,40 +506,69 @@ abstract class Screen : Activity() {
         gravity = Gravity.CENTER_VERTICAL
         val mark = (size * 1.3f).toInt() // the mark's art fills about two thirds of its square
         addView(ImageView(context).apply { setImageResource(R.drawable.logo_transparent) }, LinearLayout.LayoutParams(dp(mark), dp(mark)))
-        addView(text("canopy", size, serif = true).onArt(), wrap().apply { marginStart = dp(4) })
+        addView(text("canopy", size).onArt().apply { typeface = fonts.wordmark }, wrap().apply { marginStart = dp(4) })
     }
 
     /** The IMDb tag beside a rating, as tall as the letters. */
     protected fun imdbTag() = text("IMDb", SMALL, bold = true, color = BASE).apply {
-        background = rounded(RATING, 3)
+        background = rounded(RATING, 2)
         includeFontPadding = false
         setLineSpacing(0f, 1f)
         setPadding(dp(4), dp(1), dp(4), dp(1))
     }
 
-    /** Null animates loading; for countdowns set progress to fraction × max as time changes. */
+    /**
+     * The loading and countdown mark: a small square outline, never a circle. Null animates loading (a short lit run
+     * travelling round the square); for countdowns set progress to fraction × max and the square fills clockwise.
+     */
     protected fun ring(fraction: Float? = null): ProgressBar = object : ProgressBar(this, null,
         // A countdown needs a style that keeps its progress; the default one is indeterminate-only and reads 0.
-        if (fraction == null) android.R.attr.progressBarStyle else android.R.attr.progressBarStyleHorizontal) {
+        android.R.attr.progressBarStyleHorizontal) {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = dp(2).toFloat()
-            strokeCap = Paint.Cap.ROUND
+            strokeCap = Paint.Cap.SQUARE
+            strokeJoin = Paint.Join.MITER
+        }
+        private val square = Path()
+        private val run = Path()
+        private val measure = android.graphics.PathMeasure()
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            val inset = stroke.strokeWidth / 2
+            square.reset()
+            square.moveTo(inset, inset)
+            square.lineTo(w - inset, inset)
+            square.lineTo(w - inset, h - inset)
+            square.lineTo(inset, h - inset)
+            square.close()
+            measure.setPath(square, true)
         }
 
         override fun onDraw(canvas: Canvas) {
-            if (fraction == null) return super.onDraw(canvas)
-            val inset = stroke.strokeWidth / 2
-            val bounds = RectF(inset, inset, width - inset, height - inset)
+            val length = measure.length
+            if (length <= 0f) return
             stroke.color = PROGRESS_TRACK
-            canvas.drawArc(bounds, 0f, 360f, false, stroke)
+            canvas.drawPath(square, stroke)
             stroke.color = TUNGSTEN
-            canvas.drawArc(bounds, -90f, progress.toFloat() / max * 360f, false, stroke)
+            run.reset()
+            if (fraction == null) {
+                // A quarter of the square, once round every 1.2 s.
+                val start = (android.os.SystemClock.uptimeMillis() % 1200L) / 1200f * length
+                val end = start + length / 4
+                measure.getSegment(start, minOf(end, length), run, true)
+                if (end > length) measure.getSegment(0f, end - length, run, true)
+                canvas.drawPath(run, stroke)
+                if (isShown) postInvalidateOnAnimation()
+            } else {
+                measure.getSegment(0f, progress.toFloat() / max * length, run, true)
+                canvas.drawPath(run, stroke)
+            }
         }
     }.apply {
         require(fraction == null || (fraction.isFinite() && fraction in 0f..1f))
-        isIndeterminate = fraction == null
-        indeterminateTintList = android.content.res.ColorStateList.valueOf(TUNGSTEN)
+        isIndeterminate = false // drawn here, not by Android's round spinner
         max = 1000
         if (fraction != null) progress = (fraction * max).toInt()
     }
@@ -482,7 +590,7 @@ abstract class Screen : Activity() {
         val still = intent.getStringExtra("still")
         val backArt = intent.getStringExtra("background") ?: intent.getStringExtra("poster")
         Images.load(still ?: backArt, art, resources.displayMetrics.widthPixels, orElse = backArt.takeIf { still != null }, urgent = true) {
-            android.animation.ObjectAnimator.ofFloat(art, View.ALPHA, 1f).setDuration(400).start()
+            android.animation.ObjectAnimator.ofFloat(art, View.ALPHA, 1f).setDuration(Motion.SLOW).start()
             // A slow push in while it loads, so the wait feels alive rather than frozen.
             art.animate().scaleX(1.06f).scaleY(1.06f).setDuration(12_000).setInterpolator(android.view.animation.LinearInterpolator()).start()
         }
@@ -513,10 +621,10 @@ abstract class Screen : Activity() {
             setBackgroundColor(BASE)
             addView(art, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BL_TR, intArrayOf(0xF207090A.toInt(), 0x9907090A.toInt(), 0x3307090A))
+                background = GradientDrawable(GradientDrawable.Orientation.BL_TR, intArrayOf(baseAt(0xF2), baseAt(0x99), baseAt(0x33)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC07090A.toInt(), 0x0007090A))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xCC), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(block, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
                 leftMargin = dp(PAD); bottomMargin = dp(PAD + 8)
@@ -530,12 +638,50 @@ abstract class Screen : Activity() {
         isFocusable = true
         background = rest()
         setOnFocusChangeListener { v, has ->
-            v.background = if (has) GradientDrawable().apply {
-                setColor(ROW_FOCUSED)
-                cornerRadius = dp(radiusDp).toFloat()
-            } else rest()
+            v.background = if (has) lineFocus() else rest()
             also(has)
         }
+    }
+
+    /**
+     * Light line, for lists (settings, episodes, sources, menus): no shape, a faint wash that fades out to the right and
+     * a glowing mint edge on the left.
+     */
+    protected fun lineFocus(gloss: Boolean = false): Drawable = LayerDrawable(listOfNotNull(
+        GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            if (gloss) intArrayOf(0x33FFFFFF, withAlpha(ICE, 0x14), 0x05FFFFFF) else intArrayOf(0x29FFFFFF, 0x0FFFFFFF, 0x00FFFFFF)),
+        android.graphics.drawable.ColorDrawable(TUNGSTEN),
+        // [gloss] (Settings): a bright hairline along the top edge, like light catching polished glass.
+        if (gloss) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xD9FFFFFF.toInt(), 0x26FFFFFF)) else null,
+    ).toTypedArray()).apply {
+        setLayerWidth(1, dp(3))
+        if (gloss) { setLayerGravity(2, Gravity.TOP or Gravity.FILL_HORIZONTAL); setLayerHeight(2, dp(1)) }
+    }
+
+    /** Aurora's sky for screens without a title's art behind them (Settings): midnight, lit mint and violet from above. */
+    protected fun sky(): Drawable {
+        val w = resources.displayMetrics.widthPixels.toFloat()
+        fun light(color: Int, x: Float, y: Float, r: Float) = GradientDrawable().apply {
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            colors = intArrayOf(color, color and 0x00FFFFFF)
+            setGradientCenter(x, y)
+            gradientRadius = w * r
+        }
+        return LayerDrawable(arrayOf(
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.now.glass, BASE, Theme.now.deep)),
+            light(Theme.now.lights[0], 0.9f, -0.05f, 0.45f),
+            light(Theme.now.lights[1], 0.6f, -0.1f, 0.4f),
+            light(Theme.now.lights[2], 1f, 1.1f, 0.5f),
+            // A faint diagonal sheen across the glass.
+            GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0, 0, 0x0BFFFFFF, 0x04FFFFFF, 0, 0)),
+        ))
+    }
+
+    /** Light line, for secondary buttons and chips: a sharp outline, lit white with a faint fill when focused. */
+    protected fun outline(focused: Boolean): Drawable = GradientDrawable().apply {
+        setColor(if (focused) 0x26FFFFFF else 0)
+        cornerRadius = dp(minOf(BUTTON_R, CORNER)).toFloat()
+        setStroke(dp(1), if (focused) TEXT else 0x59FFFFFF)
     }
 
     /** One poster/portrait focus treatment; the poster itself supplies its glow colour. */
@@ -558,7 +704,7 @@ abstract class Screen : Activity() {
     protected fun View.lift(on: Boolean, radiusDp: Int = 6) {
         foreground = if (on) GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
-            cornerRadius = dp(radiusDp).toFloat()
+            cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
             setStroke(dp(2), TUNGSTEN_RIM) // the emerald ring; the glow and the lift carry the rest
         } else null
         if (on && android.os.Build.VERSION.SDK_INT >= 28) {
@@ -572,7 +718,7 @@ abstract class Screen : Activity() {
             }
         }
         grow(on)
-            .translationZ(if (on) dp(CARD_LIFT).toFloat() else 0f).setDuration(150).start()
+            .translationZ(if (on) dp(CARD_LIFT).toFloat() else 0f).setDuration(Motion.QUICK).start()
     }
 
     /** The screen's art, behind its glass: what [glassOver] frosts. Screens with art behind them name it. */
@@ -588,7 +734,8 @@ abstract class Screen : Activity() {
      */
     /** [shade]: how much of the screen's own shade lies over the art there (0..1), so glass over a shaded part of the art
      *  is as dark as the art around it instead of a milky patch of the unshaded picture. */
-    protected fun glassOver(host: View, radiusDp: Int, shade: Float = 0f): Drawable {
+    protected fun glassOver(host: View, radius: Int, shade: Float = 0f): Drawable {
+        val radiusDp = minOf(radius, CORNER)
         // No art to frost (Settings): the glass sits on the base colour, so a dialog doesn't show the rows under it.
         val behind = backdrop ?: return LayerDrawable(arrayOf(rounded(BASE, radiusDp), glass(radiusDp)))
         frostHosts += host
@@ -666,7 +813,9 @@ abstract class Screen : Activity() {
      * place of Android's grey dialog. [checked] gets a tick (the choice in use); the remote starts on [focus].
      */
     protected fun choose(title: String, items: List<String>, message: String? = null, checked: Int = -1,
-                         focus: Int = maxOf(checked, 0), pick: (Int) -> Unit) {
+                         focus: Int = maxOf(checked, 0), dropDown: Boolean = false, dropFrom: Int = Gravity.END,
+                         dropY: Int = 60, pick: (Int) -> Unit) {
+        if (fullChoices && !dropDown) return chooseFull(title, items, message, checked, focus, pick)
         val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
         val list = column(Gravity.START).apply { setPadding(dp(12), dp(16), dp(12), dp(12)) }
         val words = column(Gravity.START, text(title, BODY, bold = true)).apply { setPadding(dp(16), 0, dp(16), dp(10)) }
@@ -689,9 +838,61 @@ abstract class Screen : Activity() {
         })
         dialog.window?.apply {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
-            setLayout(dp(340), -2)
+            setLayout(dp(if (dropDown) 260 else 340), -2)
             setDimAmount(0.6f)
+            // [dropDown]: hangs from the control it opened from ([dropFrom] side, [dropY] dp down; the profile's by
+            // default, top right) instead of the screen's middle.
+            if (dropDown) attributes = attributes.apply { gravity = Gravity.TOP or dropFrom; x = dp(PAD - 12); y = dp(dropY) }
         }
+        dialog.show()
+        rows.getOrNull(focus)?.requestFocus()
+    }
+
+    /** Screens whose choices take the whole screen ([chooseFull]) instead of a small panel: Settings. */
+    protected open val fullChoices: Boolean get() = false
+
+    /**
+     * [choose] over the whole screen, Netflix-style: the question large on the left, the answers as big words on the
+     * right, the remote's one lit with the glossy Light line.
+     */
+    private fun chooseFull(title: String, items: List<String>, message: String?, checked: Int, focus: Int, pick: (Int) -> Unit) {
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val words = column(Gravity.START, text(title, SERIF_HERO, serif = true).apply { maxWidth = dp(360) }).apply {
+            message?.let { addView(text(it, BODY, color = TEXT_2).apply { maxWidth = dp(360) }.marginTop(12)) }
+        }
+        val list = column(Gravity.START)
+        val rows = items.mapIndexed { i, label ->
+            text(label, SERIF_NAME, serif = true, color = if (i == checked) TEXT else TEXT_2).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(20), dp(14), dp(20), dp(14))
+                if (i == checked) setCompoundDrawablesRelative(null, null, getDrawable(R.drawable.ic_check)?.mutate()?.apply {
+                    setBounds(0, 0, dp(18), dp(18)); setTint(TUNGSTEN)
+                }, null)
+                isFocusable = true
+                val rest = { android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(0x12FFFFFF))).apply {
+                    setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(1))
+                } }
+                background = rest()
+                setOnFocusChangeListener { _, has ->
+                    background = if (has) lineFocus(gloss = true) else rest()
+                    setTextColor(if (has || i == checked) TEXT else TEXT_2)
+                    setShadowLayer(if (has) dp(10).toFloat() else 0f, 0f, 0f, if (has) 0x66FFFFFF else 0)
+                }
+                setOnClickListener { dialog.dismiss(); pick(i) }
+                list.addView(this, LinearLayout.LayoutParams(-1, -2))
+            }
+        }
+        dialog.setContentView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = LayerDrawable(arrayOf(sky(), android.graphics.drawable.ColorDrawable(0x99040812.toInt())))
+            setPadding(dp(64), dp(40), dp(64), dp(40))
+            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            addView(android.widget.ScrollView(context).apply {
+                isVerticalScrollBarEnabled = false
+                isFillViewport = false
+                addView(list)
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
+        })
         dialog.show()
         rows.getOrNull(focus)?.requestFocus()
     }
@@ -758,23 +959,43 @@ abstract class Screen : Activity() {
     }
 
     // House Lights' shared values. Screens keep their layout and content; the helpers above own component styling.
+    // Aurora: Manrope for words, Sora for titles. The wordmark keeps Outfit Light, as on the icon.
     private class Fonts(assets: android.content.res.AssetManager) {
-        val medium: Typeface = outfit(assets, 400)
-        val semiBold: Typeface = outfit(assets, 600)
-        val serif: Typeface = outfit(assets, 300) // titles: Outfit Light, large, in place of Alder's serif
+        val medium: Typeface = face(assets, "manrope", 500)
+        val semiBold: Typeface = face(assets, "manrope", 700)
+        val serif: Typeface = face(assets, "sora", 600) // titles: Sora, in place of Alder's serif
+        val wordmark: Typeface = face(assets, "outfit", 300)
 
-        private fun outfit(assets: android.content.res.AssetManager, weight: Int): Typeface =
-            Typeface.Builder(assets, "fonts/outfit.ttf").setFontVariationSettings("'wght' $weight").setWeight(weight).build()
+        private fun face(assets: android.content.res.AssetManager, font: String, weight: Int): Typeface =
+            Typeface.Builder(assets, "fonts/$font.ttf").setFontVariationSettings("'wght' $weight").setWeight(weight).build()
     }
 
     companion object {
+        /** The screen in front, for messages that start outside any screen (an update failing to install). */
+        private var front: java.lang.ref.WeakReference<Screen>? = null
+        private var opened = false // the opening has played in this run of the app
+        private const val OPENING_IN = 350L
+        private const val OPENING_HOLD = 100L
+        private const val OPENING_OUT = 300L
+        private const val NOTICE_TAG = "canopy-notice"
+        private const val NOTICE_MS = 4_000L
+        private const val NOTICE_W = 340
+
+        /** [Screen.notice] on the screen in front, or Android's toast when no Canopy screen is showing. */
+        fun notice(c: android.content.Context, title: String, line: String? = null) {
+            val screen = front?.get()?.takeIf { !it.isFinishing && !it.isDestroyed }
+            if (screen != null) screen.runOnUiThread { screen.notice(title, line, NOTICE_MS * 2) }
+            else android.widget.Toast.makeText(c, listOfNotNull(title, line).joinToString(". "), android.widget.Toast.LENGTH_LONG).show()
+        }
+
         private var loadedFonts: Fonts? = null // main thread only
         const val PAD = 48
-        const val TILE_RADIUS = 8
+        const val TILE_RADIUS = 0
         const val GLASS_INSET = 28 // dp a glass panel sits in from the screen's edges
         const val FROST_W = 360 // px the art is shrunk to before the blur: wider is less blur (240 read as fog, 480 as smeared)
         const val HERO_W = 520 // dp: a title's block on Home and its page, half the screen so the story reads in full lines
-        const val BUTTON_H = 34
+        const val BUTTON_H = 38 // TV-sized: Play and the squares beside it
+        const val BUTTON_R = 0 // dp: buttons and chips are sharp rectangles
         const val SHORT_LIST = 5 // "What's new" entries shown before See all changes
         const val WHATS_NEW_W = 480 // dp
         const val CHIP_H = 24 // the mocks' 46–48 px chips
@@ -799,24 +1020,29 @@ abstract class Screen : Activity() {
         const val SERIF_NAME = 19f
         const val BODY = 14.5f
         const val SMALL = 12.5f
+        const val TAG_SP = 11f // the smallest text anywhere: tags and key hints still read from the sofa
         const val CAPS = SMALL
         const val CODE = 36f
         val LEADING = mapOf(SERIF_HERO to 40f, SERIF_TITLE to 30f, SERIF_NAME to 21f, BODY to 20f, SMALL to 17f, CODE to 40f)
 
-        const val BASE = 0xFF07090A.toInt()
-        const val TEXT = 0xFFEEF4F1.toInt()
-        const val TEXT_2 = 0xB8EEF4F1.toInt()
-        const val TEXT_3 = 0x73EEF4F1
-        // Canopy's Smoke look: the accent keeps Alder's name (fewer conflicts when merging upstream) but is emerald.
-        const val TUNGSTEN = 0xFF5FE3A8.toInt()
-        const val TUNGSTEN_RIM = 0xE65FE3A8.toInt()
-        const val TUNGSTEN_GLOW = 0x735FE3A8
+        // The colours come from the chosen Theme; Tangerine unless the viewer picks another in Settings.
+        val BASE get() = Theme.now.base
+        val TEXT get() = Theme.now.text
+        val TEXT_2 get() = withAlpha(Theme.now.dim, 0xB8)
+        val TEXT_3 get() = withAlpha(Theme.now.dim, 0x73)
+        // The accent keeps Alder's name (fewer conflicts when merging upstream).
+        val TUNGSTEN get() = Theme.now.accent
+        const val TUNGSTEN_RIM = 0xFFFFFFFF.toInt() // Light line: a focused card's ring is white
+        val TUNGSTEN_GLOW get() = withAlpha(Theme.now.accent, 0x73)
+        val TILE get() = Theme.now.tile // a poster's placeholder
+        val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
-        const val GLASS = 0x4D141A1A
-        const val GLASS_FOCUSED = 0x3DEEF4F1 // a lit face: with no rim, the fill alone carries focus
-        const val GLASS_EDGE = 0x24E6FFF4
-        const val GLASS_HIGHLIGHT = 0x4DF0FFF8
-        const val ROW_FOCUSED = 0x29EEF4F1
+        val GLASS get() = withAlpha(Theme.now.glass, 0x4D)
+        const val GLASS_FOCUSED = 0x33FFFFFF
+        val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)
+        const val GLASS_HIGHLIGHT = 0x4DF0F6FF
+        const val ROW_FOCUSED = 0x1FFFFFFF // Light line: the faint wash a focused row starts with
+        const val CORNER = 0 // dp: nothing in Canopy is rounded. Sharp rectangles only, no capsules or circles.
         const val PROGRESS_TRACK = 0x4DFFFFFF // light enough that a short fill still reads as a bar, not a dash
         private val pool = Executors.newFixedThreadPool(6)
     }
