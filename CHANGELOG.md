@@ -15,6 +15,17 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+## 1.3.1
+
+- **New episode list.** Each episode shows its picture, its length, its date and a short story. A bar under the story shows how much you watched.
+- **Soft corners.** Buttons, chips, cards and profile pictures have small round corners.
+- **New release key.** Canopy has a new signature. Remove Canopy 1.3.0 or earlier from the TV, then install this version. Settings and profiles do not move across.
+- The progress bar on a poster card is at the bottom edge. The ratings on the poster stay clear.
+- **More info** shows the logo, the cast and the director.
+- When you pause, the title of the episode uses more of the screen.
+- Menus are darker, so a bright poster does not change their color.
+- On **My List**, the chips are on a dark panel.
+
 ## 1.3.0
 
 - **New look.** Canopy has new colors and new fonts. The default colors are dark gray with orange and apricot light. Titles use Sora, and other text uses Manrope.
