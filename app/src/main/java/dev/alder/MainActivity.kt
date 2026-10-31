@@ -1421,16 +1421,25 @@ class MainActivity : Screen() {
         genreButton = null
         genreStrip.visibility = if (names.isEmpty()) View.INVISIBLE else View.VISIBLE
         if (names.isEmpty()) return
+        // The words line up with the page's margin; the tab padding sits in the gutter.
         val line = LinearLayout(this).apply {
             clipChildren = false
-            setPadding(dp(PAD), dp(2), dp(PAD), dp(2))
+            setPadding(dp(PAD - TAB_PAD), dp(2), dp(PAD), dp(2))
         }
-        val button = chip(genreLabel()).apply {
-            setTextColor(TEXT)
+        // Plain words, no box: lit like a top-bar tab (white, with its line underneath) only while the remote is on it.
+        val button = text(genreLabel(), SMALL, color = TEXT_2).apply {
+            isFocusable = true
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
+            setOnFocusChangeListener { _, has ->
+                background = tabFace(has, open = false)
+                setTextColor(if (has) TEXT else TEXT_2)
+                setShadowLayer(if (has) dp(10).toFloat() else 0f, 0f, 0f, if (has) 0x99FFFFFF.toInt() else 0)
+            }
             setOnClickListener { pickGenre() }
         }
         genreButton = button
-        line.addView(button, LinearLayout.LayoutParams(-2, dp(CHIP_H)))
+        line.addView(button, LinearLayout.LayoutParams(-2, dp(CHIP_H + 8)))
         genreStrip.addView(line)
         if (hadFocus) button.requestFocus()
     }
