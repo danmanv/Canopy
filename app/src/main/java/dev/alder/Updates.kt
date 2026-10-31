@@ -21,7 +21,9 @@ object Updates {
 
     class Release(val version: String, val apk: String)
 
-    fun mine(c: Context): String = c.packageManager.getPackageInfo(c.packageName, 0).versionName.orEmpty()
+    // Asked by every screen as it opens; the package manager call is a trip to the system each time, and it can't change while running.
+    private var version: String? = null
+    fun mine(c: Context): String = version ?: c.packageManager.getPackageInfo(c.packageName, 0).versionName.orEmpty().also { version = it }
 
     /** The newest release, or null if the check failed or it has no .apk. Blocks: run it off the main thread. */
     fun latest(c: Context): Release? = runCatching {

@@ -111,6 +111,24 @@ object Images {
         return runCatching { task.get() }.getOrNull()
     }
 
+    /** Fetches [url] into memory and waits for it (off the main thread): for work that must have the picture ready. */
+    fun warm(url: String?, widthPx: Int, look: Look? = null) {
+        if (url != null) bitmap(url, widthPx, look)
+    }
+
+    /**
+     * Fetches [urls] into memory side by side on the pictures' own threads and waits for them, at most [waitMs] in all
+     * (off the main thread). Whatever isn't in by then keeps loading and fills in as usual.
+     */
+    fun warmAll(urls: List<String>, widthPx: Int, waitMs: Long = 1500) {
+        val missing = urls.distinct().filter { cache(widthPx).get(key(it, widthPx)) == null }
+        if (missing.isEmpty()) return
+        val until = System.nanoTime() + waitMs * 1_000_000
+        missing.map { url -> FutureTask<Bitmap?> { bitmap(url, widthPx) }.also { pool.execute(it) } }.forEach { task ->
+            runCatching { task.get((until - System.nanoTime()).coerceAtLeast(0), TimeUnit.NANOSECONDS) }
+        }
+    }
+
     fun cached(url: String, widthPx: Int, look: Look? = null) = cache(widthPx).get(key(url, widthPx, look)) != null
 
     /**

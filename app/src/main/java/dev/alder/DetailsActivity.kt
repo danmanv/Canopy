@@ -87,15 +87,27 @@ class DetailsActivity : Screen() {
 
         (initialArt ?: poster)?.let { Images.load(it, heroArt, artWidth, urgent = true) { heroArt.alpha = 1f; refrost() } }
 
+        // The title page is drawn once from last time's details and then hears from the meta add-on and the library.
+        // Each answer used to rebuild the whole block: the logo went and came back and Play lost its light for a
+        // frame, the flicker just after the page opened. Now only what changed is redrawn.
         fun show(m: Meta) {
             meta = m
             val art = m.background ?: initialArt ?: poster
-            if (heroArt.tag != art) Images.load(art, heroArt, artWidth, urgent = true) {
-                heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
-                refrost()
+            // The art the page opened on stays: swapping it for the add-on's own a moment later blanked the screen for
+            // a frame (Images.load clears the picture first) and then cut to a different one. Only a stand-in (the
+            // poster, or nothing) is replaced, once the new art is in memory so it cuts straight across.
+            val keep = heroArt.drawable != null && heroArt.tag == initialArt && initialArt != null
+            if (!keep && art != null && heroArt.tag != art) {
+                fun put() = Images.load(art, heroArt, artWidth, urgent = true) {
+                    heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+                    refrost()
+                }
+                if (heroArt.drawable == null || Images.cached(art, artWidth)) put()
+                else background({ Images.warm(art, artWidth) }) { if (meta === m) put() }
             }
-            showHero(m)
-            if (type == "series" && m.videos.isNotEmpty()) buildGuide(m.videos)
+            if (!::playButton.isInitialized || heroKey != heroKey(m)) showHero(m)
+            else { fillWatch(m); updateMoreCaption(m) }
+            if (type == "series" && m.videos.isNotEmpty() && guideFor != m.videos.map { it.id }) buildGuide(m.videos)
             if (type == "movie" && !similarRequested) { similarRequested = true; loadSimilar() }
         }
         background({
@@ -114,14 +126,25 @@ class DetailsActivity : Screen() {
         background({ Stremio.library(key, listOf(metaId)).firstOrNull() }) { result ->
             if (!itemChangedHere) {
                 item = result.getOrNull() ?: item
-                if (meta != null) showHero(meta)
+                // Progress and My List only: the watch line and buttons change in place.
+                meta?.let { m -> if (::playButton.isInitialized && heroKey == heroKey(m)) fillWatch(m) else showHero(m) }
             }
         }
     }
 
     // ---------- title and watch window ----------
 
+    /** Everything the title block shows of [m] apart from the watch line: a change here redraws the block. */
+    private fun heroKey(m: Meta) = listOf(m.id, m.name, m.logo, m.year, m.genres.firstOrNull(), m.rating, m.runtime,
+        m.description, m.videos.map { it.season }.filter { it > 0 }.distinct().size, m.videos.isNotEmpty()).joinToString("\u0000")
+
+    private var heroKey: String? = null
+    private var guideFor: List<String>? = null
+    private var moreCaption: View? = null
+
     private fun showHero(m: Meta?) {
+        heroKey = m?.let(::heroKey)
+        moreCaption = null
         hero.removeAllViews()
         val title = text(m?.name ?: name, SERIF_HERO, serif = true).onArt().apply {
             maxLines = 2; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_VERTICAL
@@ -172,13 +195,24 @@ class DetailsActivity : Screen() {
         hero.addView(stack, FrameLayout.LayoutParams(dp(HERO_W), -2, Gravity.BOTTOM or Gravity.START).apply {
             leftMargin = dp(PAD); bottomMargin = dp(118)
         })
+        updateMoreCaption(m)
+    }
+
+    /** "▾ Episodes" or "▾ More like this" under the block, added on its own when the similar titles come in. */
+    private fun updateMoreCaption(m: Meta?) {
         val hasEpisodes = type == "series" && m?.videos?.isNotEmpty() == true
-        if (hasEpisodes || ::similarOverlay.isInitialized) {
-            hero.addView(caps(if (hasEpisodes) "▾  Episodes" else "▾  More like this", TEXT_2).onArt().apply {
-                isFocusable = true
-                setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
-                rowFocus(rest = { null })
-            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
+        val words = if (hasEpisodes) "▾  Episodes" else if (::similarOverlay.isInitialized) "▾  More like this" else null
+        val current = moreCaption as? TextView
+        if (current?.text?.toString() == words?.uppercase()) return
+        current?.let { if (it.hasFocus() && ::playButton.isInitialized) playButton.requestFocus(); hero.removeView(it) }
+        moreCaption = null
+        if (words == null) return
+        moreCaption = caps(words, TEXT_2).onArt().apply {
+            isFocusable = true
+            setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
+            rowFocus(rest = { null })
+        }.also {
+            hero.addView(it, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
                 leftMargin = dp(PAD); bottomMargin = dp(28)
             })
         }
@@ -320,6 +354,7 @@ class DetailsActivity : Screen() {
     }
 
     private fun buildGuide(videos: List<Video>) {
+        guideFor = videos.map { it.id }
         if (::guide.isInitialized) root.removeView(guide)
         guideOpen = false
         val x = dp(PAD)
@@ -627,7 +662,7 @@ class DetailsActivity : Screen() {
             leftMargin = dp(PAD); rightMargin = dp(PAD); bottomMargin = dp(38)
         })
         root.addView(similarOverlay, FrameLayout.LayoutParams(-1, -1))
-        showHero(meta)
+        updateMoreCaption(meta)
     }
 
     private fun showSimilar() {

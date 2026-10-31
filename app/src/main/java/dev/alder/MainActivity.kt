@@ -418,7 +418,7 @@ class MainActivity : Screen() {
                 if (answers.containsKey(key)) return@forEachIndexed
                 val kept = sources.map { (c, _) -> (c.addon.savedCatalog(c, picked) ?: return@forEachIndexed) to true }
                 answers.putIfAbsent(key, kept)
-                if (i < 2) kept.flatMap { it.first }.take(FIRST).forEach { Images.prefetch(it.poster ?: it.background, (dp(CARD_W) * CARD_GROW).toInt()) }
+                if (i < 3) kept.flatMap { it.first }.take(FIRST).forEach { Images.prefetch(it.poster ?: it.background, (dp(CARD_W) * CARD_GROW).toInt()) }
                 // The first title's full-screen art too, so the page opens on its own picture, not the last page's.
                 if (i == 0) kept.firstOrNull()?.first?.firstOrNull()?.background?.let { Images.prefetch(it, artW, look = shaded) }
             }
@@ -1288,6 +1288,9 @@ class MainActivity : Screen() {
                         if (g != generation || version != rowVersion) return
                         if (items.isEmpty()) { if (completed == rowCatalogs.size) main.post { loadMoreSections?.invoke() }; return }
                         val old = rows.firstOrNull { it.view.parent === slot }
+                        // Stremio's fresh answer usually lists the titles last time's did: the row on screen stays as
+                        // it is. Remaking it anyway put up a row of blank tiles for a frame (the flicker after a page opened).
+                        if (old != null && sameTitles(old.items, items)) { old.pendingUpdate = null; return }
                         if (old?.view?.hasFocus() == true) { old.pendingUpdate = ::add; return }
                         old?.let { it.cards.forEach { card -> card.unload() }; rows.remove(it); slot.removeAllViews() }
                         val made = row(title, items.take(maxOf(START, old?.items?.size ?: START)), more,
@@ -1312,7 +1315,14 @@ class MainActivity : Screen() {
                 }
                 fun refresh(index: Int) {
                     val catalog = rowCatalogs[index]
-                    background({ catalog.addon.catalog(catalog, picked, CATALOG_WAIT) }) { fresh ->
+                    // A fresh answer that differs from the row on screen has its first posters fetched before it
+                    // replaces the row, so the swap shows pictures straight away instead of tiles filling in.
+                    val shownIds = sourceAnswers[index]?.first?.take(FIRST)?.map { it.id }
+                    val px = cardPx
+                    background({ catalog.addon.catalog(catalog, picked, CATALOG_WAIT).also { found ->
+                        val first = found.take(FIRST)
+                        if (first.map { it.id } != shownIds) Images.warmAll(first.mapNotNull { it.poster ?: it.background }, px)
+                    } }) { fresh ->
                         if (g != generation) return@background
                         fresh.getOrNull()?.takeIf { it.isNotEmpty() }?.let {
                             sourceAnswers[index] = it to false
@@ -1634,6 +1644,15 @@ class MainActivity : Screen() {
 
     // ---------- rows ----------
 
+    /** A refreshed row showing what's already on screen: the same titles in the same order, at least as many as it shows. */
+    private fun sameTitles(shown: List<Item>, fresh: List<Item>): Boolean {
+        val n = minOf(shown.size, fresh.size)
+        return n > 0 && shown.size >= minOf(fresh.size, START) && (0 until n).all { shown[it].id == fresh[it].id }
+    }
+
+    /** A browse card's poster width in pixels, as Card asks for it. */
+    private val cardPx get() = (dp(CARD_W) * CARD_GROW).toInt()
+
     /** The rest of a list already in hand, a page at a time: a row of hundreds of cards would be slow to build. */
     private fun later(all: List<Item>): ((Int) -> List<Item>)? =
         if (all.size <= START) null else { from -> all.drop(from).take(PAGE) }
@@ -1641,6 +1660,9 @@ class MainActivity : Screen() {
     private fun row(title: String, items: List<Item>, more: ((Int) -> List<Item>)? = null, wide: Boolean = false, grid: Boolean = false,
                     seeAll: (() -> Unit)? = null): Row = Row(title, items, more, wide, grid, seeAll).also {
         rows += it
+        // Posters already in memory go on before the row's first frame. Left to updateImages (posted, so after the
+        // frame), a new or redrawn row showed blank tiles for one frame before its pictures popped in.
+        it.cards.take(FIRST).forEach { c -> c.loadIfCached() }
         main.post(::updateImages)
         if (!focusedSomething && mode == Mode.BROWSE) {
             // Rows answer in any order: give slower ones above a moment, then start at the top row, not the quickest.
@@ -1664,8 +1686,10 @@ class MainActivity : Screen() {
         // Rows below the active one keep their names hidden: one peeking in at the bottom sat under the caption.
         // The hint on the right names the next row instead.
         visible.forEachIndexed { i, row -> row.peek(i <= active) }
-        nextRowHint.text = visible.getOrNull(active + 1)?.let { "▾  ${it.title.uppercase()}" } ?: ""
-        nextRowHint.visibility = if (nextRowHint.text.isEmpty()) View.GONE else View.VISIBLE
+        // Set only when it changes: a new text lays the screen out again, and this runs on every move of the remote.
+        val hint = visible.getOrNull(active + 1)?.let { "▾  ${it.title.uppercase()}" } ?: ""
+        if (nextRowHint.text.toString() != hint) nextRowHint.text = hint
+        nextRowHint.visibility = if (hint.isEmpty()) View.GONE else View.VISIBLE
     }
 
     private val focusTop = Runnable {
@@ -2000,6 +2024,12 @@ class MainActivity : Screen() {
                 now = false
             }
 
+            /** [load], only if the picture is already in memory and so shows at once. */
+            fun loadIfCached() {
+                val url = (if (wide) item.art else item.poster ?: item.art) ?: return
+                if (Images.cached(url, (dp(cardW) * CARD_GROW).toInt())) load()
+            }
+
             /** Far off screen: let the pictures go. */
             fun unload() {
                 wanted = false
@@ -2127,7 +2157,8 @@ class MainActivity : Screen() {
         val n = order.size
         val at = order.indexOf(rowView).coerceAtLeast(0)
         val thumbH = maxOf(dp(12), dp(CARD_H) / maxOf(n, 1))
-        thumb.layoutParams = thumb.layoutParams.apply { height = thumbH }
+        // Only when it changes: setting the layout params lays the whole screen out again, on every move of the remote.
+        if (thumb.layoutParams.height != thumbH) thumb.layoutParams = thumb.layoutParams.apply { height = thumbH }
         thumb.animate().translationY(if (n > 1) (dp(CARD_H) - thumbH) * at / (n - 1f) else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         if (rowView !== indicatedRow) {
             indicatedRow = rowView
@@ -2237,7 +2268,7 @@ class MainActivity : Screen() {
         const val WORDMARK_BAR = 19f // sp: "canopy" beside its mark in the top bar
         const val BODY_LARGE = 16f // sp: the tabs' names
         const val WARM_AFTER = 3000L // ms after launch before other pages' posters are fetched ahead
-        const val SWITCH_WAIT = 300L // ms the remote rests on a page's name before it opens: passing over names opens nothing
+        const val SWITCH_WAIT = 200L // ms the remote rests on a page's name before it opens: passing over names opens nothing
         const val LOGO_W = 360 // the cinema's title logo
         const val LOGO_H = 100
         const val RADIUS = 0 // posters are sharp rectangles

@@ -102,9 +102,16 @@ internal fun prepareNetwork(c: Context) {
     if (Http.saved != null) return
     // Pictures load many at a time from a few hosts: keep enough connections open to reuse (Android keeps 5).
     System.setProperty("http.maxConnections", "16")
-    // Disk cache for pictures (and anything else whose server allows caching), and last time's answers.
-    android.net.http.HttpResponseCache.install(java.io.File(c.cacheDir, "http"), 250L * 1024 * 1024)
-    Http.saved = java.io.File(c.cacheDir, "answers")
+    // Disk cache for pictures (and anything else whose server allows caching), and last time's answers. Opening the
+    // cache reads its journal and the answers are trimmed by listing every file: both off the main thread, so the first
+    // screen isn't held up by the disk. The first few pictures may miss the disk cache; they're fetched as usual.
+    val dir = c.cacheDir
+    Http.saved = java.io.File(dir, "answers")
+    Thread {
+        android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
+        runCatching { android.net.http.HttpResponseCache.install(java.io.File(dir, "http"), 250L * 1024 * 1024) }
+        Http.trim()
+    }.start()
     Http.userAgent = "Canopy/${Updates.mine(c)} (Android ${android.os.Build.VERSION.RELEASE}; ${android.os.Build.MODEL})"
 }
 
@@ -962,9 +969,9 @@ abstract class Screen : Activity() {
         /** The screen in front, for messages that start outside any screen (an update failing to install). */
         private var front: java.lang.ref.WeakReference<Screen>? = null
         private var opened = false // the opening has played in this run of the app
-        private const val OPENING_IN = 450L
-        private const val OPENING_HOLD = 150L
-        private const val OPENING_OUT = 350L
+        private const val OPENING_IN = 350L
+        private const val OPENING_HOLD = 100L
+        private const val OPENING_OUT = 300L
         private const val NOTICE_TAG = "canopy-notice"
         private const val NOTICE_MS = 4_000L
         private const val NOTICE_W = 340
