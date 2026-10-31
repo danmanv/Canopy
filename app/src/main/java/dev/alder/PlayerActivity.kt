@@ -1183,10 +1183,12 @@ class PlayerActivity : Screen() {
     private fun buttonCell(control: TextView, primary: Boolean = false) = FrameLayout(this).apply {
         clipChildren = false
         clipToPadding = false
+        // The small buttons sit 5dp lower, so every button's middle is on one line with the bigger Play's; the labels
+        // all hang from the same line under them.
         addView(control, FrameLayout.LayoutParams(dp(if (primary) 50 else 40), dp(if (primary) 50 else 40),
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(if (primary) 0 else 5) })
         addView(buttonLabels.getValue(control), FrameLayout.LayoutParams(dp(160), dp(18),
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(if (primary) 53 else 48) })
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(53) })
         layoutParams = LinearLayout.LayoutParams(dp(if (primary) 70 else 62), dp(76))
     }
 
