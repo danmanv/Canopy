@@ -701,7 +701,8 @@ abstract class Screen : Activity() {
      * place of Android's grey dialog. [checked] gets a tick (the choice in use); the remote starts on [focus].
      */
     protected fun choose(title: String, items: List<String>, message: String? = null, checked: Int = -1,
-                         focus: Int = maxOf(checked, 0), dropDown: Boolean = false, pick: (Int) -> Unit) {
+                         focus: Int = maxOf(checked, 0), dropDown: Boolean = false, dropFrom: Int = Gravity.END,
+                         dropY: Int = 60, pick: (Int) -> Unit) {
         if (fullChoices && !dropDown) return chooseFull(title, items, message, checked, focus, pick)
         val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
         val list = column(Gravity.START).apply { setPadding(dp(12), dp(16), dp(12), dp(12)) }
@@ -727,8 +728,9 @@ abstract class Screen : Activity() {
             setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0))
             setLayout(dp(if (dropDown) 260 else 340), -2)
             setDimAmount(0.6f)
-            // [dropDown]: hangs from the top right, under the profile it opened from, instead of the screen's middle.
-            if (dropDown) attributes = attributes.apply { gravity = Gravity.TOP or Gravity.END; x = dp(PAD - 12); y = dp(60) }
+            // [dropDown]: hangs from the control it opened from ([dropFrom] side, [dropY] dp down; the profile's by
+            // default, top right) instead of the screen's middle.
+            if (dropDown) attributes = attributes.apply { gravity = Gravity.TOP or dropFrom; x = dp(PAD - 12); y = dp(dropY) }
         }
         dialog.show()
         rows.getOrNull(focus)?.requestFocus()
