@@ -11,6 +11,8 @@ class Theme(val id: String, val name: String, val base: Int, val text: Int, val 
     val glass = mix(base, text, 0.04f)
     /** A shade darker than [base], for the foot of the sky. */
     val deep = mix(base, 0xFF000000.toInt(), 0.45f)
+    /** A dim block where a poster is on its way: the card's place is held, so nothing moves when it arrives. */
+    val tile = mix(base, text, 0.07f)
 
     companion object {
         const val DEFAULT = "tangerine"
@@ -66,6 +68,9 @@ fun baseAt(alpha: Int): Int = (alpha shl 24) or (Theme.now.base and 0xFFFFFF)
 
 /** [color] with its alpha replaced by [alpha] (0 to 255). */
 fun withAlpha(color: Int, alpha: Int): Int = (alpha shl 24) or (color and 0xFFFFFF)
+
+/** [color] a fifth of the way to black: the lower corner of a profile's square. */
+fun darker(color: Int): Int = mix(color, 0xFF000000.toInt(), 0.2f)
 
 private fun mix(a: Int, b: Int, t: Float): Int {
     fun ch(shift: Int) = ((a shr shift and 0xFF) * (1 - t) + (b shr shift and 0xFF) * t).toInt() shl shift

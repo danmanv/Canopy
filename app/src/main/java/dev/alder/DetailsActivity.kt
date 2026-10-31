@@ -91,7 +91,7 @@ class DetailsActivity : Screen() {
             meta = m
             val art = m.background ?: initialArt ?: poster
             if (heroArt.tag != art) Images.load(art, heroArt, artWidth, urgent = true) {
-                heroArt.animate().alpha(1f).setDuration(250).start()
+                heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
                 refrost()
             }
             showHero(m)
@@ -158,9 +158,7 @@ class DetailsActivity : Screen() {
             })
             m.rating?.let { rating ->
                 factRow.addView(text("·", SMALL, color = TEXT_2), wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
-                factRow.addView(text("IMDb", 9f, bold = true, color = BASE).apply {
-                    setPadding(dp(4), dp(1), dp(4), dp(1)); background = rounded(RATING, 3)
-                })
+                factRow.addView(imdbTag()) // the same size as the words beside it
                 factRow.addView(text(rating, SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(6) })
             }
             stack.addView(factRow, wrap().apply { topMargin = dp(12) })
@@ -204,14 +202,15 @@ class DetailsActivity : Screen() {
             setOnLongClickListener { openSources(target(), startOver = false, pick = true); true }
         }
         startOverButton = iconButton(R.drawable.ic_restart, "Start over") { openSources(target(), startOver = true) }
-        infoButton = iconButton(R.drawable.ic_info, "More information") { showInfo() }
-        listButton = iconButton(R.drawable.ic_add, "My List") { toggleList() }
+        infoButton = iconButton(R.drawable.ic_info, "More info") { showInfo() }
+        listButton = iconButton(R.drawable.ic_add, "Add to My List") { toggleList() }
         stack.addView(LinearLayout(this).apply {
             clipChildren = false
+            gravity = Gravity.CENTER_VERTICAL
             addView(playButton, wrap().apply { marginEnd = dp(14) })
-            addView(startOverButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
-            addView(listButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
-            addView(infoButton)
+            addView(cell(startOverButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
+            addView(cell(listButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
+            addView(cell(infoButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)))
         }, wrap().apply { topMargin = dp(16) })
         fillWatch(m)
         playButton.post { if (!guideOpen && !infoOpen && !similarOpen) playButton.requestFocus() }
@@ -237,18 +236,45 @@ class DetailsActivity : Screen() {
         playButton.text = if (resumeAt > 0) "Resume" else "Play"
         // Start over goes when there's nothing to start over; the remote moves to Play rather than into nothing.
         if (resumeAt <= 0 && startOverButton.hasFocus()) playButton.requestFocus()
-        startOverButton.visibility = if (resumeAt > 0) View.VISIBLE else View.GONE
+        (startOverButton.parent as? View)?.visibility = if (resumeAt > 0) View.VISIBLE else View.GONE
         listButton.icon(if (Library.inList(item)) R.drawable.ic_check else R.drawable.ic_add)
+        labelOf(listButton, if (Library.inList(item)) "In My List" else "Add to My List")
     }
 
     // Drawn icons, dead centre in their squares: the font's ↺, + and ⓘ sat off-centre, each by a different amount.
-    private fun iconButton(icon: Int, description: String, action: () -> Unit) = text("", 18f).apply {
-        gravity = Gravity.CENTER
-        icon(icon)
-        contentDescription = description
-        rowFocus(16, rest = { glass(16) })
-        setOnClickListener { action() }
-        layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+    // As in the player: the focused button says its name underneath, so a ↺ or an ⓘ never has to be guessed.
+    private val iconLabels = mutableMapOf<View, TextView>()
+
+    private fun iconButton(icon: Int, description: String, action: () -> Unit): TextView {
+        val label = text(description, SMALL, color = TEXT).onArt().apply {
+            gravity = Gravity.CENTER_HORIZONTAL; maxLines = 1; alpha = 0f
+        }
+        return text("", 18f).apply {
+            gravity = Gravity.CENTER
+            icon(icon)
+            contentDescription = description
+            iconLabels[this] = label
+            rowFocus(16, rest = { glass(16) }) { has ->
+                grow(has, 1.06f).start()
+                label.animate().alpha(if (has) 1f else 0f).setDuration(Motion.QUICK).start()
+            }
+            setOnClickListener { action() }
+        }
+    }
+
+    /** A button in its square, with its name hung below it (outside the square, so the row doesn't move). */
+    private fun cell(button: TextView) = FrameLayout(this).apply {
+        clipChildren = false
+        clipToPadding = false
+        addView(button, FrameLayout.LayoutParams(-1, -1))
+        addView(iconLabels.getValue(button), FrameLayout.LayoutParams(dp(160), -2, Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply {
+            topMargin = dp(ICON_BUTTON + 6)
+        })
+    }
+
+    private fun labelOf(button: TextView, words: String) {
+        button.contentDescription = words
+        iconLabels[button]?.text = words
     }
 
     private fun TextView.icon(res: Int) {
@@ -274,8 +300,10 @@ class DetailsActivity : Screen() {
         val entry = item ?: Library.newItem(metaId, type, meta?.name ?: name, meta?.poster ?: poster)
         Library.setInList(entry, !Library.inList(item))
         item = entry
-        listButton.icon(if (Library.inList(entry)) R.drawable.ic_check else R.drawable.ic_add)
-        listButton.contentDescription = if (Library.inList(entry)) "Remove from My List" else "Add to My List"
+        val inList = Library.inList(entry)
+        listButton.icon(if (inList) R.drawable.ic_check else R.drawable.ic_add)
+        labelOf(listButton, if (inList) "In My List" else "Add to My List")
+        notice(if (inList) "Added to My List" else "Removed from My List", meta?.name ?: name)
         val snapshot = JSONObject(entry.toString())
         background({ Stremio.saveLibrary(key, listOf(snapshot)) }) {}
     }
@@ -462,9 +490,9 @@ class DetailsActivity : Screen() {
         guide.visibility = View.VISIBLE
         guide.alpha = 0f
         guide.translationY = dp(28).toFloat()
-        guide.animate().alpha(1f).translationY(0f).setDuration(260).start()
+        guide.animate().alpha(1f).translationY(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         // The film steps back behind the guide, so the chips and panel read over a bright backdrop.
-        heroArt.animate().alpha(GUIDE_ART).setDuration(260).withEndAction { refrost() }.start()
+        heroArt.animate().alpha(GUIDE_ART).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction { refrost() }.start()
         leftShade(false) // the episode list sits on glass: the art can run to the left edge as it does on the right
         val currentId = playTarget(meta)?.first
         (episodeRows.firstOrNull { it.tag == currentId } ?: episodeRows.firstOrNull())?.requestFocus()
@@ -472,9 +500,9 @@ class DetailsActivity : Screen() {
 
     private fun hideGuide() {
         guideOpen = false
-        heroArt.animate().alpha(1f).setDuration(220).withEndAction { refrost() }.start()
+        heroArt.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction { refrost() }.start()
         leftShade(true)
-        guide.animate().alpha(0f).translationY(dp(24).toFloat()).setDuration(220).withEndAction {
+        guide.animate().alpha(0f).translationY(dp(24).toFloat()).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             guide.visibility = View.GONE
             hero.visibility = View.VISIBLE
             if (::playButton.isInitialized) playButton.requestFocus()
@@ -561,7 +589,7 @@ class DetailsActivity : Screen() {
         similarFirst = null
         titles.forEachIndexed { index, title ->
             val card = FrameLayout(this).apply {
-                background = rounded(BASE, 6)
+                background = rounded(TILE, 6) // held for the poster
                 outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) =
                         outline.setRoundRect(0, 0, view.width, view.height, dp(6).toFloat())
@@ -609,13 +637,13 @@ class DetailsActivity : Screen() {
         similarOverlay.visibility = View.VISIBLE
         similarOverlay.alpha = 0f
         similarOverlay.translationY = dp(20).toFloat()
-        similarOverlay.animate().alpha(1f).translationY(0f).setDuration(220).start()
+        similarOverlay.animate().alpha(1f).translationY(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         similarFirst?.requestFocus()
     }
 
     private fun hideSimilar() {
         similarOpen = false
-        similarOverlay.animate().alpha(0f).translationY(dp(20).toFloat()).setDuration(180).withEndAction {
+        similarOverlay.animate().alpha(0f).translationY(dp(20).toFloat()).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).withEndAction {
             similarOverlay.visibility = View.GONE
             hero.visibility = View.VISIBLE
             playButton.requestFocus()
@@ -694,5 +722,6 @@ class DetailsActivity : Screen() {
         const val PANE_SHADE = 0.55f // the episode panel's frost, darkened to the mock's smoked glass
         const val GUIDE_ART = 0.6f // the film's brightness behind the episode guide
         const val STARTED = 60_000L // ms watched before a title counts as started
+        const val ICON_BUTTON = Screen.BUTTON_H // the small square buttons beside Play are as tall as Play
     }
 }

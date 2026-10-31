@@ -318,7 +318,7 @@ class SearchActivity : Screen() {
                 setImageResource(R.drawable.ic_search)
                 imageTintList = ColorStateList.valueOf(TEXT)
             }, FrameLayout.LayoutParams(dp(17), dp(17), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(3) })
-            addView(View(this@SearchActivity).apply { background = rounded(TUNGSTEN, 3) },
+            addView(View(this@SearchActivity).apply { setBackgroundColor(TUNGSTEN) },
                 FrameLayout.LayoutParams(dp(3), dp(3), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(2) })
             setOnFocusChangeListener { _, has -> background = if (has) glass(18, true) else null }
             setOnClickListener { input.requestFocus() }
@@ -665,7 +665,7 @@ class SearchActivity : Screen() {
     }
 
     private fun card(meta: Meta, caption: TextView, scroller: HorizontalScrollView, firstInRow: Boolean): View {
-        val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(BASE) }
+        val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(TILE) }
         val shade = View(this).apply { setBackgroundColor(Color.BLACK); alpha = 0.5f }
         val card = FrameLayout(this).apply {
             tag = "${meta.type}:${meta.id}"
@@ -682,7 +682,7 @@ class SearchActivity : Screen() {
                 scroller.clipToPadding = true
                 resultsScroll.clipChildren = true
                 resultsScroll.clipToPadding = true
-                shade.animate().alpha(if (has) 0f else 0.5f).setDuration(150).start()
+                shade.animate().alpha(if (has) 0f else 0.5f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
                 if (has) {
                     // The focused row snaps to the pane's top, as on Home: scrolling just far enough left Shows cut off.
                     // Rows above it draw nothing: the pane didn't clip them, and they sat over the title's words.
@@ -697,7 +697,7 @@ class SearchActivity : Screen() {
                     val row = parent as ViewGroup
                     val target = (left - row.paddingStart).coerceIn(0, (row.width - scroller.width).coerceAtLeast(0))
                     scroller.smoothScrollTo(target, 0)
-                    for (i in 0 until row.childCount) row.getChildAt(i).let { it.animate().alpha(if (it.left < target + row.paddingStart - 1) 0f else 1f).setDuration(150).start() }
+                    for (i in 0 until row.childCount) row.getChildAt(i).let { it.animate().alpha(if (it.left < target + row.paddingStart - 1) 0f else 1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start() }
                     caption.post {
                         caption.translationX = (left - target).toFloat()
                             .coerceIn(0f, (scroller.width - dp(48) - caption.width).coerceAtLeast(0).toFloat())
@@ -740,7 +740,7 @@ class SearchActivity : Screen() {
                     refrost()
                 }
             }) {
-                if (focused === meta) { art.animate().alpha(1f).setDuration(300).start(); refrost() }
+                if (focused === meta) { art.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start(); refrost() }
             }
         } else if (url == null) {
             art.tag = null
