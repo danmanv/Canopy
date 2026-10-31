@@ -28,6 +28,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 - **New player controls.** The title, a wide time bar and the buttons show directly on the picture. Before, they were in a glass panel.
 - The menus, buttons and profile pictures have square corners. The remote shows the selected item with a line of light.
 - Select your profile picture to open a menu below it. Before, the menu opened in the center of the screen.
+- When the TV does not let Canopy install an update, Canopy tells you to install it with code 7470748 in the Downloader app. Before, Canopy opened the **Install unknown apps** page again and again.
 
 ## 1.2.2
 

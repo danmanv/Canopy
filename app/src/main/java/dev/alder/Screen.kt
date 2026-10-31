@@ -211,7 +211,12 @@ abstract class Screen : Activity() {
         armScreensaver()
         val release = pendingInstall ?: return
         pendingInstall = null
-        if (Updates.canInstall(this)) installUpdate(release)
+        if (Updates.canInstall(this)) return installUpdate(release)
+        // Still not allowed, though Android's page may show Canopy as Allowed (a Google TV with more than one profile
+        // showed the toggle of another profile): opening that page again only went round in a loop.
+        choose("Canopy can't install updates on this TV", listOf("OK"),
+            "Android doesn't let Canopy install apps here. Install the update with the Downloader app instead: " +
+                "enter code ${Updates.DOWNLOADER_CODE} in Downloader. Your profiles and settings stay.") {}
     }
 
     /**
