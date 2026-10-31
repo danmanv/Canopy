@@ -15,6 +15,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+## 1.3.0
+
 - **New look.** Canopy has new colors and new fonts. The default colors are dark gray with orange and apricot light. Titles use Sora, and other text uses Manrope.
 - **Themes.** Select **Settings** > **Theme** to change the colors of Canopy. There are 16 themes. The first theme, **Aurora**, has the mint colors of the first new look.
 - **Genres.** On **Shows** and **Movies**, select **All genres** to show a list of genres. Select a genre to go to its row. Before, the page showed only **All**.
