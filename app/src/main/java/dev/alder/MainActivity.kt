@@ -205,6 +205,7 @@ class MainActivity : Screen() {
     private lateinit var heroLogo: ImageView
     private lateinit var heroFacts: TextView
     private lateinit var heroRating: TextView
+    private lateinit var heroRatingDot: TextView
     private lateinit var heroScore: TextView
     private var heroBottom = 0 // px from the screen's foot to the hero block, for a poster row
     private var wideRow = false // the row the remote is in has wide cards (Continue Watching): the hero sits lower
@@ -874,6 +875,8 @@ class MainActivity : Screen() {
         heroFacts = text("", SMALL, color = TEXT_2).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         // A small tag, as tall as the letters: SMALL's leading and font padding made it a block twice the mock's.
         heroRating = imdbTag().apply { visibility = View.GONE }
+        // The dot before the tag, as on the title page; only when there are facts before it.
+        heroRatingDot = text("·", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroScore = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroAdded = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroAbout = text("", BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
@@ -893,7 +896,8 @@ class MainActivity : Screen() {
             LinearLayout(this).apply {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(heroFacts)
-                addView(heroRating, wrap().apply { marginStart = dp(10) })
+                addView(heroRatingDot, wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
+                addView(heroRating)
                 addView(heroScore, wrap().apply { marginStart = dp(6) })
                 addView(heroAdded, wrap().apply { marginStart = dp(6) })
             }.marginTop(8),
@@ -938,6 +942,7 @@ class MainActivity : Screen() {
         val rating = meta?.rating ?: item.facts.firstOrNull { it.startsWith("IMDb") }?.removePrefix("IMDb ")
         heroRating.visibility = if (rating.isNullOrBlank()) View.GONE else View.VISIBLE
         heroScore.visibility = heroRating.visibility
+        heroRatingDot.visibility = if (heroFacts.text.isEmpty()) View.GONE else heroRating.visibility
         heroScore.text = rating
         // Leads with a dot only when facts or a rating sit before it (a title with no details yet showed "· Added").
         val lead = if (heroFacts.text.isEmpty() && heroRating.visibility == View.GONE) "" else "·  "
