@@ -150,7 +150,7 @@ class MainActivity : Screen() {
     private var browseRowTop = 0
     private var browseRowH = 0
     private var indicatedRow: View? = null
-    private val hideTrack = Runnable { track.animate().alpha(0f).setDuration(250).start() }
+    private val hideTrack = Runnable { track.animate().alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start() }
     private var artTask = Runnable {}
     private val artW by lazy { resources.displayMetrics.widthPixels }
     // The focused title's trailer, muted, once the remote rests on its card (Trailer.kt). It plays under the art, which
@@ -321,7 +321,7 @@ class MainActivity : Screen() {
             addView(topShade, FrameLayout.LayoutParams(-1, dp(HEADER_H + 180)))
             addView(scroller, FrameLayout.LayoutParams(-1, rowH).apply { topMargin = rowTop })
             track = FrameLayout(context).apply { alpha = 0f }
-            thumb = View(context).apply { background = rounded(0xB3FFFFFF.toInt(), 2) }
+            thumb = View(context).apply { setBackgroundColor(0xB3FFFFFF.toInt()) }
             track.addView(thumb, FrameLayout.LayoutParams(-1, dp(12)))
             addView(track, FrameLayout.LayoutParams(dp(2), dp(CARD_H)).apply { leftMargin = dp(PAD) / 2; topMargin = rowTop + headingH + dp(ROW_TOP_ROOM) })
             moreHint = ImageView(context).apply { setImageResource(R.drawable.ic_back); scaleX = -1f; alpha = 0f }
@@ -549,13 +549,13 @@ class MainActivity : Screen() {
         if ((page != Page.HOME && !page.isCatalog && page != Page.LIBRARY) || mode != Mode.BROWSE || homeDimmed == on) return
         homeDimmed = on
         val alpha = if (on) 0.3f else 1f
-        header.animate().alpha(alpha).setDuration(400).start()
-        scroller.animate().alpha(alpha).setDuration(400).start()
-        browseInfo.animate().alpha(if (heroItem == null) 0f else alpha).setDuration(400).start()
-        nextRowHint.animate().alpha(alpha).setDuration(400).start()
-        genreStrip.animate().alpha(alpha).setDuration(400).start()
-        listCount.animate().alpha(alpha).setDuration(400).start()
-        listHint.animate().alpha(alpha).setDuration(400).start()
+        header.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        scroller.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        browseInfo.animate().alpha(if (heroItem == null) 0f else alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        nextRowHint.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        genreStrip.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        listCount.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+        listHint.animate().alpha(alpha).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
     }
 
     private fun switchProfile() {
@@ -682,7 +682,7 @@ class MainActivity : Screen() {
     /** A tab's background, Light line: a white line under the focused name, the mint line under the open page's. */
     private fun tabFace(focused: Boolean, open: Boolean): Drawable? {
         if (!focused && !open) return null
-        val line = GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN); cornerRadius = dp(2).toFloat() }
+        val line = GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN) } // square ends: no capsules
         return android.graphics.drawable.LayerDrawable(arrayOf(line)).apply {
             setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
             setLayerHeight(0, dp(3))
@@ -742,10 +742,10 @@ class MainActivity : Screen() {
     private fun chrome() {
         val cinemaOn = mode == Mode.CINEMA
         val headerOn = !cinemaOn || header.hasFocus()
-        header.animate().alpha(if (headerOn) 1f else 0f).setDuration(250).start()
-        topShade.animate().alpha(if (headerOn) 1f else 0f).setDuration(250).start()
+        header.animate().alpha(if (headerOn) 1f else 0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+        topShade.animate().alpha(if (headerOn) 1f else 0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         // Lighter in the cinema (only its few words sit low on the left), full while browsing under the cards.
-        browseInfo.animate().alpha(if (cinemaOn || heroItem == null) 0f else 1f).setDuration(250).start()
+        browseInfo.animate().alpha(if (cinemaOn || heroItem == null) 0f else 1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         nextRowHint.alpha = if (cinemaOn || page == Page.LIBRARY || page == Page.LIVE) 0f else 1f
         genreStrip.alpha = if (cinemaOn) 0f else 1f
         listCount.alpha = if (cinemaOn) 0f else 1f
@@ -753,12 +753,12 @@ class MainActivity : Screen() {
         if (cinemaOn) {
             main.removeCallbacks(hideTrack)
             indicatedRow = null
-            track.animate().alpha(0f).setDuration(250).start()
-            moreHint.animate().alpha(0f).setDuration(250).start()
+            track.animate().alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+            moreHint.animate().alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
         }
-        cinemaInfo.animate().alpha(if (cinemaOn && cinemaReady) 1f else 0f).setDuration(250).start()
-        cinemaClock.animate().alpha(if (cinemaOn && !headerOn) 1f else 0f).setDuration(250).start()
-        dots.animate().alpha(if (cinemaOn && cinemaReady && cinema.size > 1) 1f else 0f).setDuration(250).start()
+        cinemaInfo.animate().alpha(if (cinemaOn && cinemaReady) 1f else 0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+        cinemaClock.animate().alpha(if (cinemaOn && !headerOn) 1f else 0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
+        dots.animate().alpha(if (cinemaOn && cinemaReady && cinema.size > 1) 1f else 0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
     }
 
     // ---------- cinema ----------
@@ -776,7 +776,7 @@ class MainActivity : Screen() {
             cinemaLine.marginTop(14),
             cinemaPlay.marginTop(22),
         ).apply { alpha = 0f }
-        // Page dots as tvOS draws them: small and quiet, the current one a short pill.
+        // Page marks: short square dashes, the current one longer and lit.
         dots = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; alpha = 0f }
         stage = FrameLayout(this).apply {
             addView(cinemaInfo, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { leftMargin = dp(PAD); bottomMargin = dp(64) })
@@ -821,8 +821,9 @@ class MainActivity : Screen() {
         cinemaPlay.text = if (item.progress > 0) "Resume" else "Play"
         dots.removeAllViews()
         cinema.indices.forEach { i ->
-            dots.addView(View(this).apply { background = rounded(if (i == index) TUNGSTEN else TEXT_3, 3) },
-                LinearLayout.LayoutParams(dp(if (i == index) 18 else 6), dp(6)).apply { marginStart = dp(if (i > 0) 8 else 0) })
+            // Short square dashes, the current one longer and lit: no round dots or capsules.
+            dots.addView(View(this).apply { setBackgroundColor(if (i == index) TUNGSTEN else TEXT_3) },
+                LinearLayout.LayoutParams(dp(if (i == index) 22 else 10), dp(3)).apply { marginStart = dp(if (i > 0) 8 else 0) })
         }
         if (item.art != null || item.settled) showArt(item) { part() } // else its details call this again
         cinema.getOrNull((index + 1) % cinema.size)?.let(::warm)
@@ -841,7 +842,7 @@ class MainActivity : Screen() {
         mode = Mode.CINEMA
         stage.isFocusable = true
         stage.requestFocus()
-        scroller.animate().translationY(dp(RISE).toFloat()).alpha(0f).setDuration(300).withEndAction {
+        scroller.animate().translationY(dp(RISE).toFloat()).alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             if (mode == Mode.CINEMA) scroller.visibility = View.INVISIBLE
         }.start()
         chrome()
@@ -854,7 +855,7 @@ class MainActivity : Screen() {
         dimHome(false)
         main.removeCallbacks(advance)
         scroller.visibility = View.VISIBLE
-        scroller.animate().translationY(0f).alpha(1f).setDuration(300).setInterpolator(DecelerateInterpolator()).start()
+        scroller.animate().translationY(0f).alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).setInterpolator(DecelerateInterpolator()).start()
         chrome()
         val back = beforeCinema?.takeIf { it.isAttachedToWindow && it.isShown } ?: firstRow()?.let { it.cards[it.selected] }
         stage.isFocusable = false
@@ -955,7 +956,7 @@ class MainActivity : Screen() {
         }
         heroActions.visibility = if (page != Page.HOME && page != Page.LIBRARY && item.resume) View.VISIBLE else View.GONE
         armTrailer(item)
-        if (mode == Mode.BROWSE) browseInfo.animate().alpha(if (homeDimmed && (page == Page.HOME || page.isCatalog || page == Page.LIBRARY)) 0.3f else 1f).setDuration(150).start()
+        if (mode == Mode.BROWSE) browseInfo.animate().alpha(if (homeDimmed && (page == Page.HOME || page.isCatalog || page == Page.LIBRARY)) 0.3f else 1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         showArt(item)
     }
 
@@ -1092,13 +1093,13 @@ class MainActivity : Screen() {
         nextRowHint.visibility = View.GONE
         main.removeCallbacks(hideTrack)
         indicatedRow = null
-        track.animate().alpha(0f).setDuration(200).start()
+        track.animate().alpha(0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         moreHint.alpha = 0f
         if (p == Page.HOME) cinema = emptyList() // other pages keep Home's, so the screensaver works there too
         focusedSomething = false
         // The last page's title goes with it; an empty page (no library yet, no catalogs) shows none.
         heroItem = null
-        browseInfo.animate().alpha(0f).setDuration(150).start()
+        browseInfo.animate().alpha(0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         scroller.scrollTo(0, 0)
         mode = Mode.BROWSE
         main.removeCallbacks(advance)
@@ -1115,7 +1116,7 @@ class MainActivity : Screen() {
                 content.viewTreeObserver.removeOnPreDrawListener(this)
                 revealRows = null
                 // The cinema took over first: it hides the rows itself, and waking from it brings them back.
-                if (mode == Mode.BROWSE) scroller.animate().alpha(1f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+                if (mode == Mode.BROWSE) scroller.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).setInterpolator(DecelerateInterpolator()).start()
                 return true
             }
         }.also { content.viewTreeObserver.addOnPreDrawListener(it) }
@@ -1756,7 +1757,7 @@ class MainActivity : Screen() {
             if (active == on) return
             active = on
             if (on) peek(true)
-            heading.animate().alpha(if (on) 1f else QUIET).setDuration(200).start()
+            heading.animate().alpha(if (on) 1f else QUIET).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             cards.forEachIndexed { i, c -> c.dim(if (grid) !on || i != selected else on && i != selected) }
         }
 
@@ -1801,7 +1802,7 @@ class MainActivity : Screen() {
             val right = scroller.width - dp(PAD) / 2
             showVisibleCards()
             val beyond = cards.any { it.right - targetScroll > right }
-            moreHint.animate().alpha(if (beyond && mode == Mode.BROWSE && page != Page.HOME && !page.isCatalog) 0.9f else 0f).setDuration(200).start()
+            moreHint.animate().alpha(if (beyond && mode == Mode.BROWSE && page != Page.HOME && !page.isCatalog) 0.9f else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             moreHint.translationY = if (wide) dp(CARD_H - WIDE_H + WIDE_H / 2 - CARD_H / 2).toFloat() else 0f
             if (!grid && wideRow != wide) {
                 wideRow = wide
@@ -1883,7 +1884,7 @@ class MainActivity : Screen() {
                 // Time left as a quiet label in the corner, where the eye checks before choosing what to resume.
                 val timeLeft = item.left?.split(DOT)?.lastOrNull { it.endsWith("left") }
                 if (wide && timeLeft != null) face.addView(text(timeLeft, SMALL, bold = true).apply {
-                    background = rounded(0x99000000.toInt(), 8)
+                    background = rounded(0x99000000.toInt(), 2)
                     setPadding(dp(8), dp(3), dp(8), dp(4))
                 }, LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
                 addView(face, LayoutParams(-1, -1))
@@ -1921,7 +1922,7 @@ class MainActivity : Screen() {
                 alpha = if (on) 1f else 0f
             }
 
-            fun dim(on: Boolean) = shade.animate().alpha(if (on) DIM else 0f).setDuration(200).start()
+            fun dim(on: Boolean) = shade.animate().alpha(if (on) DIM else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
 
             /** On screen (or nearly): the poster (the wide art cropped for a title without one, else its name). */
             fun load() {
@@ -1937,7 +1938,7 @@ class MainActivity : Screen() {
                 var now = true // from memory: no fade, it's simply there
                 Images.load(url, image, (dp(cardW) * CARD_GROW).toInt(), failed = { name.visibility = View.VISIBLE; face.alpha = 1f }) {
                     if (nameMade.isInitialized()) name.visibility = if (wide) View.VISIBLE else View.INVISIBLE
-                    if (now) face.alpha = 1f else face.animate().alpha(1f).setDuration(180).start()
+                    if (now) face.alpha = 1f else face.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
                     if (isFocused) lift(true)
                 }
                 now = false
@@ -2056,11 +2057,11 @@ class MainActivity : Screen() {
         val at = order.indexOf(rowView).coerceAtLeast(0)
         val thumbH = maxOf(dp(12), dp(CARD_H) / maxOf(n, 1))
         thumb.layoutParams = thumb.layoutParams.apply { height = thumbH }
-        thumb.animate().translationY(if (n > 1) (dp(CARD_H) - thumbH) * at / (n - 1f) else 0f).setDuration(200).start()
+        thumb.animate().translationY(if (n > 1) (dp(CARD_H) - thumbH) * at / (n - 1f) else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         if (rowView !== indicatedRow) {
             indicatedRow = rowView
             main.removeCallbacks(hideTrack)
-            track.animate().alpha(if (n > 1 && mode == Mode.BROWSE && page == Page.LIVE) 1f else 0f).setDuration(200).start()
+            track.animate().alpha(if (n > 1 && mode == Mode.BROWSE && page == Page.LIVE) 1f else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             main.postDelayed(hideTrack, 1200)
         }
     }

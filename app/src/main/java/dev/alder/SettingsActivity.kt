@@ -555,10 +555,7 @@ class SettingsActivity : Screen() {
         val line = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(text(label, ROW_SP, bold = true), LinearLayout.LayoutParams(-2, -2))
-            if (perProfile) addView(text("THIS PROFILE", 8f, color = TUNGSTEN).apply {
-                setPadding(dp(5), dp(2), dp(5), dp(2))
-                background = glass(6)
-            }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+            if (perProfile) addView(badge("THIS PROFILE", filled = false), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
             addView(View(this@SettingsActivity), LinearLayout.LayoutParams(0, 1, 1f))
             addView(value, LinearLayout.LayoutParams(-2, -2))
             setPadding(dp(16), 0, dp(16), 0)

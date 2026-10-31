@@ -184,7 +184,7 @@ class ProfilesActivity : Screen() {
         }
         // No ring: like the top bar, a line of light under the name marks the remote's portrait.
         val dot = View(this).apply {
-            background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(TEXT) }
+            background = GradientDrawable().apply { setColor(TEXT) }
             if (android.os.Build.VERSION.SDK_INT >= 28) { outlineSpotShadowColor = 0xFFFFFFFF.toInt(); elevation = dp(4).toFloat() }
             visibility = View.INVISIBLE
         }
@@ -621,7 +621,7 @@ class ProfilesActivity : Screen() {
                 addView(text((if (total > 2) "New profile · " else "Welcome · ") + step, SMALL, color = TEXT_2))
                 repeat(total) { index -> addView(View(this@ProfilesActivity).apply {
                     background = GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL; setColor(if (index < current) TUNGSTEN else GLASS_EDGE)
+                        setColor(if (index < current) TUNGSTEN else GLASS_EDGE) // square marks, no round dots
                     }
                 }, LinearLayout.LayoutParams(dp(5), dp(5)).apply { marginStart = dp(5) }) }
             }, android.widget.FrameLayout.LayoutParams(-1, dp(58), Gravity.TOP))

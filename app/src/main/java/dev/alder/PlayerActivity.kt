@@ -910,7 +910,12 @@ class PlayerActivity : Screen() {
     private var scrubTo = -1L
     private val hideTask = Runnable { hideControls() }
     private val progressTask = Runnable { updateProgress() }
-    private val seekTask = Runnable { if (scrubTo >= 0) { player.seekTo(scrubTo); scrubTo = -1 } }
+    private val seekTask = Runnable { if (scrubTo >= 0) { player.seekTo(scrubTo); scrubTo = -1 }; endScrub() }
+    /** Where the current scrub started (-1: not scrubbing), and the time readout that floats over the bar meanwhile. */
+    private var scrubFrom = -1L
+    private lateinit var scrubBubble: LinearLayout
+    private lateinit var scrubTime: TextView
+    private lateinit var scrubJump: TextView
 
     private fun buildControls(): FrameLayout {
         val name = intent.getStringExtra("name").orEmpty()
@@ -1024,7 +1029,20 @@ class PlayerActivity : Screen() {
                 clipChildren = false
                 clipToPadding = false
                 addView(pauseInfo, LinearLayout.LayoutParams(-1, -2))
-                addView(bar, LinearLayout.LayoutParams(-1, dp(26)).apply { topMargin = dp(14) })
+                // The bar, with the scrub time floating above its head while a seek is being lined up.
+                scrubTime = text("", BODY, bold = true).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubJump = text("", SMALL, color = ICE).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubBubble = column(Gravity.CENTER_HORIZONTAL, scrubTime, scrubJump).apply {
+                    setPadding(dp(12), dp(5), dp(12), dp(6))
+                    background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xD9), 2), glass(2)))
+                    alpha = 0f
+                }
+                addView(FrameLayout(context).apply {
+                    clipChildren = false
+                    clipToPadding = false
+                    addView(bar, FrameLayout.LayoutParams(-1, -1))
+                    addView(scrubBubble, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+                }, LinearLayout.LayoutParams(-1, dp(26)).apply { topMargin = dp(14) })
                 addView(LinearLayout(context).apply {
                     addView(elapsed)
                     addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
@@ -1102,7 +1120,7 @@ class PlayerActivity : Screen() {
             shown = true
             view.subtitleView?.setBottomPaddingFraction(0.36f) // keep captions above the dock
             controls.visibility = View.VISIBLE
-            controls.animate().alpha(1f).setDuration(150).start()
+            controls.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             updateProgress()
             (focus ?: playPause).requestFocus()
         } else focus?.requestFocus()
@@ -1114,7 +1132,7 @@ class PlayerActivity : Screen() {
         shown = false
         main.removeCallbacks(hideTask)
         main.removeCallbacks(progressTask)
-        controls.animate().alpha(0f).setDuration(250).withEndAction {
+        controls.animate().alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             if (!shown) {
                 controls.visibility = View.GONE
                 view.subtitleView?.setBottomPaddingFraction(0.08f)
@@ -1146,6 +1164,27 @@ class PlayerActivity : Screen() {
         main.postDelayed(progressTask, 500)
     }
 
+    /** The time a scrub will land on, above the bar's head, with how far it jumps under it; the start stays marked. */
+    private fun showScrub() {
+        if (scrubTo < 0 || scrubFrom < 0) return
+        bar.from = scrubFrom
+        scrubTime.text = clock(scrubTo)
+        val jump = scrubTo - scrubFrom
+        scrubJump.text = (if (jump < 0) "\u2212" else "+") + clock(kotlin.math.abs(jump))
+        scrubBubble.measure(View.MeasureSpec.UNSPECIFIED, View.MeasureSpec.UNSPECIFIED)
+        val w = scrubBubble.measuredWidth
+        scrubBubble.translationX = (bar.xOf(scrubTo) - w / 2f).coerceIn(0f, maxOf(0f, bar.width - w.toFloat()))
+        scrubBubble.translationY = -(scrubBubble.measuredHeight + dp(8)).toFloat()
+        if (scrubBubble.alpha < 1f) scrubBubble.animate().alpha(1f).setDuration(Motion.QUICK).start()
+    }
+
+    /** The seek landed (or was dropped): the readout and the start mark go. */
+    private fun endScrub() {
+        scrubFrom = -1
+        bar.from = -1
+        scrubBubble.animate().alpha(0f).setDuration(Motion.STANDARD).start()
+    }
+
     private fun clock(ms: Long): String {
         val s = ms / 1000
         return if (s >= 3600) "%d:%02d:%02d".format(s / 3600, s / 60 % 60, s % 60) else "%d:%02d".format(s / 60, s % 60)
@@ -1155,8 +1194,10 @@ class PlayerActivity : Screen() {
     private fun scrub(by: Long) {
         val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         if (player.isCurrentMediaItemLive || !canSeek()) return
+        if (scrubTo < 0) scrubFrom = player.currentPosition
         scrubTo = ((if (scrubTo >= 0) scrubTo else player.currentPosition) + by).coerceIn(0, maxOf(0, duration - 1_000))
         updateProgress()
+        showScrub()
         main.removeCallbacks(seekTask)
         main.postDelayed(seekTask, SEEK_SETTLE)
     }
@@ -1167,7 +1208,7 @@ class PlayerActivity : Screen() {
         if (player.isCurrentMediaItemSeekable) return true
         if (!toldUnseekable) {
             toldUnseekable = true
-            android.widget.Toast.makeText(this, "This source can't skip ahead · Change stream to try another", android.widget.Toast.LENGTH_LONG).show()
+            notice("Can't skip ahead in this source", "Change stream to pick one that can.")
         }
         return false
     }
@@ -1295,7 +1336,7 @@ class PlayerActivity : Screen() {
             }
             // The choice in use: the tungsten dot before its name, as on chips and filters, and its name at full strength.
             val check = View(this).apply {
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TUNGSTEN) }
+                background = GradientDrawable().apply { setColor(TUNGSTEN) } // a small square, not a round dot
                 visibility = if (index == chosen) View.VISIBLE else View.INVISIBLE
             }
             checks += check
@@ -1416,11 +1457,17 @@ class PlayerActivity : Screen() {
     }
 }
 
-/** Mint playback progress over a light track, chunky, with a white knob on focus. */
+/**
+ * Playback progress over a light track, chunky and square-ended, with a slim upright line of light as its head on
+ * focus (Light line, no round knob). While scrubbing, [from] marks where the seek started.
+ */
 private class SeekBar(context: Context) : View(context) {
     private var position = 0L
     private var buffered = 0L
     private var duration = 0L
+    /** Where a scrub started, drawn as a faint upright mark; -1 when not scrubbing. */
+    var from = -1L
+        set(value) { field = value; invalidate() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val d = context.resources.displayMetrics.density
 
@@ -1433,25 +1480,42 @@ private class SeekBar(context: Context) : View(context) {
         invalidate()
     }
 
+    /** The x of [t] along the bar, for anything that rides above it (the scrub time). */
+    fun xOf(t: Long): Float {
+        val edge = 2 * d
+        return edge + (width - 2 * edge) * (if (duration > 0) t.coerceIn(0, duration) / duration.toFloat() else 0f)
+    }
+
     override fun onDraw(canvas: Canvas) {
-        val knob = (if (isFocused) 10 else 0) * d
+        val edge = 2 * d
         val line = (if (isFocused) 10 else 8) * d // chunky, Daybreak's bar
         val y = height / 2f
-        fun x(t: Long) = knob + (width - 2 * knob) * (if (duration > 0) t.coerceIn(0, duration) / duration.toFloat() else 0f)
         fun stretch(to: Float, color: Int) {
             paint.color = color
-            canvas.drawRoundRect(knob, y - line / 2, to, y + line / 2, line / 2, line / 2, paint)
+            canvas.drawRect(edge, y - line / 2, to, y + line / 2, paint)
         }
         // A light track: the dark one vanished over a dark picture.
-        stretch(width - knob, 0x29FFFFFF)
-        stretch(x(buffered), 0x40FFFFFF)
-        // Mint into ice, glowing.
-        paint.shader = LinearGradient(knob, 0f, maxOf(x(position), knob + 1), 0f, Screen.TUNGSTEN, Screen.ICE, Shader.TileMode.CLAMP)
+        stretch(width - edge, 0x29FFFFFF)
+        stretch(xOf(buffered), 0x40FFFFFF)
+        // Accent into its lighter partner, glowing.
+        paint.shader = LinearGradient(edge, 0f, maxOf(xOf(position), edge + 1), 0f, Screen.TUNGSTEN, Screen.ICE, Shader.TileMode.CLAMP)
         paint.setShadowLayer(8 * d, 0f, 0f, Screen.TUNGSTEN_GLOW)
-        stretch(x(position), Screen.TUNGSTEN)
+        stretch(xOf(position), Screen.TUNGSTEN)
         paint.clearShadowLayer()
         paint.shader = null
-        paint.color = Screen.TEXT
-        if (duration > 0 && knob > 0) canvas.drawCircle(x(position), y, knob, paint)
+        if (duration <= 0) return
+        if (from >= 0) {
+            paint.color = 0x73FFFFFF
+            val x = xOf(from)
+            canvas.drawRect(x - d, y - line / 2 - 4 * d, x + d, y + line / 2 + 4 * d, paint)
+        }
+        if (isFocused) {
+            // The head: a slim upright line of light, standing past the bar's edges.
+            paint.color = Screen.TEXT
+            paint.setShadowLayer(6 * d, 0f, 0f, 0x99FFFFFF.toInt())
+            val x = xOf(position)
+            canvas.drawRect(x - 1.5f * d, y - line / 2 - 7 * d, x + 1.5f * d, y + line / 2 + 7 * d, paint)
+            paint.clearShadowLayer()
+        }
     }
 }
