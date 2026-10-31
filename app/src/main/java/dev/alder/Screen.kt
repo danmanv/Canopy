@@ -833,7 +833,9 @@ abstract class Screen : Activity() {
         }
         dialog.setContentView(android.widget.ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
-            background = glassOver(this, 16) // the episode list's glass, over the screen's art
+            // The episode list's glass, over the screen's art, smoked well down: lightly tinted, a bright poster behind
+            // turned the whole menu its colour (lilac over Moana).
+            background = glassOver(this, 16, shade = 0.72f)
             addView(list)
         })
         dialog.window?.apply {

@@ -875,7 +875,7 @@ class MainActivity : Screen() {
         // A small tag, as tall as the letters: SMALL's leading and font padding made it a block twice the mock's.
         heroRating = imdbTag().apply { visibility = View.GONE }
         heroScore = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
-        heroAdded = text("", SMALL, color = TEXT_3).onArt().apply { visibility = View.GONE }
+        heroAdded = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroAbout = text("", BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
         heroResume = pill("Resume", R.drawable.ic_play).apply {
             setOnClickListener { heroItem?.let(::play) }
@@ -1397,9 +1397,12 @@ class MainActivity : Screen() {
         lastListChip = null
         val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(PAD), dp(2), dp(PAD), dp(2)) }
         fun add(label: String, selected: Boolean, click: () -> Unit): TextView {
+            // A dark pane under each chip: over a bright poster the words alone were lost.
+            fun rest() = GradientDrawable().apply { setColor(0x8C000000.toInt()); setStroke(dp(1), 0x59FFFFFF) }
             val control = chip(label, selected).apply {
+                background = rest()
                 setOnFocusChangeListener { v, has ->
-                    v.background = glass(CHIP_H / 2, has)
+                    v.background = if (has) glass(CHIP_H / 2, true) else rest()
                     if (has) lastListChip = this
                 }
                 setOnClickListener { click() }
@@ -1412,7 +1415,7 @@ class MainActivity : Screen() {
                 if (listFilter != value) { listFilter = value; styleListChips(); redrawLibrary() }
             }
         }
-        line.addView(text("Sort", SMALL, color = TEXT_3), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(20) })
+        line.addView(text("Sort", SMALL, color = TEXT_2).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(20) })
         listOf(ListSort.RECENT to "Recently added", ListSort.NAME to "A–Z", ListSort.UNWATCHED to "Unwatched first")
             .forEach { (value, label) ->
                 listSortChips[value] = add(label, value == listSort) {
@@ -1522,6 +1525,8 @@ class MainActivity : Screen() {
     private fun homeTitle(c: Addon.Catalog): String {
         if (HomeRows.onByDefault(c)) return homeRowName(c.name)
         val name = shelf(c)?.title ?: tidy(c.name)
+        // A name that already says what it holds ("Trending Movies") needs no "· Movies" after it.
+        if (Regex("(?i)\\b(movies?|films?|shows?|series|tv)\\b").containsMatchIn(name)) return name
         return when (c.type) { "movie" -> "$name · Movies"; "series" -> "$name · Shows"; else -> name }
     }
 
@@ -1942,10 +1947,11 @@ class MainActivity : Screen() {
                 clipToOutline = true
                 setBackgroundColor(TILE) // a quiet placeholder until the poster fades in over it
                 face.addView(image, LayoutParams(-1, -1))
-                // A dark foot under the words or the progress bar; a plain poster needs none.
-                if (wide || item.progress > 0) face.addView(View(context).apply {
+                // A dark foot under the words on a wide card. Not on a poster: many come with a ratings strip along the
+                // bottom, and a foot darkened it past reading.
+                if (wide) face.addView(View(context).apply {
                     background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xE6000000.toInt(), 0x66000000, 0x00000000))
-                }, LayoutParams(-1, dp(cardH * (if (wide) 6 else 4) / 10), Gravity.BOTTOM))
+                }, LayoutParams(-1, dp(cardH * 6 / 10), Gravity.BOTTOM))
                 if (wide) name.visibility = View.VISIBLE
                 // Time left as a quiet label in the corner, where the eye checks before choosing what to resume.
                 val timeLeft = item.left?.split(DOT)?.lastOrNull { it.endsWith("left") }
@@ -1954,9 +1960,11 @@ class MainActivity : Screen() {
                     setPadding(dp(8), dp(3), dp(8), dp(4))
                 }, LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
                 addView(face, LayoutParams(-1, -1))
-                // A white bar inset and rounded inside the card's dark foot, so it reads as a bar and not a cropped edge.
+                // On a wide card, a bar inset inside its dark foot. On a poster, a bar along the very bottom edge, below
+                // a ratings strip's words instead of through them.
                 if (progress != null) addView(progress.apply { clipToOutline = true },
-                    LayoutParams(-1, dp(3), Gravity.BOTTOM).apply { setMargins(dp(inset), 0, dp(inset), dp(11)) })
+                    if (wide) LayoutParams(-1, dp(3), Gravity.BOTTOM).apply { setMargins(dp(inset), 0, dp(inset), dp(11)) }
+                    else LayoutParams(-1, dp(4), Gravity.BOTTOM))
                 // Watched: a quiet tick top right, on any card of a finished title.
                 if (item.finished) addView(text("✓", SMALL, bold = true, color = ICE).apply {
                     gravity = Gravity.CENTER
