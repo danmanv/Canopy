@@ -443,16 +443,8 @@ abstract class Screen : Activity() {
         return animate().scaleX(if (on) by else 1f).scaleY(if (on) by else 1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE)
     }
 
-    /** A persistent choice: its dot remains after remote focus moves. */
-    protected fun chip(label: String, selected: Boolean = false) = text(label, SMALL).apply {
-        select(label, selected)
-        isFocusable = true
-        gravity = Gravity.CENTER
-        minHeight = dp(CHIP_H)
-        setPadding(dp(16), 0, dp(16), 0)
-        background = outline(false)
-        setOnFocusChangeListener { v, has -> v.background = outline(has); v.grow(has, CHIP_GROW).start() }
-    }
+    /** A small choice or quiet action: a [tab] in small type. [selected] keeps its line after the remote moves on. */
+    protected fun chip(label: String, selected: Boolean = false) = tab(label, selected, SMALL).apply { minHeight = dp(CHIP_H) }
 
     /**
      * A choice among a few, as the top bar's pages: a name with no box. The open one is bright over a tungsten line; the
@@ -480,14 +472,6 @@ abstract class Screen : Activity() {
             setLayerHeight(0, dp(2))
             setLayerInsetLeft(0, dp(TAB_PAD))
             setLayerInsetRight(0, dp(TAB_PAD))
-        }
-    }
-
-    /** A [chip]'s open state: the tungsten dot and full-strength words. */
-    protected fun TextView.select(label: String, selected: Boolean) {
-        setTextColor(if (selected) TEXT else TEXT_2)
-        text = if (!selected) label else android.text.SpannableString("\u25AA  $label").apply {
-            setSpan(android.text.style.ForegroundColorSpan(TUNGSTEN), 0, 1, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
 
@@ -1029,7 +1013,6 @@ abstract class Screen : Activity() {
         const val TAB_PAD = 14 // dp either side of a tab's name, and its line's inset
         const val TAB_H = 38 // dp, as the top bar's tabs
         const val CARD_GROW = 1.08f
-        const val CHIP_GROW = 1.04f // a wide chip grown as much as a card filled the gap to its neighbour
         const val CARD_LIFT = 8
         // Spacing, everywhere rows of pictures appear: between cards, from a row's heading to its cards (plus room for
         // the focused card to grow), and above a heading, so each heading belongs to the row under it.
