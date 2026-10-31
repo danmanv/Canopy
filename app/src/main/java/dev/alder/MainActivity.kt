@@ -64,9 +64,6 @@ internal fun catalogGenres(names: List<String>): List<String> {
         }.thenBy { it })
 }
 
-internal fun settledGenres(names: List<String>, results: Map<String, Boolean>): List<String>? =
-    if (names.any { it !in results }) null else names.filter { results[it] == true }
-
 /**
  * A row's short name: personal picks are "For you", charts "Popular", and a long themed name ("Short & Sweet
  * Adventure") keeps only the [genres] it names, so it can merge with that genre's row.
@@ -249,6 +246,7 @@ class MainActivity : Screen() {
     private val metaPool = Images.newestFirst(6)
     private var generation = 0 // which showPage answers belong to: late ones from an earlier page are dropped
     private var loadMoreSections: (() -> Unit)? = null
+    private var loadSection: ((String) -> Unit)? = null // builds the page down to a genre chip's row
     private var touched = false // a key was pressed since the page opened: fresh data then waits for the next visit
     private var cinemaReady = false // the cinema's title has its art and logo (or gave up waiting) and may show
     private var cinemaToken = Any()
@@ -1112,6 +1110,7 @@ class MainActivity : Screen() {
         listHint.visibility = if (grid) View.VISIBLE else View.GONE
         val g = ++generation
         loadMoreSections = null
+        loadSection = null
         val opened = android.os.SystemClock.uptimeMillis()
         refreshLibrary = null
         redrawContinue = null
@@ -1240,11 +1239,11 @@ class MainActivity : Screen() {
             }
             val genres = catalogGenres(catalogs.flatMap { it.genres })
             val sections = sections(p, shelves)
-            val genreNames = (if (p.isCatalog) sections.take(nextCatalogSection(sections.size, 0)).map { it.first }.filter { name -> genres.any { it.equals(name, true) } }
+            // Every genre row gets its chip at once, though the rows near the end are only made as the page scrolls.
+            val genreNames = (if (p.isCatalog) sections.map { it.first }.filter { name -> genres.any { it.equals(name, true) } }
                 else emptyList()).toMutableList()
-            val genreResults = mutableMapOf<String, Boolean>()
-            if (p.isCatalog && genreNames.isEmpty()) {
-                showGenreChips(emptyList())
+            if (p.isCatalog) {
+                showGenreChips(genreNames)
                 genreStrip.visibility = View.VISIBLE
             }
             // Keep request and view work bounded even when an account has many catalogs.
@@ -1252,7 +1251,6 @@ class MainActivity : Screen() {
             fun buildSection(i: Int) {
                 val section = sections[i]
                 val (title, sources, picked) = section
-                if (p.isCatalog && genres.any { it.equals(title, true) } && title !in genreNames) genreNames += title
                 val rowCatalogs = sources.map { it.first }
                 val slot = slot()
                 val key = catalogAnswerKey(p.label, title, picked, rowCatalogs.map { c ->
@@ -1273,17 +1271,12 @@ class MainActivity : Screen() {
                         batchPending--
                         if (batchPending == 0) main.post { loadMoreSections?.invoke() }
                     }
-                    if (completed == rowCatalogs.size && title in genreNames) {
-                        genreResults[title] = items.isNotEmpty()
-                        // Resolve empty rows before showing chips; off-screen row views arrive later.
-                        settledGenres(genreNames, genreResults)?.let { ready ->
-                            showGenreChips(ready)
-                            rows.firstOrNull { row -> currentFocus?.let { isInside(it, row.view) } == true }
-                                ?.title?.let(::markChip)
-                            genreStrip.alpha = 0f
-                            genreStrip.visibility = View.VISIBLE
-                            genreStrip.animate().alpha(1f).setDuration(180).start()
-                        }
+                    // A genre row that came back empty loses its chip.
+                    if (completed == rowCatalogs.size && items.isEmpty() && genreNames.remove(title)) {
+                        if (jumpTo == title) jumpTo = null
+                        showGenreChips(genreNames)
+                        rows.firstOrNull { row -> currentFocus?.let { isInside(it, row.view) } == true }
+                            ?.title?.let(::markChip)
                     }
                     // The rest of the first page first, then the addon's next pages when it takes `skip`.
                     // shortcut: genre rows use each source's first page; add genre-aware paging if those rows feel short.
@@ -1386,6 +1379,14 @@ class MainActivity : Screen() {
                     nextSection = end
                 }
             }
+            loadSection = { name ->
+                val index = sections.indexOfFirst { it.first == name }
+                if (g == generation && index >= nextSection) {
+                    batchPending += index + 1 - nextSection
+                    for (i in nextSection..index) buildSection(i)
+                    nextSection = index + 1
+                }
+            }
         }
         if (quick) background({ Stremio.savedAddons(key) }) { r -> r.getOrNull()?.let(::build) }
         // Every page asks Stremio for the add-on list once as it opens (and again when Canopy comes back to the front), and
@@ -1463,7 +1464,8 @@ class MainActivity : Screen() {
                 setOnClickListener {
                     val target = if (value == null) firstRow() else rows.firstOrNull { it.title == value && it.view.isAttachedToWindow }
                     // Rows far down the page are still being made: the remote goes there as soon as it's in.
-                    if (target != null) target.focusFirst() else jumpTo = value
+                    if (target != null) target.focusFirst()
+                    else if (value != null) { jumpTo = value; loadSection?.invoke(value) }
                 }
             }
             genreChips[value] = control
