@@ -753,7 +753,7 @@ class ProfilesActivity : Screen() {
     }
 
     private companion object {
-        const val PORTRAIT_R = 0 // dp: portraits are sharp squares
+        const val PORTRAIT_R = 6 // dp: portraits are soft squares
         const val LIFT_ROOM = 8 // dp above the portraits for the focused one's 10% lift and ring
         const val KEY_H = 25 // dp a key row on the name step, so Continue fits under the colours
     }

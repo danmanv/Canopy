@@ -997,7 +997,7 @@ abstract class Screen : Activity() {
         const val FROST_W = 360 // px the art is shrunk to before the blur: wider is less blur (240 read as fog, 480 as smeared)
         const val HERO_W = 520 // dp: a title's block on Home and its page, half the screen so the story reads in full lines
         const val BUTTON_H = 38 // TV-sized: Play and the squares beside it
-        const val BUTTON_R = 0 // dp: buttons and chips are sharp rectangles
+        const val BUTTON_R = 6 // dp: buttons and chips are soft rectangles
         const val SHORT_LIST = 5 // "What's new" entries shown before See all changes
         const val WHATS_NEW_W = 480 // dp
         const val CHIP_H = 24 // the mocks' 46–48 px chips
