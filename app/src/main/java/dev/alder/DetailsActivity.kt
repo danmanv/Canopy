@@ -339,24 +339,16 @@ class DetailsActivity : Screen() {
 
     // ---------- glass and episode guide ----------
 
-    private fun glassPane() = FrameLayout(this).apply {
-        background = glassOver(this, 14, shade = PANE_SHADE)
-        clipToOutline = true
-        outlineProvider = object : android.view.ViewOutlineProvider() {
-            override fun getOutline(view: View, outline: android.graphics.Outline) =
-                outline.setRect(0, 0, view.width, view.height)
-        }
-    }
-
     private fun buildGuide(videos: List<Video>) {
         guideFor = videos.map { it.id }
         if (::guide.isInitialized) root.removeView(guide)
         guideOpen = false
         val x = dp(PAD)
-        val top = dp(128)
+        val top = dp(84)
         val width = resources.displayMetrics.widthPixels - x * 2
-        val height = resources.displayMetrics.heightPixels - top - dp(27)
-        guide = FrameLayout(this).apply { visibility = View.GONE }
+        val height = resources.displayMetrics.heightPixels - top
+        // A dark scrim over the art instead of a glass panel: the list reads on the page itself.
+        guide = FrameLayout(this).apply { visibility = View.GONE; setBackgroundColor(withAlpha(BASE, 0xD9)) }
         val smallLogo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START }
         guide.addView(smallLogo, FrameLayout.LayoutParams(dp(150), dp(42)).apply {
             leftMargin = x; topMargin = dp(27)
@@ -379,23 +371,23 @@ class DetailsActivity : Screen() {
             setPadding(room, room, room, room)
             clipToPadding = false
             addView(seasonStrip)
-        }, FrameLayout.LayoutParams(width + 2 * room, dp(32) + 2 * room).apply { leftMargin = x - room; topMargin = dp(88) - room })
+        }, FrameLayout.LayoutParams(width - dp(LOGO_W) + 2 * room, dp(32) + 2 * room).apply {
+            // Seasons sit on the logo's line, beside it.
+            leftMargin = x + dp(LOGO_W) - room; topMargin = dp(32) - room
+        })
 
-        val pane = glassPane()
         guideRows = column(Gravity.START)
-        // One full-width list: every episode carries its own still, facts and synopsis, so there's no preview panel.
-        pane.addView(ScrollView(this).apply {
+        // One full-width list: every episode carries its own still, facts, synopsis and progress.
+        val room2 = dp(6) // for the focused row's outline
+        guide.addView(ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
-            // The row past the panel's foot fades out instead of running into the edge.
+            // The row past the foot fades out instead of running into the edge.
             isVerticalFadingEdgeEnabled = true
             setFadingEdgeLength(dp(40))
+            setPadding(room2, room2, room2, room2)
+            clipToPadding = false
             addView(guideRows)
-        }, FrameLayout.LayoutParams(-1, height - dp(28)).apply {
-            leftMargin = dp(14); rightMargin = dp(14); topMargin = dp(14)
-        })
-        guide.addView(pane, FrameLayout.LayoutParams(width, height).apply {
-            leftMargin = x; topMargin = top
-        })
+        }, FrameLayout.LayoutParams(width + 2 * room2, height).apply { leftMargin = x - room2; topMargin = top })
         root.addView(guide, FrameLayout.LayoutParams(-1, -1))
         selectedSeason = playTarget(meta)?.second?.season ?: videos.first().season
         fillGuide()
@@ -424,6 +416,8 @@ class DetailsActivity : Screen() {
         episodeRows = videos.filter { it.season == selectedSeason }.map { video ->
             val seen = video.id in watched
             val row = LinearLayout(this).apply {
+                // Watched episodes step back.
+                alpha = if (seen) 0.7f else 1f
                 tag = video.id
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -437,8 +431,6 @@ class DetailsActivity : Screen() {
             val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = if (seen) 0.6f else 1f }
             still.addView(image, FrameLayout.LayoutParams(-1, -1))
             Images.load(video.thumbnail, image, dp(320), orElse = meta?.background)
-            if (started) still.addView(progressBar(resumeAt.toFloat() / duration),
-                FrameLayout.LayoutParams(-1, dp(3), Gravity.BOTTOM))
             row.addView(still, LinearLayout.LayoutParams(dp(144), dp(81)))
             val title = text("${video.episode}  ·  " + video.title.ifBlank { "Episode ${video.episode}" } + if (seen) "  ✓" else "",
                 BODY, bold = true, color = if (seen) TEXT_2 else TEXT).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
@@ -449,9 +441,16 @@ class DetailsActivity : Screen() {
                 maxLines = 2; ellipsize = TextUtils.TruncateAt.END
                 visibility = if (video.overview.isNullOrBlank()) View.GONE else View.VISIBLE
             }
-            row.addView(column(Gravity.START, title, facts.marginTop(2), about.marginTop(4)),
-                LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(16) })
-            row.rowFocus(9)
+            val words = column(Gravity.START, title, facts.marginTop(2), about.marginTop(4))
+            if (started) words.addView(progressBar(resumeAt.toFloat() / duration),
+                LinearLayout.LayoutParams(dp(300), dp(3)).apply { topMargin = dp(8) })
+            row.addView(words, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(16) })
+            row.isFocusable = true
+            row.setOnFocusChangeListener { v, has ->
+                v.background = if (!has) null else GradientDrawable().apply {
+                    setColor(0x14FFFFFF); setStroke(dp(2), TUNGSTEN); cornerRadius = dp(CORNER).toFloat()
+                }
+            }
             row.setOnClickListener {
                 val next = videos.getOrNull(videos.indexOf(video) + 1)?.id
                 openSources(video.id, startOver = false, next = next, label = "S${video.season} E${video.episode}")
@@ -721,7 +720,7 @@ class DetailsActivity : Screen() {
     }
 
     private companion object {
-        const val PANE_SHADE = 0.55f // the episode panel's frost, darkened to the mock's smoked glass
+        const val LOGO_W = 190 // dp: the guide's logo slot, with the season chips after it
         const val GUIDE_ART = 0.6f // the film's brightness behind the episode guide
         const val STARTED = 60_000L // ms watched before a title counts as started
         const val ICON_BUTTON = Screen.BUTTON_H // the small square buttons beside Play are as tall as Play
