@@ -17,12 +17,20 @@ object Profiles {
     val COLORS = intArrayOf(0xFFF3D9B1.toInt(), 0xFFC98E6A.toInt(), 0xFFA3949E.toInt(), 0xFFA6A2BD.toInt(), 0xFFD3A66B.toInt())
     private const val OLD_SAGE = 0xFF8FA39A.toInt()
 
+    // Read on nearly every key press (the active profile names each setting), so the list is parsed once per change of
+    // what's stored, and the one-off migration runs once per start: it copied every preference into a new map each call.
+    @Volatile private var migrated = false
+    @Volatile private var parsed: Pair<String, List<Profile>>? = null
+
     fun all(context: Context): List<Profile> {
         val prefs = prefs(context)
-        migrate(prefs)
-        return JSONArray(prefs.getString("profiles", "[]")).objects()
+        if (!migrated) { migrate(prefs); migrated = true }
+        val raw = prefs.getString("profiles", "[]") ?: "[]"
+        parsed?.takeIf { it.first == raw }?.let { return it.second }
+        return JSONArray(raw).objects()
             .map { Profile(it.getString("id"), it.getString("name"), it.getInt("color").let { c -> if (c == OLD_SAGE) COLORS[2] else c }.takeIf { c -> c in COLORS } ?: COLORS[0],
                 it.getString("authKey"), it.optString("pin").ifEmpty { null }) }
+            .also { parsed = raw to it }
     }
 
     /** The profile in use: the one picked last, or the only one there is. */

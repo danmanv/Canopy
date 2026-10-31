@@ -16,7 +16,6 @@ object Http {
         set(dir) {
             field = dir
             dir?.mkdirs()
-            trim()
         }
 
     /** Set once at start with the app's version. */
@@ -61,8 +60,8 @@ object Http {
         return File(dir, hash.joinToString("") { "%02x".format(it) })
     }
 
-    // ponytail: one pass at start, oldest first, down to 60 MB; an index would only matter for far bigger caches.
-    private fun trim() {
+    // ponytail: one pass at start (off the main thread), oldest first, down to 60 MB; an index would only matter for far bigger caches.
+    fun trim() {
         val files = saved?.listFiles()?.sortedBy { it.lastModified() } ?: return
         var total = files.sumOf { it.length() }
         for (f in files) {
