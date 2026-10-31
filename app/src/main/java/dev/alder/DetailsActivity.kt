@@ -203,9 +203,9 @@ class DetailsActivity : Screen() {
             // Held OK: every source, to choose one by hand.
             setOnLongClickListener { openSources(target(), startOver = false, pick = true); true }
         }
-        startOverButton = iconButton("↺", "Start over") { openSources(target(), startOver = true) }
-        infoButton = iconButton("ⓘ", "More information") { showInfo() }
-        listButton = iconButton("+", "My List") { toggleList() }
+        startOverButton = iconButton(R.drawable.ic_restart, "Start over") { openSources(target(), startOver = true) }
+        infoButton = iconButton(R.drawable.ic_info, "More information") { showInfo() }
+        listButton = iconButton(R.drawable.ic_add, "My List") { toggleList() }
         stack.addView(LinearLayout(this).apply {
             clipChildren = false
             addView(playButton, wrap().apply { marginEnd = dp(14) })
@@ -238,15 +238,26 @@ class DetailsActivity : Screen() {
         // Start over goes when there's nothing to start over; the remote moves to Play rather than into nothing.
         if (resumeAt <= 0 && startOverButton.hasFocus()) playButton.requestFocus()
         startOverButton.visibility = if (resumeAt > 0) View.VISIBLE else View.GONE
-        listButton.text = if (Library.inList(item)) "✓" else "+"
+        listButton.icon(if (Library.inList(item)) R.drawable.ic_check else R.drawable.ic_add)
     }
 
-    private fun iconButton(symbol: String, description: String, action: () -> Unit) = text(symbol, 18f).apply {
+    // Drawn icons, dead centre in their squares: the font's ↺, + and ⓘ sat off-centre, each by a different amount.
+    private fun iconButton(icon: Int, description: String, action: () -> Unit) = text("", 18f).apply {
         gravity = Gravity.CENTER
+        icon(icon)
         contentDescription = description
         rowFocus(16, rest = { glass(16) })
         setOnClickListener { action() }
         layoutParams = LinearLayout.LayoutParams(dp(32), dp(32))
+    }
+
+    private fun TextView.icon(res: Int) {
+        foreground = getDrawable(res)?.mutate()?.let { d ->
+            d.setTint(TEXT)
+            android.graphics.drawable.LayerDrawable(arrayOf(d)).apply {
+                setLayerSize(0, dp(18), dp(18)); setLayerGravity(0, Gravity.CENTER)
+            }
+        }
     }
 
     /** What Play opens: the episode Continue Watching points at, or the first episode, or the movie itself. */
@@ -263,7 +274,7 @@ class DetailsActivity : Screen() {
         val entry = item ?: Library.newItem(metaId, type, meta?.name ?: name, meta?.poster ?: poster)
         Library.setInList(entry, !Library.inList(item))
         item = entry
-        listButton.text = if (Library.inList(entry)) "✓" else "+"
+        listButton.icon(if (Library.inList(entry)) R.drawable.ic_check else R.drawable.ic_add)
         listButton.contentDescription = if (Library.inList(entry)) "Remove from My List" else "Add to My List"
         val snapshot = JSONObject(entry.toString())
         background({ Stremio.saveLibrary(key, listOf(snapshot)) }) {}
