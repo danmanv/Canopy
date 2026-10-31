@@ -43,11 +43,6 @@ class DetailsActivity : Screen() {
     private lateinit var guideRows: LinearLayout
     private lateinit var seasonStrip: LinearLayout
     private var seasonButtons = emptyMap<Int, TextView>()
-    private lateinit var previewImage: ImageView
-    private lateinit var previewTitle: TextView
-    private lateinit var previewFacts: TextView
-    private lateinit var previewAbout: TextView
-    private lateinit var previewProgress: FrameLayout
     private lateinit var similarOverlay: FrameLayout
     private var similarFirst: View? = null
     private lateinit var listButton: TextView
@@ -361,7 +356,6 @@ class DetailsActivity : Screen() {
         val top = dp(128)
         val width = resources.displayMetrics.widthPixels - x * 2
         val height = resources.displayMetrics.heightPixels - top - dp(27)
-        val largeText = resources.configuration.fontScale > 1.15f
         guide = FrameLayout(this).apply { visibility = View.GONE }
         val smallLogo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START }
         guide.addView(smallLogo, FrameLayout.LayoutParams(dp(150), dp(42)).apply {
@@ -389,47 +383,15 @@ class DetailsActivity : Screen() {
 
         val pane = glassPane()
         guideRows = column(Gravity.START)
+        // One full-width list: every episode carries its own still, facts and synopsis, so there's no preview panel.
         pane.addView(ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             // The row past the panel's foot fades out instead of running into the edge.
             isVerticalFadingEdgeEnabled = true
             setFadingEdgeLength(dp(40))
             addView(guideRows)
-        }, FrameLayout.LayoutParams(dp(380), height - dp(28)).apply {
-            leftMargin = dp(14); topMargin = dp(14)
-        })
-        val previewX = dp(414)
-        val previewWidth = width - previewX - dp(14)
-        previewImage = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = rounded(BASE, 8)
-            clipToOutline = true
-        }
-        pane.addView(previewImage, FrameLayout.LayoutParams(previewWidth, dp(226)).apply {
-            leftMargin = previewX; topMargin = dp(14)
-        })
-        previewProgress = FrameLayout(this)
-        pane.addView(previewProgress, FrameLayout.LayoutParams(previewWidth - dp(20), dp(3)).apply {
-            leftMargin = previewX + dp(10); topMargin = dp(229)
-        })
-        previewTitle = text("", 22f, serif = true).onArt().apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-        }
-        pane.addView(previewTitle, FrameLayout.LayoutParams(previewWidth, -2).apply {
-            leftMargin = previewX; topMargin = dp(251)
-        })
-        previewFacts = text("", SMALL, color = TEXT_2).onArt().apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-        }
-        pane.addView(previewFacts, FrameLayout.LayoutParams(previewWidth, -2).apply {
-            leftMargin = previewX; topMargin = dp(if (largeText) 285 else 280)
-        })
-        previewAbout = text("", SMALL, color = TEXT).onArt().apply {
-            maxLines = if (largeText) 2 else 3
-            ellipsize = TextUtils.TruncateAt.END
-        }
-        pane.addView(previewAbout, FrameLayout.LayoutParams(previewWidth, -2).apply {
-            leftMargin = previewX; topMargin = dp(if (largeText) 313 else 304)
+        }, FrameLayout.LayoutParams(-1, height - dp(28)).apply {
+            leftMargin = dp(14); rightMargin = dp(14); topMargin = dp(14)
         })
         guide.addView(pane, FrameLayout.LayoutParams(width, height).apply {
             leftMargin = x; topMargin = top
@@ -459,31 +421,37 @@ class DetailsActivity : Screen() {
         }
         guideRows.removeAllViews()
         val watched = Library.watched(item, videos)
-        val currentId = playTarget(meta)?.first
         episodeRows = videos.filter { it.season == selectedSeason }.map { video ->
-            val row = FrameLayout(this).apply { tag = video.id }
-            val number = text("%02d".format(video.episode), BODY, color = TEXT_3)
-            row.addView(number, FrameLayout.LayoutParams(dp(32), -2, Gravity.CENTER_VERTICAL).apply {
-                leftMargin = dp(12)
-            })
+            val seen = video.id in watched
+            val row = LinearLayout(this).apply {
+                tag = video.id
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+            }
             val resumeAt = item?.let { Library.resumeAt(it, video.id) } ?: 0L
             val duration = item?.optJSONObject("state")?.takeIf { it.text("video_id") == video.id }
                 ?.optLong("duration") ?: 0L
-            val status = when {
-                video.id in watched -> "✓"
-                resumeAt > 0 && duration > resumeAt -> "${(duration - resumeAt) / 60_000} min left"
-                else -> meta?.runtime.orEmpty()
+            val started = resumeAt > 0 && duration > resumeAt
+            // The still, with how far in you are along its foot.
+            val still = FrameLayout(this).apply { background = rounded(BASE, 6); clipToOutline = true }
+            val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = if (seen) 0.6f else 1f }
+            still.addView(image, FrameLayout.LayoutParams(-1, -1))
+            Images.load(video.thumbnail, image, dp(320), orElse = meta?.background)
+            if (started) still.addView(progressBar(resumeAt.toFloat() / duration),
+                FrameLayout.LayoutParams(-1, dp(3), Gravity.BOTTOM))
+            row.addView(still, LinearLayout.LayoutParams(dp(144), dp(81)))
+            val title = text("${video.episode}  ·  " + video.title.ifBlank { "Episode ${video.episode}" } + if (seen) "  ✓" else "",
+                BODY, bold = true, color = if (seen) TEXT_2 else TEXT).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+            val facts = text(listOfNotNull(meta?.runtime?.takeIf { it.isNotBlank() }, episodeDate(video.released),
+                if (started) "${(duration - resumeAt) / 60_000} min left" else null).joinToString(DOT),
+                SMALL, color = if (started) TUNGSTEN else TEXT_2).apply { maxLines = 1 }
+            val about = text(video.overview.orEmpty(), SMALL, color = TEXT_2).apply {
+                maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+                visibility = if (video.overview.isNullOrBlank()) View.GONE else View.VISIBLE
             }
-            row.addView(text(video.title.ifBlank { "Episode ${video.episode}" }, BODY,
-                color = if (video.id in watched) TEXT_2 else TEXT).apply {
-                maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-            }, FrameLayout.LayoutParams(dp(225), -2, Gravity.CENTER_VERTICAL).apply { leftMargin = dp(46) })
-            if (status.isNotEmpty()) row.addView(text(status, SMALL,
-                color = if (video.id in watched) TUNGSTEN else TEXT_2).apply { gravity = Gravity.END },
-                FrameLayout.LayoutParams(dp(98), -2, Gravity.CENTER_VERTICAL or Gravity.END).apply {
-                    rightMargin = dp(12)
-                })
-            row.rowFocus(9) { focused -> if (focused) updatePreview(video) }
+            row.addView(column(Gravity.START, title, facts.marginTop(2), about.marginTop(4)),
+                LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(16) })
+            row.rowFocus(9)
             row.setOnClickListener {
                 val next = videos.getOrNull(videos.indexOf(video) + 1)?.id
                 openSources(video.id, startOver = false, next = next, label = "S${video.season} E${video.episode}")
@@ -494,27 +462,8 @@ class DetailsActivity : Screen() {
                     label = "S${video.season} E${video.episode}", pick = true)
                 true
             }
-            guideRows.addView(row, LinearLayout.LayoutParams(-1, dp(45)))
+            guideRows.addView(row, LinearLayout.LayoutParams(-1, -2))
             row
-        }
-        videos.firstOrNull { it.id == currentId && it.season == selectedSeason }?.let(::updatePreview)
-            ?: videos.firstOrNull { it.season == selectedSeason }?.let(::updatePreview)
-    }
-
-    private fun updatePreview(video: Video) {
-        Images.load(video.thumbnail, previewImage, dp(870), orElse = meta?.background)
-        previewTitle.text = video.title.ifBlank { "Episode ${video.episode}" }
-        previewFacts.text = listOfNotNull("S${video.season} E${video.episode}", meta?.runtime,
-            episodeDate(video.released)).joinToString(DOT)
-        previewAbout.text = video.overview.orEmpty()
-        previewAbout.visibility = if (video.overview.isNullOrBlank()) View.GONE else View.VISIBLE
-        previewProgress.removeAllViews()
-        val state = item?.optJSONObject("state")?.takeIf { it.text("video_id") == video.id }
-        val resumeAt = item?.let { Library.resumeAt(it, video.id) } ?: 0L
-        val duration = state?.optLong("duration") ?: 0L
-        if (resumeAt > 0 && duration > resumeAt) {
-            previewProgress.addView(progressBar(resumeAt.toFloat() / duration),
-                FrameLayout.LayoutParams(-1, -1))
         }
     }
 
