@@ -1814,7 +1814,7 @@ class MainActivity : Screen() {
                     if (loaded) card.load()
                 }
                 // The slide was clamped to the row's old end; with more cards in, the focused one can reach the start.
-                if (active && !grid) strip.post { if (active) { focus(selected); placeCaption() } }
+                if (active && !grid) strip.post { if (active) focus(selected) }
             }
         }
 
