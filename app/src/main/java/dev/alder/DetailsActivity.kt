@@ -180,7 +180,7 @@ class DetailsActivity : Screen() {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
             m.rating?.let { rating ->
-                factRow.addView(text("·", SMALL, color = TEXT_2), wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
+                factRow.addView(text("·", SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
                 factRow.addView(imdbTag()) // the same size as the words beside it
                 factRow.addView(text(rating, SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(6) })
             }
@@ -545,8 +545,9 @@ class DetailsActivity : Screen() {
     }
 
     /**
-     * The whole story, in the title page's place and layout: name, facts, then the description, which scrolls with the
-     * remote when it's long. Back returns to the title; there's nothing else to press.
+     * The whole story, in the title page's place and layout: the title's logo (its name when there's none), the facts,
+     * then the story, which scrolls with the remote when it's long, and who's in it and who made it. Back returns to the
+     * title; there's nothing else to press.
      */
     private fun showInfo() {
         val m = meta ?: return
@@ -554,12 +555,21 @@ class DetailsActivity : Screen() {
         infoOpen = true
         hero.visibility = View.INVISIBLE
         infoOverlay = FrameLayout(this)
+        // Darker and wider than the title page's shade, and from the foot too: this page is mostly reading, and the
+        // words sat on busy art.
         infoOverlay.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(0xC9000808.toInt(), 0x99000808.toInt(), 0x00000000))
-        }, FrameLayout.LayoutParams(resources.displayMetrics.widthPixels * 3 / 5, -1))
+                intArrayOf(0xF0000808.toInt(), 0xD9000808.toInt(), 0x66000808, 0x00000000))
+        }, FrameLayout.LayoutParams(resources.displayMetrics.widthPixels * 3 / 4, -1))
+        infoOverlay.addView(View(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC000808.toInt(), 0x00000000))
+        }, FrameLayout.LayoutParams(-1, resources.displayMetrics.heightPixels / 2, Gravity.BOTTOM))
         val facts = listOfNotNull(m.year, m.runtime,
-            m.genres.take(2).joinToString(" / ").ifEmpty { null }, m.rating?.let { "IMDb $it" }).joinToString(DOT)
+            m.genres.take(3).joinToString(" / ").ifEmpty { null }, m.rating?.let { "IMDb $it" }).joinToString(DOT)
+        fun people(label: String, names: List<String>, max: Int) = column(Gravity.START,
+            caps(label, TEXT_2).onArt(),
+            text(names.take(max).joinToString(DOT), BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }.marginTop(6),
+        ).marginTop(20)
         val story = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             isFocusable = true // takes the remote, so Up and Down scroll a long story
@@ -567,21 +577,29 @@ class DetailsActivity : Screen() {
                 m.description?.takeIf { it.isNotBlank() }?.let {
                     addView(text(it, BODY, color = TEXT).onArt())
                 }
-                if (m.cast.isNotEmpty()) {
-                    addView(caps("Cast", TEXT_2).onArt(), wrap().apply { topMargin = dp(18) })
-                    addView(text(m.cast.take(12).joinToString("  ·  "), BODY).onArt(),
-                        wrap().apply { topMargin = dp(6) })
-                }
+                if (m.cast.isNotEmpty()) addView(people("Starring", m.cast, 8))
+                if (m.directors.isNotEmpty()) addView(people(if (m.directors.size > 1) "Directors" else "Director", m.directors, 3))
             })
         }
+        // The logo, as on the title page; the name in words until it arrives, or when there's none.
+        val name = text(m.name, SERIF_TITLE, bold = true, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+        val logo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START; visibility = View.GONE }
+        val titleArea = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(-1, -2)
+            addView(name, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+            addView(logo, FrameLayout.LayoutParams(dp(300), dp(90), Gravity.BOTTOM or Gravity.START))
+        }
+        Images.load(m.logo ?: Images.logoFor(m.id), logo, dp(600), urgent = true, failed = {}) {
+            name.visibility = View.GONE; logo.visibility = View.VISIBLE
+        }
         infoOverlay.addView(column(Gravity.START,
-            text(m.name, SERIF_TITLE, bold = true, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END },
-            text(facts, SMALL, color = TEXT).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }.marginTop(6),
+            titleArea,
+            text(facts, SMALL, color = TEXT).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }.marginTop(12),
             text("The story", SMALL, bold = true, color = TEXT).onArt().marginTop(SECTION_GAP),
         ).apply {
-            addView(story, LinearLayout.LayoutParams(-1, dp(180)).apply { topMargin = dp(8) })
-        }, FrameLayout.LayoutParams(dp(HERO_W), -2, Gravity.BOTTOM or Gravity.START).apply {
-            leftMargin = dp(PAD); bottomMargin = dp(96)
+            addView(story, LinearLayout.LayoutParams(-1, dp(260)).apply { topMargin = dp(8) })
+        }, FrameLayout.LayoutParams(dp(HERO_W + 120), -2, Gravity.BOTTOM or Gravity.START).apply {
+            leftMargin = dp(PAD); bottomMargin = dp(72)
         })
         root.addView(infoOverlay, FrameLayout.LayoutParams(-1, -1))
         story.requestFocus()

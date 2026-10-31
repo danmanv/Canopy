@@ -204,7 +204,11 @@ class Meta(json: JSONObject) {
     val runtime = json.text("runtime")?.let(::runtime)
     val rating = json.text("imdbRating")
     val genres = json.optJSONArray("genres").strings().take(3)
-    val cast = json.optJSONArray("cast").strings()
+    // Newer Cinemeta answers drop "cast" and "director" and list people only as links ("Cast", "Directors").
+    private val people = json.optJSONArray("links").objects()
+    private fun linked(category: String) = people.filter { it.optString("category") == category }.mapNotNull { it.text("name") }
+    val cast = json.optJSONArray("cast").strings().ifEmpty { linked("Cast") }
+    val directors = json.optJSONArray("director").strings().ifEmpty { linked("Directors") }
     /** The trailer's YouTube id: Cinemeta sends `trailerStreams` (ytId), older add-ons `trailers` (source), trailers first. */
     val trailer = (json.optJSONArray("trailerStreams").objects().map { it.text("ytId") } +
         json.optJSONArray("trailers").objects().sortedBy { if (it.optString("type", "Trailer") == "Trailer") 0 else 1 }.map { it.text("source") })
