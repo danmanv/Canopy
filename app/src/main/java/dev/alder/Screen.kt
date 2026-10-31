@@ -1044,7 +1044,7 @@ abstract class Screen : Activity() {
         val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)
         const val GLASS_HIGHLIGHT = 0x4DF0F6FF
         const val ROW_FOCUSED = 0x1FFFFFFF // Light line: the faint wash a focused row starts with
-        const val CORNER = 0 // dp: nothing in Canopy is rounded. Sharp rectangles only, no capsules or circles.
+        const val CORNER = 6 // dp: soft corners everywhere, capped here so nothing becomes a capsule or circle.
         const val PROGRESS_TRACK = 0x4DFFFFFF // light enough that a short fill still reads as a bar, not a dash
         private val pool = Executors.newFixedThreadPool(6)
     }
