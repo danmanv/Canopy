@@ -141,6 +141,7 @@ class SettingsActivity : Screen() {
     private enum class Group(val label: String, val icon: Int = 0, val glyph: String = "") {
         STREAMS("Streams", R.drawable.ic_play),
         HOME("Home", R.drawable.ic_home),
+        THEME("Theme", glyph = "◐"),
         PICTURE("Picture & Sound", R.drawable.ic_tv),
         SUBTITLES("Subtitles", R.drawable.ic_subtitles),
         ADDONS("Add-ons", R.drawable.ic_layers),
@@ -267,8 +268,9 @@ class SettingsActivity : Screen() {
         window.setBackgroundDrawable(null)
         setContentView(root)
         profileName.text = Profiles.active(this)?.name.orEmpty()
-        showGroup(Group.STREAMS)
-        groupViews[Group.STREAMS]?.post { groupViews[Group.STREAMS]?.requestFocus() }
+        val start = intent.getStringExtra(OPEN_GROUP)?.let { name -> Group.entries.firstOrNull { it.name == name } } ?: Group.STREAMS
+        showGroup(start)
+        groupViews[start]?.post { groupViews[start]?.requestFocus() }
     }
 
     override fun onResume() {
@@ -351,6 +353,7 @@ class SettingsActivity : Screen() {
         addonValue = null
         hint.text = when (group) {
             Group.STREAMS -> "Choose how Canopy finds and starts a source."
+            Group.THEME -> "Colours for Canopy on this TV. The whole app changes as soon as you pick one."
             Group.HOME -> "Choose Home's rows and their order. Hold OK on a title in Continue Watching to pin it to Tonight."
             Group.PICTURE -> "Choose the picture and sound this TV can play."
             Group.SUBTITLES -> "Set how subtitles start and appear."
@@ -387,6 +390,7 @@ class SettingsActivity : Screen() {
                 }
             }
             Group.HOME -> homeRows(homeFocus.also { homeFocus = null })
+            Group.THEME -> Theme.all.forEach(::themeRow)
             Group.PICTURE -> {
                 pictureAndSound.forEach(::choiceRow)
                 languageRow("audioLang", "Audio language", "The dub to start with when a file has several. Changeable while watching.")
@@ -551,10 +555,7 @@ class SettingsActivity : Screen() {
         val line = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(text(label, ROW_SP, bold = true), LinearLayout.LayoutParams(-2, -2))
-            if (perProfile) addView(text("THIS PROFILE", 8f, color = TUNGSTEN).apply {
-                setPadding(dp(5), dp(2), dp(5), dp(2))
-                background = glass(6)
-            }, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+            if (perProfile) addView(badge("THIS PROFILE", filled = false), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
             addView(View(this@SettingsActivity), LinearLayout.LayoutParams(0, 1, 1f))
             addView(value, LinearLayout.LayoutParams(-2, -2))
             setPadding(dp(16), 0, dp(16), 0)
@@ -596,6 +597,21 @@ class SettingsActivity : Screen() {
                 }) { choose("Couldn't put it back", listOf("OK"), "Check the connection and try again.") {} }
             }
         }
+    }
+
+    /** One colour scheme: its name, a swatch of its two colours, and "In use" on the one that is. */
+    private fun themeRow(theme: Theme) {
+        val display = actionRow(theme.name, if (theme === Theme.now) "In use" else "", "Pick to switch the whole app to ${theme.name}.") {
+            if (theme === Theme.now) return@actionRow
+            Theme.choose(this, theme)
+            intent.putExtra(OPEN_GROUP, Group.THEME.name)
+            recreate()
+        }
+        display.setCompoundDrawablesRelative(GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(theme.accent, theme.second)).apply {
+            cornerRadius = dp(2).toFloat(); setBounds(0, 0, dp(36), dp(14))
+        }, null, null, null)
+        display.compoundDrawablePadding = dp(12)
+        display.gravity = Gravity.CENTER_VERTICAL
     }
 
     private fun actionRow(label: String, value: String, help: String, click: () -> Unit): TextView {
@@ -711,6 +727,7 @@ class SettingsActivity : Screen() {
     }
 
     private companion object {
+        const val OPEN_GROUP = "group"
         const val GROUP_SP = 17f // a section's name
         const val GROUP_H = 40 // dp
         const val ROW_SP = 15.5f // a setting's name and value

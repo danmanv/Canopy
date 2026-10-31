@@ -6,7 +6,6 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.os.Build
-import android.widget.Toast
 import org.json.JSONObject
 import java.net.URL
 
@@ -106,12 +105,12 @@ object Updates {
                 // Only a one-time uninstall fixes that; the plain "couldn't install" left no way forward.
                 PackageInstaller.STATUS_FAILURE_CONFLICT -> {
                     android.util.Log.w("Canopy", "update conflicts: ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
-                    Toast.makeText(c, "This update is signed with a different key. Uninstall Canopy once, then install " +
-                        "Canopy.apk from github.com/danmanv/Canopy/releases.", Toast.LENGTH_LONG).show()
+                    Screen.notice(c, "This update is signed with a different key",
+                        "Uninstall Canopy once, then install Canopy.apk from github.com/danmanv/Canopy/releases.")
                 }
                 else -> {
                     android.util.Log.w("Canopy", "update install failed: $status ${intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE)}")
-                    Toast.makeText(c, "Couldn't install the update", Toast.LENGTH_LONG).show()
+                    Screen.notice(c, "Couldn't install the update", "Try again from Settings › About.")
                 }
             }
         }

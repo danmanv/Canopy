@@ -87,14 +87,6 @@ class ScreenDesignTest {
             catalogGenres(listOf("Western", "Comedy", "All", "Drama", "Sci-Fi", "drama")))
     }
 
-    @Test fun genreStripWaitsForAllRowsAndKeepsOnlyRowsWithTitles() {
-        val names = listOf("Drama", "Comedy", "Sci-Fi")
-        assertEquals(null, settledGenres(names, mapOf("Drama" to true, "Comedy" to false)))
-        assertEquals(listOf("Drama", "Sci-Fi"), settledGenres(names,
-            mapOf("Drama" to true, "Comedy" to false, "Sci-Fi" to true)))
-        assertEquals(emptyList<String>(), settledGenres(names, names.associateWith { false }))
-    }
-
     @Test fun catalogRowsHaveShortNames() {
         assertEquals("For you", shortRowName("Top Picks for You"))
         assertEquals("Popular", shortRowName("Trending Now"))

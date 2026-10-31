@@ -88,9 +88,7 @@ class StreamsActivity : Screen() {
         }
         val help = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            addView(text("OK", 9f, bold = true, color = BASE).apply {
-                background = rounded(TUNGSTEN, 3); includeFontPadding = false; setPadding(dp(4), dp(1), dp(4), dp(1))
-            })
+            addView(badge("OK"))
             val preset = presetName()
             val line = "  Play this source  ·  Best match follows your stream settings: $preset."
             addView(text("", SMALL, color = TEXT_2).onArt().apply {
@@ -107,7 +105,7 @@ class StreamsActivity : Screen() {
         val still = intent.getStringExtra("still")
         val backArt = intent.getStringExtra("background") ?: intent.getStringExtra("poster")
         Images.load(still ?: backArt, art, resources.displayMetrics.widthPixels, orElse = backArt.takeIf { still != null }) {
-            art.animate().alpha(1f).setDuration(250).start()
+            art.animate().alpha(1f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).start()
             refrost()
         }
         val list = FrameLayout(this).apply {
@@ -115,7 +113,7 @@ class StreamsActivity : Screen() {
             addView(art, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(0xB3070B16.toInt(), 0x73070B16, 0x59070B16))
+                    intArrayOf(baseAt(0xB3), baseAt(0x73), baseAt(0x59)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -366,23 +364,13 @@ class StreamsActivity : Screen() {
     private fun streamRow(s: Stream, addon: String, best: Boolean): View {
         val quality = text(if (s.height > 0) "${s.height}p" else "Auto", BODY, bold = true).onArt()
         val detail = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        if (best) detail.addView(text("BEST MATCH", 9f, bold = true, color = BASE).apply {
-            letterSpacing = 0.04f
-            background = rounded(TUNGSTEN, 3)
-            setPadding(dp(5), dp(2), dp(5), dp(2))
-        }, wrap().apply { marginEnd = dp(7) })
+        if (best) detail.addView(badge("BEST MATCH"), wrap().apply { marginEnd = dp(7) })
         detail.addView(text(sourceSummary(s), BODY, bold = true, color = TEXT_2).onArt().apply {
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END; maxWidth = dp(if (best) 145 else 170)
         }, wrap().apply { marginEnd = dp(6) })
         // The debrid service first ("RD ⚡": cached on Real-Debrid, starts at once), then the release's own tags.
         (listOfNotNull(s.debrid?.tag) + s.tags.filter { it !in listOf("BluRay", "WEB") }.take(if (best) 1 else 2)).forEach { tag ->
-            detail.addView(text(tag.uppercase(), 9f, bold = true, color = TUNGSTEN).apply {
-                letterSpacing = 0.03f
-                background = GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT); cornerRadius = dp(3).toFloat(); setStroke(dp(1), 0x807CF2D0.toInt())
-                }
-                setPadding(dp(4), dp(1), dp(4), dp(1))
-            }, wrap().apply { marginEnd = dp(5) })
+            detail.addView(badge(tag.uppercase(), filled = false), wrap().apply { marginEnd = dp(5) })
         }
         val provider = s.title.lineSequence().firstOrNull().orEmpty().substringBefore('(')
             .replace(Regex("^\\[[^]]+]\\s*"), "").trim().takeIf { it.isNotBlank() && !it.matches(Regex("\\d+p")) } ?: addon
