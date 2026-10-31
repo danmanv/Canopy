@@ -322,7 +322,6 @@ class PlayerActivity : Screen() {
             }
 
             override fun onTracksChanged(tracks: Tracks) {
-                trackStatus.text = trackStatus(tracks)
                 if (selectAddonSub) tracks.groups.firstOrNull(::isAddonSub)?.let { g ->
                     selectAddonSub = false
                     player.trackSelectionParameters = player.trackSelectionParameters.buildUpon().setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
@@ -896,7 +895,7 @@ class PlayerActivity : Screen() {
     private lateinit var length: TextView
     private lateinit var playPause: TextView
     private lateinit var audioButton: TextView
-    private lateinit var trackStatus: TextView // "English  ·  Spanish subtitles", under the bar whenever the controls are up
+    private lateinit var endsAt: TextView // "  ·  Ends 11:20 AM" beside the clock, top right
     private lateinit var nextCell: FrameLayout
     private lateinit var startOverCell: FrameLayout
     private lateinit var playerLogo: ImageView
@@ -931,7 +930,7 @@ class PlayerActivity : Screen() {
             addView(pauseFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         }
 
-        trackStatus = text("", SMALL, color = TEXT_2).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        endsAt = text("", SMALL, color = TEXT).onArt().apply { maxLines = 1 }
         elapsed = text("", SMALL).onArt()
         length = text("", SMALL).onArt()
         bar = SeekBar(this).apply {
@@ -1007,9 +1006,14 @@ class PlayerActivity : Screen() {
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
                 leftMargin = dp(PAD); topMargin = dp(31)
             })
-            addView(TextClock(this@PlayerActivity).apply {
-                format12Hour = "h:mm a"; format24Hour = "HH:mm"
-                textSize = SMALL; setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+            // The time now, then when this finishes if it played straight through from here.
+            addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextClock(this@PlayerActivity).apply {
+                    format12Hour = "h:mm a"; format24Hour = "HH:mm"
+                    textSize = SMALL; setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+                })
+                addView(endsAt)
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
                 topMargin = dp(34); rightMargin = dp(PAD)
             })
@@ -1019,12 +1023,7 @@ class PlayerActivity : Screen() {
                 orientation = LinearLayout.VERTICAL
                 clipChildren = false
                 clipToPadding = false
-                addView(LinearLayout(context).apply {
-                    gravity = Gravity.BOTTOM
-                    addView(pauseInfo, LinearLayout.LayoutParams(0, -2, 1f))
-                    trackStatus.gravity = Gravity.END
-                    addView(trackStatus, LinearLayout.LayoutParams(dp(300), -2).apply { marginStart = dp(16) })
-                }, LinearLayout.LayoutParams(-1, -2))
+                addView(pauseInfo, LinearLayout.LayoutParams(-1, -2))
                 addView(bar, LinearLayout.LayoutParams(-1, dp(26)).apply { topMargin = dp(14) })
                 addView(LinearLayout(context).apply {
                     addView(elapsed)
@@ -1141,9 +1140,9 @@ class PlayerActivity : Screen() {
         }
         val remaining = (duration - position).coerceAtLeast(0)
         val end = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(System.currentTimeMillis() + remaining))
+        endsAt.text = if (live || duration <= 0) "" else "${DOT}Ends $end"
         pauseFacts.text = listOfNotNull(subtitle.text.toString().takeIf { it.isNotBlank() },
-            if (live || duration <= 0) null else runtime("${(remaining / 60_000).coerceAtLeast(1)} min") + " left",
-            if (live || duration <= 0) null else "Ends $end").joinToString(DOT)
+            if (live || duration <= 0) null else runtime("${(remaining / 60_000).coerceAtLeast(1)} min") + " left").joinToString(DOT)
         main.postDelayed(progressTask, 500)
     }
 
@@ -1326,18 +1325,6 @@ class PlayerActivity : Screen() {
     private fun closeOptions() {
         options.visibility = View.GONE
         showControls(audioButton)
-    }
-
-    /** What's playing, in a few words: "English  ·  Spanish subtitles", or "English  ·  Subtitles off". */
-    private fun trackStatus(tracks: Tracks): String {
-        fun name(language: String?) = Languages.code(language)?.let(Languages::name)
-        val audio = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_AUDIO && it.isSelected }?.getTrackFormat(0)?.language
-        val text = tracks.groups.firstOrNull { it.type == C.TRACK_TYPE_TEXT && it.isSelected }
-        val subtitles = when {
-            text == null || C.TRACK_TYPE_TEXT in player.trackSelectionParameters.disabledTrackTypes -> "Subtitles off"
-            else -> name(if (isAddonSub(text)) chosenSub?.lang else text.getTrackFormat(0).language)?.let { "$it subtitles" } ?: "Subtitles on"
-        }
-        return listOfNotNull(name(audio), subtitles).joinToString(DOT)
     }
 
     /** "English · Dolby Digital 5.1": the language, then the release's own name for the track or, for audio, its format. */
