@@ -307,7 +307,7 @@ abstract class Screen : Activity() {
 
     /** The left shade is for text over bare art; a screen that puts its text on glass can lift it off the art. */
     protected fun leftShade(on: Boolean) {
-        windowShade?.animate()?.alpha(if (on) 1f else 0f)?.setDuration(Motion.STANDARD).setInterpolator(Motion.EASE)?.start()
+        windowShade?.animate()?.alpha(if (on) 1f else 0f)?.setDuration(Motion.STANDARD)?.setInterpolator(Motion.EASE)?.start()
     }
 
     private fun updateWindowShade() {
