@@ -518,8 +518,8 @@ abstract class Screen : Activity() {
     }
 
     /**
-     * The loading and countdown mark: a small square outline, never a circle. Null animates loading (a short lit run
-     * travelling round the square); for countdowns set progress to fraction × max and the square fills clockwise.
+     * The loading and countdown mark: a thin ring. Null animates loading (a short lit arc spinning round it); for
+     * countdowns set progress to fraction × max and the ring fills clockwise from the top.
      */
     protected fun ring(fraction: Float? = null): ProgressBar = object : ProgressBar(this, null,
         // A countdown needs a style that keeps its progress; the default one is indeterminate-only and reads 0.
@@ -527,34 +527,30 @@ abstract class Screen : Activity() {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = dp(2).toFloat()
-            strokeCap = Paint.Cap.SQUARE
-            strokeJoin = Paint.Join.MITER
+            strokeCap = Paint.Cap.ROUND
         }
-        private val square = Path()
+        private val circle = Path()
         private val run = Path()
         private val measure = android.graphics.PathMeasure()
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
             val inset = stroke.strokeWidth / 2
-            square.reset()
-            square.moveTo(inset, inset)
-            square.lineTo(w - inset, inset)
-            square.lineTo(w - inset, h - inset)
-            square.lineTo(inset, h - inset)
-            square.close()
-            measure.setPath(square, true)
+            circle.reset()
+            // From twelve o'clock, clockwise, so a countdown fills the way a clock hand moves.
+            circle.addArc(RectF(inset, inset, w - inset, h - inset), -90f, 359.9f)
+            measure.setPath(circle, false)
         }
 
         override fun onDraw(canvas: Canvas) {
             val length = measure.length
             if (length <= 0f) return
             stroke.color = PROGRESS_TRACK
-            canvas.drawPath(square, stroke)
+            canvas.drawPath(circle, stroke)
             stroke.color = TUNGSTEN
             run.reset()
             if (fraction == null) {
-                // A quarter of the square, once round every 1.2 s.
+                // A quarter of the ring, once round every 1.2 s.
                 val start = (android.os.SystemClock.uptimeMillis() % 1200L) / 1200f * length
                 val end = start + length / 4
                 measure.getSegment(start, minOf(end, length), run, true)
