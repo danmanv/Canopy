@@ -310,8 +310,9 @@ class PlayerActivity : Screen() {
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
+                // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
                 main.removeCallbacks(ambientTask)
-                if (playWhenReady) hideAmbient() else main.postDelayed(ambientTask, AMBIENT_WAIT)
+                if (playWhenReady) hideAmbient()
                 if (playWhenReady) { if (shown) showControls(null) }
                 else if (!stopping && options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
@@ -757,11 +758,7 @@ class PlayerActivity : Screen() {
     override fun onSearchRequested() = false
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
-        // Paused, every key starts the wait for the pause screen again; on the pause screen, a key only wakes it.
-        if (::player.isInitialized && !player.playWhenReady) {
-            main.removeCallbacks(ambientTask)
-            main.postDelayed(ambientTask, AMBIENT_WAIT)
-        }
+        // On the pause screen, a key only wakes it.
         if (::ambient.isInitialized && ambient.visibility == View.VISIBLE && event.action == KeyEvent.ACTION_DOWN) {
             hideAmbient()
             if (event.keyCode !in listOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY)) {
@@ -1529,7 +1526,6 @@ class PlayerActivity : Screen() {
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
-        const val AMBIENT_WAIT = 8_000L // ms paused with no key before the calm pause screen takes over
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under
         const val SUB_WAIT = 2_000L // ms the start waits for the addon's subtitles
