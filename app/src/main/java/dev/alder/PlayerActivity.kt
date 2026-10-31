@@ -1011,7 +1011,7 @@ class PlayerActivity : Screen() {
         pauseFacts = text("", SMALL, color = TEXT_2).onArt()
         pauseInfo = column(Gravity.START).apply {
             addView(caps("Paused", TUNGSTEN).onArt())
-            addView(pauseTitle, LinearLayout.LayoutParams(dp(480), -2).apply { topMargin = dp(6) })
+            addView(pauseTitle, LinearLayout.LayoutParams(dp(820), -2).apply { topMargin = dp(6) }) // most of the width: a long name was cut at half
             addView(pauseFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         }
 
