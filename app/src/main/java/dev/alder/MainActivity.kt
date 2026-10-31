@@ -234,6 +234,7 @@ class MainActivity : Screen() {
         val stoppedAt: Long? = null,
         val addedAt: String? = null,
         val finished: Boolean = false,
+        val lastWatched: String? = null, // the library's last time this was played: newer episodes since get a tag
     ) {
         var filled = false
         var settled = false // its details are in (or failed): what it has now is all it will get
@@ -581,7 +582,8 @@ class MainActivity : Screen() {
             gravity = Gravity.CENTER
             contentDescription = "Profile"
             fun style(focused: Boolean) {
-                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(ICE, TUNGSTEN)).apply {
+                // The profile's own colour, so a glance at the corner says whose Home this is.
+                background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(profile.color, darker(profile.color))).apply {
                     cornerRadius = dp(CORNER).toFloat()
                     if (focused) setStroke(dp(2), TEXT)
                 }
@@ -1288,7 +1290,8 @@ class MainActivity : Screen() {
                         val old = rows.firstOrNull { it.view.parent === slot }
                         if (old?.view?.hasFocus() == true) { old.pendingUpdate = ::add; return }
                         old?.let { it.cards.forEach { card -> card.unload() }; rows.remove(it); slot.removeAllViews() }
-                        val made = row(title, items.take(maxOf(START, old?.items?.size ?: START)), more)
+                        val made = row(title, items.take(maxOf(START, old?.items?.size ?: START)), more,
+                            seeAll = { CatalogActivity.open(this@MainActivity, title, rowCatalogs, picked) })
                         slot.addView(made.view)
                         if (i == 0) android.util.Log.d("Canopy", "page ${p.label}: first row in ${android.os.SystemClock.uptimeMillis() - opened} ms")
                         updateNextRow()
@@ -1635,7 +1638,8 @@ class MainActivity : Screen() {
     private fun later(all: List<Item>): ((Int) -> List<Item>)? =
         if (all.size <= START) null else { from -> all.drop(from).take(PAGE) }
 
-    private fun row(title: String, items: List<Item>, more: ((Int) -> List<Item>)? = null, wide: Boolean = false, grid: Boolean = false): Row = Row(title, items, more, wide, grid).also {
+    private fun row(title: String, items: List<Item>, more: ((Int) -> List<Item>)? = null, wide: Boolean = false, grid: Boolean = false,
+                    seeAll: (() -> Unit)? = null): Row = Row(title, items, more, wide, grid, seeAll).also {
         rows += it
         main.post(::updateImages)
         if (!focusedSomething && mode == Mode.BROWSE) {
@@ -1691,7 +1695,8 @@ class MainActivity : Screen() {
      * (Continue Watching) shows 16:9 art with the name, time left and progress on the card, two poster columns wide, and
      * ends on the same foot line as the poster rows.
      */
-    private inner class Row(val title: String, first: List<Item>, private var more: ((Int) -> List<Item>)?, val wide: Boolean = false, val grid: Boolean = false) {
+    private inner class Row(val title: String, first: List<Item>, private var more: ((Int) -> List<Item>)?, val wide: Boolean = false, val grid: Boolean = false,
+                            private val seeAll: (() -> Unit)? = null) {
         val cardW = if (grid) LIST_W else if (wide) WIDE_W else CARD_W
         val cardH = if (grid) LIST_H else if (wide) WIDE_H else CARD_H
         val items = first.toMutableList()
@@ -1717,7 +1722,10 @@ class MainActivity : Screen() {
                 if (!left && event.keyCode != KeyEvent.KEYCODE_DPAD_RIGHT) return super.dispatchKeyEvent(event)
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     held = event.repeatCount > 0
-                    cards.getOrNull(selected + if (left) -1 else 1)?.requestFocus()
+                    val end = seeAllCard
+                    if (end != null && end.isFocused) { if (left) cards[selected].requestFocus() }
+                    // Past the last card: the row's "See all", when it has one (never on a held key's glide).
+                    else (cards.getOrNull(selected + if (left) -1 else 1) ?: end?.takeIf { !left && !held })?.requestFocus()
                 } else held = false
                 return true // at either end the remote simply stays put
             }
@@ -1747,7 +1755,38 @@ class MainActivity : Screen() {
         }
         val view: View = column(Gravity.START, heading, scroller).apply { if (wide) setPadding(0, dp(CARD_H - WIDE_H), 0, 0) }
 
-        init { if (grid) cards.forEach { it.dim(true) } }
+        /** The row's last card: "See all" opens the whole catalog as a grid. */
+        private val seeAllCard: View? = seeAll?.let { open ->
+            FrameLayout(this@MainActivity).apply {
+                background = GradientDrawable().apply { setColor(withAlpha(TEXT, 0x0A)); setStroke(dp(1), withAlpha(TEXT, 0x40)) }
+                addView(column(Gravity.CENTER_HORIZONTAL,
+                    text("See all", BODY, bold = true).apply { gravity = Gravity.CENTER },
+                    text("Every title", SMALL, color = TEXT_2).apply { gravity = Gravity.CENTER }.marginTop(2),
+                ), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                isFocusable = true
+                contentDescription = "See all"
+                setOnClickListener { open() }
+                setOnFocusChangeListener { v, has ->
+                    v.lift(has, 2)
+                    v.grow(has).start()
+                    if (has) {
+                        cards.getOrNull(selected)?.dim(true)
+                        anim?.cancel()
+                        val target = (strip.width - scroller.width).coerceAtLeast(0)
+                        anim = ValueAnimator.ofInt(scroller.scrollX, target).setDuration(Motion.STANDARD).apply {
+                            interpolator = Motion.EASE
+                            addUpdateListener { scroller.scrollTo(it.animatedValue as Int, 0) }
+                            start()
+                        }
+                    } else if (active) cards.getOrNull(selected)?.dim(false)
+                }
+            }
+        }
+
+        init {
+            if (grid) cards.forEach { it.dim(true) }
+            seeAllCard?.let { strip.addView(it, LinearLayout.LayoutParams(dp(cardW), dp(cardH)).apply { marginStart = dp(CARD_GAP) }) }
+        }
 
         fun peek(show: Boolean) { heading.visibility = if (show) View.VISIBLE else View.INVISIBLE }
 
@@ -1822,6 +1861,8 @@ class MainActivity : Screen() {
         private fun fetchMore() {
             val more = more ?: return
             if (fetching) return
+            // A row with "See all" is a preview: it stops at ROW_CAP titles, and the grid has the rest.
+            if (seeAll != null && items.size >= ROW_CAP) { this.more = null; return }
             fetching = true
             val from = items.size
             background({ more(from) }) { result ->
@@ -1833,7 +1874,8 @@ class MainActivity : Screen() {
                     val card = Card(item, items.size)
                     items += item
                     cards += card
-                    strip.addView(card, LinearLayout.LayoutParams(dp(cardW), dp(cardH)).apply { marginStart = dp(CARD_GAP) })
+                    strip.addView(card, strip.childCount - (if (seeAllCard != null) 1 else 0),
+                        LinearLayout.LayoutParams(dp(cardW), dp(cardH)).apply { marginStart = dp(CARD_GAP) })
                     card.alpha = 0f // shows once focus moves near, like the cards past the right margin
                     card.dim(active)
                     if (loaded) card.load()
@@ -1874,7 +1916,7 @@ class MainActivity : Screen() {
                         outline.setRoundRect(0, 0, view.width, view.height, dp(if (grid) 6 else RADIUS).toFloat())
                 }
                 clipToOutline = true
-                setBackgroundColor(BASE)
+                setBackgroundColor(TILE) // a quiet placeholder until the poster fades in over it
                 face.addView(image, LayoutParams(-1, -1))
                 // A dark foot under the words or the progress bar; a plain poster needs none.
                 if (wide || item.progress > 0) face.addView(View(context).apply {
@@ -1891,9 +1933,10 @@ class MainActivity : Screen() {
                 // A white bar inset and rounded inside the card's dark foot, so it reads as a bar and not a cropped edge.
                 if (progress != null) addView(progress.apply { clipToOutline = true },
                     LayoutParams(-1, dp(3), Gravity.BOTTOM).apply { setMargins(dp(inset), 0, dp(inset), dp(11)) })
-                if (grid && item.finished) addView(text("✓", SMALL, bold = true, color = TUNGSTEN).apply {
+                // Watched: a quiet tick top right, on any card of a finished title.
+                if (item.finished) addView(text("✓", SMALL, bold = true, color = ICE).apply {
                     gravity = Gravity.CENTER
-                    background = glass(12)
+                    background = rounded(baseAt(0xBF), 2)
                 }, LayoutParams(dp(24), dp(24), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6), dp(6), 0) })
                 addView(shade, LayoutParams(-1, -1))
                 isFocusable = true
@@ -1924,9 +1967,22 @@ class MainActivity : Screen() {
 
             fun dim(on: Boolean) = shade.animate().alpha(if (on) DIM else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
 
+            private var newTag: View? = null
+
+            /** "NEW EPISODE" top left, once the title's details say an episode came out since it was last watched. */
+            private fun markNew() {
+                if (newTag != null || item.type != "series" || item.lastWatched == null) return
+                if (!metas.containsKey(item.id)) return fill(item) // its episodes come with its details; load() runs again then
+                if (!hasNewEpisode(item)) return
+                newTag = badge("NEW EPISODE").also {
+                    addView(it, indexOfChild(shade), LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
+                }
+            }
+
             /** On screen (or nearly): the poster (the wide art cropped for a title without one, else its name). */
             fun load() {
                 wanted = true
+                markNew()
                 // A wide card waits for the title's art (it comes with its details) and takes the poster only if there's none.
                 val pick = if (wide) item.art ?: item.poster?.takeIf { item.settled } else item.poster ?: item.art
                 if (pick == null || (wide && item.art == null)) fill(item)
@@ -1956,6 +2012,20 @@ class MainActivity : Screen() {
     }
 
     // ---------- items ----------
+
+    /**
+     * A show in the library with an episode out since it was last watched (or added), going by the meta addon's
+     * release dates. Only shows in the library carry [Item.lastWatched]; catalogs never get the tag.
+     */
+    private fun hasNewEpisode(item: Item): Boolean {
+        if (item.type != "series") return false
+        val since = item.lastWatched?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() } ?: return false
+        val now = java.time.Instant.now()
+        return metas[item.id]?.videos.orEmpty().any { v ->
+            v.season > 0 && v.released?.let { runCatching { java.time.Instant.parse(it) }.getOrNull() }
+                ?.let { it.isAfter(since) && it.isBefore(now) } == true
+        }
+    }
 
     /** Art, logo and facts the catalog didn't send, fetched once per title from the meta addon. */
     private fun fill(item: Item) {
@@ -2020,6 +2090,7 @@ class MainActivity : Screen() {
             null, Images.logoFor(item.getString("_id")), "", emptyList(), videoId, progress,
             resume = progress > 0, left = listOfNotNull(episode, left).joinToString(DOT).ifEmpty { null }, stoppedAt = offset,
             addedAt = item.text("_ctime"), finished = libraryFinished(item),
+            lastWatched = s.text("lastWatched")?.takeIf { s.optLong("timeWatched") > 0 || offset > 0 } ?: item.text("_ctime"),
         )
     }
 
@@ -2186,6 +2257,7 @@ class MainActivity : Screen() {
         const val ROW_LATER = 350L // ms after a page opens before its rows out of sight are made
         const val ROW_STAGGER = 60L // ms between them
         const val PAGE = 12
+        const val ROW_CAP = 40 // titles in a row that ends in "See all"
         const val AHEAD = 8 // cards from a row's end when the next page is asked for: early enough that a row of 9 grows before it would stop short of the margin
         const val FIRST = 10 // cards per row loaded before it's scrolled sideways (a screenful, the one past the edge, one more)
         const val CINEMA_MAX = 8

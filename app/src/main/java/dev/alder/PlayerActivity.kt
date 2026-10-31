@@ -215,6 +215,7 @@ class PlayerActivity : Screen() {
             addView(view, FrameLayout.LayoutParams(-1, -1))
             addView(pausedShade, FrameLayout.LayoutParams(-1, -1))
             addView(controls, FrameLayout.LayoutParams(-1, -1))
+            addView(buildAmbient(), FrameLayout.LayoutParams(-1, -1))
             addView(options, FrameLayout.LayoutParams(-1, -1))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
             addView(starting.view, FrameLayout.LayoutParams(-1, -1))
@@ -309,6 +310,8 @@ class PlayerActivity : Screen() {
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
+                main.removeCallbacks(ambientTask)
+                if (playWhenReady) hideAmbient() else main.postDelayed(ambientTask, AMBIENT_WAIT)
                 if (playWhenReady) { if (shown) showControls(null) }
                 else if (!stopping && options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
@@ -754,6 +757,19 @@ class PlayerActivity : Screen() {
     override fun onSearchRequested() = false
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // Paused, every key starts the wait for the pause screen again; on the pause screen, a key only wakes it.
+        if (::player.isInitialized && !player.playWhenReady) {
+            main.removeCallbacks(ambientTask)
+            main.postDelayed(ambientTask, AMBIENT_WAIT)
+        }
+        if (::ambient.isInitialized && ambient.visibility == View.VISIBLE && event.action == KeyEvent.ACTION_DOWN) {
+            hideAmbient()
+            if (event.keyCode !in listOf(KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_MEDIA_PLAY)) {
+                showControls(playPause)
+                wakeKey = event.keyCode
+                return true
+            }
+        }
         if (upNextPanel.visibility == View.VISIBLE) {
             if (event.keyCode == KeyEvent.KEYCODE_BACK) {
                 if (event.action == KeyEvent.ACTION_DOWN) {
@@ -886,6 +902,70 @@ class PlayerActivity : Screen() {
         if (outroAt > 0 && position >= outroAt && player.duration - position < 60_000 &&
             !upNextDismissed && upNextPanel.visibility != View.VISIBLE && player.duration > 0) showUpNext()
         main.postDelayed(skipTask, 500)
+    }
+
+    // ---------- the pause screen ----------
+    // Paused a while with no key pressed: the controls fade, the picture dims, and a calm card says what this is,
+    // what happens in it, and when it would end. Any key brings the controls straight back.
+    private lateinit var ambient: FrameLayout
+    private lateinit var ambientKicker: TextView
+    private lateinit var ambientTitle: TextView
+    private lateinit var ambientAbout: TextView
+    private lateinit var ambientEnds: TextView
+    private val ambientTask = Runnable { showAmbient() }
+
+    private fun buildAmbient(): FrameLayout {
+        ambientKicker = caps("Paused", TUNGSTEN).onArt()
+        ambientTitle = text("", SERIF_HERO, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+        ambientAbout = text("", BODY, color = TEXT_2).onArt().apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
+        ambientEnds = text("", SMALL, color = TEXT).onArt()
+        ambient = FrameLayout(this).apply {
+            visibility = View.GONE
+            alpha = 0f
+            addView(View(context).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xF2), baseAt(0x99), baseAt(0x73)))
+            }, FrameLayout.LayoutParams(-1, -1))
+            addView(TextClock(this@PlayerActivity).apply {
+                format12Hour = "h:mm a"; format24Hour = "HH:mm"
+                typeface = text("", SERIF_TITLE, serif = true).typeface
+                textSize = SERIF_TITLE
+                setTextColor(TEXT)
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { topMargin = dp(30); rightMargin = dp(PAD) })
+            addView(column(Gravity.START).apply {
+                addView(ambientKicker)
+                addView(ambientTitle, LinearLayout.LayoutParams(dp(620), -2).apply { topMargin = dp(8) })
+                addView(ambientAbout, LinearLayout.LayoutParams(dp(560), -2).apply { topMargin = dp(10) })
+                addView(ambientEnds, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply { leftMargin = dp(PAD); bottomMargin = dp(PAD + 16) })
+        }
+        return ambient
+    }
+
+    private fun showAmbient() {
+        if (isFinishing || player.playWhenReady || !started) return
+        if (options.visibility == View.VISIBLE || upNextPanel.visibility == View.VISIBLE || stallPanel.visibility == View.VISIBLE) return
+        val episode = meta?.videos?.firstOrNull { it.id == videoId }
+        ambientKicker.text = listOfNotNull("PAUSED", subtitle.text.toString().takeIf { it.isNotBlank() }?.uppercase()).joinToString(DOT)
+        ambientTitle.text = pauseTitle.text
+        val about = episode?.overview?.takeIf { it.isNotBlank() } ?: meta?.description
+        ambientAbout.text = about.orEmpty()
+        ambientAbout.visibility = if (about.isNullOrBlank()) View.GONE else View.VISIBLE
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+        val remaining = (duration - player.currentPosition).coerceAtLeast(0)
+        ambientEnds.text = if (duration <= 0 || player.isCurrentMediaItemLive) ""
+            else "Ends ${SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date(System.currentTimeMillis() + remaining))} if you carry on"
+        hideControls(force = true)
+        pausedShade.visibility = View.GONE
+        ambient.visibility = View.VISIBLE
+        ambient.animate().cancel()
+        ambient.animate().alpha(1f).setDuration(Motion.SLOW).setInterpolator(Motion.EASE).start()
+    }
+
+    private fun hideAmbient() {
+        if (!::ambient.isInitialized || ambient.visibility != View.VISIBLE) return
+        if (!player.playWhenReady) pausedShade.visibility = View.VISIBLE
+        ambient.animate().cancel()
+        ambient.animate().alpha(0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).withEndAction { ambient.visibility = View.GONE }.start()
     }
 
     // ---------- player controls ----------
@@ -1449,6 +1529,7 @@ class PlayerActivity : Screen() {
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
+        const val AMBIENT_WAIT = 8_000L // ms paused with no key before the calm pause screen takes over
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under
         const val SUB_WAIT = 2_000L // ms the start waits for the addon's subtitles

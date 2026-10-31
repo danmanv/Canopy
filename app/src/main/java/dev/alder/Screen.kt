@@ -199,11 +199,33 @@ abstract class Screen : Activity() {
     override fun onResume() {
         super.onResume()
         front = java.lang.ref.WeakReference(this)
+        openingOnce()
         if (drawnIn != null && drawnIn !== Theme.now) return recreate()
         armScreensaver()
         val release = pendingInstall ?: return
         pendingInstall = null
         if (Updates.canInstall(this)) installUpdate(release)
+    }
+
+    /**
+     * The first screen Canopy shows after it starts: the canopy mark and name fade up in the middle, then the whole
+     * cover dissolves into the screen drawn behind it. Under a second, once per start, never over the player.
+     */
+    private fun openingOnce() {
+        if (opened) return
+        opened = true
+        if (this is PlayerActivity) return
+        val root = window.decorView as? FrameLayout ?: return
+        val mark = brand(WORDMARK * 1.8f).apply { alpha = 0f; scaleX = 0.94f; scaleY = 0.94f }
+        val cover = FrameLayout(this).apply {
+            setBackgroundColor(BASE)
+            addView(mark, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+        }
+        root.addView(cover, FrameLayout.LayoutParams(-1, -1))
+        mark.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(OPENING_IN).setInterpolator(Motion.EASE).withEndAction {
+            cover.animate().alpha(0f).setStartDelay(OPENING_HOLD).setDuration(OPENING_OUT).setInterpolator(Motion.EASE)
+                .withEndAction { root.removeView(cover) }.start()
+        }.start()
     }
 
     /**
@@ -910,6 +932,10 @@ abstract class Screen : Activity() {
     companion object {
         /** The screen in front, for messages that start outside any screen (an update failing to install). */
         private var front: java.lang.ref.WeakReference<Screen>? = null
+        private var opened = false // the opening has played in this run of the app
+        private const val OPENING_IN = 450L
+        private const val OPENING_HOLD = 150L
+        private const val OPENING_OUT = 350L
         private const val NOTICE_TAG = "canopy-notice"
         private const val NOTICE_MS = 4_000L
         private const val NOTICE_W = 340
@@ -967,6 +993,7 @@ abstract class Screen : Activity() {
         val TUNGSTEN get() = Theme.now.accent
         const val TUNGSTEN_RIM = 0xFFFFFFFF.toInt() // Light line: a focused card's ring is white
         val TUNGSTEN_GLOW get() = withAlpha(Theme.now.accent, 0x73)
+        val TILE get() = Theme.now.tile // a poster's placeholder
         val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
         val GLASS get() = withAlpha(Theme.now.glass, 0x4D)

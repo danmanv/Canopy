@@ -589,7 +589,7 @@ class DetailsActivity : Screen() {
         similarFirst = null
         titles.forEachIndexed { index, title ->
             val card = FrameLayout(this).apply {
-                background = rounded(BASE, 6)
+                background = rounded(TILE, 6) // held for the poster
                 outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) =
                         outline.setRoundRect(0, 0, view.width, view.height, dp(6).toFloat())

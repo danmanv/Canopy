@@ -13,13 +13,15 @@ class Profile(val id: String, val name: String, val color: Int, val authKey: Str
  */
 object Profiles {
     const val MAX = 5
-    val COLORS = intArrayOf(0xFFF3D9B1.toInt(), 0xFFC98E6A.toInt(), 0xFF8FA39A.toInt(), 0xFFA6A2BD.toInt(), 0xFFD3A66B.toInt())
+    /** Warm and neutral, no greens: the third was a sage, now a mauve slate (profiles that had it move over). */
+    val COLORS = intArrayOf(0xFFF3D9B1.toInt(), 0xFFC98E6A.toInt(), 0xFFA3949E.toInt(), 0xFFA6A2BD.toInt(), 0xFFD3A66B.toInt())
+    private const val OLD_SAGE = 0xFF8FA39A.toInt()
 
     fun all(context: Context): List<Profile> {
         val prefs = prefs(context)
         migrate(prefs)
         return JSONArray(prefs.getString("profiles", "[]")).objects()
-            .map { Profile(it.getString("id"), it.getString("name"), it.getInt("color").takeIf { c -> c in COLORS } ?: COLORS[0],
+            .map { Profile(it.getString("id"), it.getString("name"), it.getInt("color").let { c -> if (c == OLD_SAGE) COLORS[2] else c }.takeIf { c -> c in COLORS } ?: COLORS[0],
                 it.getString("authKey"), it.optString("pin").ifEmpty { null }) }
     }
 
