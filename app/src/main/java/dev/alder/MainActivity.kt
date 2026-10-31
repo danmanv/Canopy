@@ -245,6 +245,7 @@ class MainActivity : Screen() {
     private val metaPool = Images.newestFirst(6)
     private var generation = 0 // which showPage answers belong to: late ones from an earlier page are dropped
     private var loadMoreSections: (() -> Unit)? = null
+    private var revealRows: android.view.ViewTreeObserver.OnPreDrawListener? = null
     private var loadSection: ((String) -> Unit)? = null // builds the page down to a genre chip's row
     private var touched = false // a key was pressed since the page opened: fresh data then waits for the next visit
     private var cinemaReady = false // the cinema's title has its art and logo (or gave up waiting) and may show
@@ -1103,7 +1104,21 @@ class MainActivity : Screen() {
         main.removeCallbacks(advance)
         scroller.visibility = View.VISIBLE
         scroller.translationY = 0f
-        scroller.alpha = 1f
+        // The new page's rows fade in once the first of them has drawn, instead of popping in a row at a time over a
+        // blank band (the jolt between pages).
+        scroller.animate().cancel()
+        scroller.alpha = 0f
+        revealRows?.let { content.viewTreeObserver.removeOnPreDrawListener(it) }
+        revealRows = object : android.view.ViewTreeObserver.OnPreDrawListener {
+            override fun onPreDraw(): Boolean {
+                if (content.height == 0) return true
+                content.viewTreeObserver.removeOnPreDrawListener(this)
+                revealRows = null
+                // The cinema took over first: it hides the rows itself, and waking from it brings them back.
+                if (mode == Mode.BROWSE) scroller.animate().alpha(1f).setDuration(220).setInterpolator(DecelerateInterpolator()).start()
+                return true
+            }
+        }.also { content.viewTreeObserver.addOnPreDrawListener(it) }
         stage.isFocusable = false
         chrome()
         val key = profile.authKey

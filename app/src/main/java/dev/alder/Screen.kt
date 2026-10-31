@@ -120,6 +120,7 @@ abstract class Screen : Activity() {
         Theme.load(this)
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback

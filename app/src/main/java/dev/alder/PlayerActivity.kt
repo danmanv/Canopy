@@ -237,6 +237,7 @@ class PlayerActivity : Screen() {
                 playerLogo.visibility = View.VISIBLE; topName.visibility = View.GONE
             }
             nextCell.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
+            startOverCell.visibility = if (nextVideo() == null) View.VISIBLE else View.GONE
         }
 
         player.addListener(object : Player.Listener {
@@ -302,12 +303,14 @@ class PlayerActivity : Screen() {
             }
 
             override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+                // Back pauses the player on its way out: nothing on the closing screen changes (Play lit up as it faded).
+                if (isFinishing) return
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 if (playWhenReady) { if (shown) showControls(null) }
-                else if (options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
+                else if (!stopping && options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
             }
 
@@ -895,6 +898,7 @@ class PlayerActivity : Screen() {
     private lateinit var audioButton: TextView
     private lateinit var trackStatus: TextView // "English  ·  Spanish subtitles", under the bar whenever the controls are up
     private lateinit var nextCell: FrameLayout
+    private lateinit var startOverCell: FrameLayout
     private lateinit var playerLogo: ImageView
     private lateinit var topName: TextView
     private lateinit var pauseTitle: TextView
@@ -963,7 +967,10 @@ class PlayerActivity : Screen() {
                 .putExtra("background", intent.getStringExtra("background")))
             finish()
         }
+        // Two a side, so Play sits in the middle: Next episode when there is one, else Start over in its place.
+        val startOverButton = button("Start over", R.drawable.ic_restart) { if (canSeek()) { player.seekTo(0); player.play() } }
         nextCell = buttonCell(nextButton).apply { visibility = View.GONE }
+        startOverCell = buttonCell(startOverButton)
         val buttons = LinearLayout(this).apply {
             clipChildren = false // a focused button's label is wider than its cell
             gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
@@ -975,9 +982,10 @@ class PlayerActivity : Screen() {
             addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
                 LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginStart = dp(10) })
             addView(nextCell)
+            addView(startOverCell)
             addView(buttonCell(infoButton))
         }
-        for (button in listOf(audioButton, streamButton, playPause, nextButton, infoButton))
+        for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton))
             button.nextFocusUpId = bar.id
         playPause.id = View.generateViewId()
         bar.nextFocusDownId = playPause.id
@@ -1373,6 +1381,8 @@ class PlayerActivity : Screen() {
         return listOfNotNull(language, label ?: format).joinToString("  ·  ").ifEmpty { "Track ${f.id ?: ""}".trim() }
     }
 
+    private var stopping = false // onStop's own pause: not the viewer's, so the controls stay as they are
+
     override fun onStop() {
         super.onStop()
         if (!::status.isInitialized) return
@@ -1381,7 +1391,9 @@ class PlayerActivity : Screen() {
         main.removeCallbacks(skipTask)
         main.removeCallbacks(loadingTask)
         main.removeCallbacks(countdownTask)
+        stopping = true
         player.pause()
+        stopping = false
         if (!watched || player.isCurrentMediaItemLive || type == "series" && !plausibleEpisode(player.duration)) return
         record()
         // The player's own episode list first: Home's Resume passes no next episode when the title's details weren't in

@@ -17,6 +17,10 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 - **New look.** Canopy has new colors and new fonts. The default colors are dark gray with orange and apricot light. Titles use Sora, and other text uses Manrope.
 - **Themes.** Select **Settings** > **Theme** to change the colors of Canopy. There are 16 themes. The first theme, **Aurora**, has the mint colors of the first new look.
+- **Genres.** On **Shows** and **Movies**, select **All genres** to show a list of genres. Select a genre to go to its row. Before, the page showed only **All**.
+- **Larger posters.** Posters on **Home**, **Shows** and **Movies** are 20% larger. The name of the selected title shows only at the top of the screen.
+- **Smooth screens.** A new screen fades in, and a closed screen fades out. Before, a gray frame showed between screens.
+- **Player buttons.** The player has two buttons on each side of **Play**. A movie shows **Start over** where a show shows **Next episode**.
 - **New Settings.** Settings fills the screen. The section names are on the left. The selected setting has a bright line and a soft light. Settings with only **On** and **Off** show the two words. Before, they showed a switch.
 - **New player controls.** The title, a wide time bar and the buttons show directly on the picture. Before, they were in a glass panel.
 - The menus, buttons and profile pictures have square corners. The remote shows the selected item with a line of light.

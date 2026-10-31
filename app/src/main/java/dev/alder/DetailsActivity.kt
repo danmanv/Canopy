@@ -186,8 +186,42 @@ class DetailsActivity : Screen() {
         }
     }
 
+    private lateinit var whereLine: TextView
+    private lateinit var progressSlot: FrameLayout
+    private lateinit var startOverButton: TextView
+
     /** Where you are, then the main action and three small glass controls. */
     private fun addWatch(m: Meta, stack: LinearLayout) {
+        whereLine = text("", SMALL, bold = true).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
+        stack.addView(whereLine.marginTop(16))
+        progressSlot = FrameLayout(this)
+        stack.addView(progressSlot, LinearLayout.LayoutParams(dp(240), dp(3)).apply { topMargin = dp(8) })
+        // Each press asks what to open then, so a refreshed watch line never leaves a button pointing at the old episode.
+        fun target() = playTarget(meta)?.first ?: metaId
+        playButton = pill("Play", R.drawable.ic_play).apply {
+            setOnClickListener { openSources(target(), startOver = false) }
+            // Held OK: every source, to choose one by hand.
+            setOnLongClickListener { openSources(target(), startOver = false, pick = true); true }
+        }
+        startOverButton = iconButton("↺", "Start over") { openSources(target(), startOver = true) }
+        infoButton = iconButton("ⓘ", "More information") { showInfo() }
+        listButton = iconButton("+", "My List") { toggleList() }
+        stack.addView(LinearLayout(this).apply {
+            clipChildren = false
+            addView(playButton, wrap().apply { marginEnd = dp(14) })
+            addView(startOverButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
+            addView(listButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
+            addView(infoButton)
+        }, wrap().apply { topMargin = dp(16) })
+        fillWatch(m)
+        playButton.post { if (!guideOpen && !infoOpen && !similarOpen) playButton.requestFocus() }
+    }
+
+    /**
+     * The watch line and buttons for where the viewer is now. Back from the player only changes these words in place:
+     * rebuilding the page reloaded the logo and re-lit Play, a visible flash.
+     */
+    private fun fillWatch(m: Meta) {
         val target = playTarget(m)
         val episode = target?.second
         // Under a minute in is not started: a title opened and closed at 0:00 offers Play, not Resume.
@@ -195,29 +229,16 @@ class DetailsActivity : Screen() {
         val duration = item?.optJSONObject("state")?.optLong("duration") ?: 0L
         val remaining = if (resumeAt > 0 && duration > resumeAt) runtime("${(duration - resumeAt) / 60_000} min") + " left" else null
         val where = listOfNotNull(episode?.let { "S${it.season} E${it.episode}" }, episode?.title?.takeIf { it.isNotBlank() }, remaining).joinToString(DOT)
-        if (where.isNotEmpty() && resumeAt > 0) stack.addView(text(where, SMALL, bold = true).onArt().apply {
-            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
-        }.marginTop(16))
-        if (remaining != null) stack.addView(progressBar(resumeAt.toFloat() / duration), LinearLayout.LayoutParams(dp(240), dp(3)).apply { topMargin = dp(8) })
-
-        playButton = pill(if (resumeAt > 0) "Resume" else "Play", R.drawable.ic_play).apply {
-            setOnClickListener { openSources(target?.first ?: metaId, startOver = false) }
-            // Held OK: every source, to choose one by hand.
-            setOnLongClickListener { openSources(target?.first ?: metaId, startOver = false, pick = true); true }
-        }
-        val startOver = if (resumeAt > 0) iconButton("↺", "Start over") {
-            openSources(target?.first ?: metaId, startOver = true)
-        } else null
-        infoButton = iconButton("ⓘ", "More information") { showInfo() }
-        listButton = iconButton(if (Library.inList(item)) "✓" else "+", "My List") { toggleList() }
-        stack.addView(LinearLayout(this).apply {
-            clipChildren = false
-            addView(playButton, wrap().apply { marginEnd = dp(14) })
-            startOver?.let { addView(it, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) }) }
-            addView(listButton, LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(8) })
-            addView(infoButton)
-        }, wrap().apply { topMargin = dp(16) })
-        playButton.post { if (!guideOpen && !infoOpen && !similarOpen) playButton.requestFocus() }
+        whereLine.text = where
+        whereLine.visibility = if (where.isNotEmpty() && resumeAt > 0) View.VISIBLE else View.GONE
+        progressSlot.removeAllViews()
+        if (remaining != null) progressSlot.addView(progressBar(resumeAt.toFloat() / duration), FrameLayout.LayoutParams(-1, -1))
+        progressSlot.visibility = if (remaining != null) View.VISIBLE else View.GONE
+        playButton.text = if (resumeAt > 0) "Resume" else "Play"
+        // Start over goes when there's nothing to start over; the remote moves to Play rather than into nothing.
+        if (resumeAt <= 0 && startOverButton.hasFocus()) playButton.requestFocus()
+        startOverButton.visibility = if (resumeAt > 0) View.VISIBLE else View.GONE
+        listButton.text = if (Library.inList(item)) "✓" else "+"
     }
 
     private fun iconButton(symbol: String, description: String, action: () -> Unit) = text(symbol, 18f).apply {
@@ -612,11 +633,12 @@ class DetailsActivity : Screen() {
         super.onRestart()
         background({ runCatching { Stremio.library(key, listOf(metaId)).firstOrNull() }.getOrNull() }) { result ->
             item = result.getOrNull() ?: item
+            val m = meta
             val wasGuide = guideOpen
-            if (infoOpen) { root.removeView(infoOverlay); infoOpen = false }
-            hero.visibility = View.VISIBLE
-            showHero(meta)
-            meta?.videos?.takeIf { type == "series" && it.isNotEmpty() }?.let(::buildGuide)
+            if (infoOpen) { root.removeView(infoOverlay); infoOpen = false; hero.visibility = View.VISIBLE }
+            // Only the watch line and buttons change: the page stays as it was, focus included.
+            if (m != null && ::playButton.isInitialized) fillWatch(m) else showHero(m)
+            m?.videos?.takeIf { type == "series" && it.isNotEmpty() }?.let(::buildGuide)
             if (wasGuide) showGuide()
         }
     }

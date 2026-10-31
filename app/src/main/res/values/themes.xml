@@ -1,8 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Focus glows are coloured spot shadows (lift() sets the colour); the device's default alpha left them invisible. -->
+    <!-- A dark window behind every screen (the device's grey showed for a frame as each opened), and one quiet crossfade
+         between screens instead of the device's slide and zoom. Screen.onCreate repaints the window in the theme's own base. -->
     <style name="Canopy" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:spotShadowAlpha">0.9</item>
         <item name="android:ambientShadowAlpha">0</item>
+        <item name="android:windowBackground">@color/canopy_base</item>
+        <item name="android:colorBackground">@color/canopy_base</item>
+        <item name="android:windowAnimationStyle">@style/CanopyScreens</item>
     </style>
+
+    <style name="CanopyScreens" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/screen_in</item>
+        <item name="android:activityOpenExitAnimation">@anim/screen_hold</item>
+        <item name="android:activityCloseEnterAnimation">@anim/screen_hold</item>
+        <item name="android:activityCloseExitAnimation">@anim/screen_out</item>
+    </style>
+
+    <color name="canopy_base">#FF0E0E11</color>
 </resources>
