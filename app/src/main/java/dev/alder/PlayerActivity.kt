@@ -1158,7 +1158,7 @@ class PlayerActivity : Screen() {
             if (primary) {
                 // White at rest, mint and glowing with the remote on it.
                 fun face(focused: Boolean) = GradientDrawable().apply {
-                    setColor(if (focused) TUNGSTEN else TEXT); cornerRadius = dp(radius).toFloat()
+                    setColor(if (focused) TUNGSTEN else TEXT); cornerRadius = dp(minOf(radius, CORNER)).toFloat()
                 }
                 background = face(false)
                 if (android.os.Build.VERSION.SDK_INT >= 28) outlineSpotShadowColor = TUNGSTEN_GLOW

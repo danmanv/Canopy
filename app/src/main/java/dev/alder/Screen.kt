@@ -357,7 +357,7 @@ abstract class Screen : Activity() {
     /** A quiet tinted row on the pane (episodes, sources): no edge, no glass of its own. */
     protected fun tile(radiusDp: Int = TILE_RADIUS) = GradientDrawable().apply {
         setColor(0x14FFFFFF)
-        cornerRadius = dp(radiusDp).toFloat()
+        cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
     }
 
     /** Solid fallback until a title's art is available. */
@@ -370,7 +370,7 @@ abstract class Screen : Activity() {
         val radiusDp = minOf(radius, CORNER)
         val face = GradientDrawable().apply {
             setColor(if (focused) GLASS_FOCUSED else GLASS)
-            cornerRadius = dp(radiusDp).toFloat()
+            cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
             setStroke(dp(1), GLASS_EDGE)
         }
         return LayerDrawable(arrayOf(face, Highlight(dp(radiusDp).toFloat())))
@@ -404,7 +404,7 @@ abstract class Screen : Activity() {
         fun style(focused: Boolean) {
             background = GradientDrawable().apply {
                 setColor(if (focused) TUNGSTEN else TEXT)
-                cornerRadius = dp(BUTTON_R).toFloat()
+                cornerRadius = dp(minOf(BUTTON_R, CORNER)).toFloat()
             }
             setTextColor(BASE)
             compoundDrawablesRelative[0]?.setTint(BASE)
@@ -445,7 +445,7 @@ abstract class Screen : Activity() {
     /** A [chip]'s open state: the tungsten dot and full-strength words. */
     protected fun TextView.select(label: String, selected: Boolean) {
         setTextColor(if (selected) TEXT else TEXT_2)
-        text = if (!selected) label else android.text.SpannableString("•  $label").apply {
+        text = if (!selected) label else android.text.SpannableString("\u25AA  $label").apply {
             setSpan(android.text.style.ForegroundColorSpan(TUNGSTEN), 0, 1, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
     }
@@ -465,7 +465,7 @@ abstract class Screen : Activity() {
         letterSpacing = 0.04f
         setPadding(dp(5), dp(2), dp(5), dp(2))
         background = GradientDrawable().apply {
-            cornerRadius = dp(2).toFloat()
+            cornerRadius = dp(minOf(2, CORNER)).toFloat()
             if (filled) setColor(color) else setStroke(dp(1), withAlpha(color, 0x99))
         }
     }
@@ -483,7 +483,7 @@ abstract class Screen : Activity() {
         maxLines = 1
         ellipsize = android.text.TextUtils.TruncateAt.END
         setPadding(dp(5), dp(2), dp(5), dp(2))
-        background = GradientDrawable().apply { cornerRadius = dp(4).toFloat(); setStroke(dp(1), GLASS_EDGE) }
+        background = GradientDrawable().apply { cornerRadius = dp(minOf(4, CORNER)).toFloat(); setStroke(dp(1), GLASS_EDGE) }
     }
 
     /** A hairline under a list row. */
@@ -505,29 +505,58 @@ abstract class Screen : Activity() {
         setPadding(dp(4), dp(1), dp(4), dp(1))
     }
 
-    /** Null animates loading; for countdowns set progress to fraction × max as time changes. */
+    /**
+     * The loading and countdown mark: a small square outline, never a circle. Null animates loading (a short lit run
+     * travelling round the square); for countdowns set progress to fraction × max and the square fills clockwise.
+     */
     protected fun ring(fraction: Float? = null): ProgressBar = object : ProgressBar(this, null,
         // A countdown needs a style that keeps its progress; the default one is indeterminate-only and reads 0.
-        if (fraction == null) android.R.attr.progressBarStyle else android.R.attr.progressBarStyleHorizontal) {
+        android.R.attr.progressBarStyleHorizontal) {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = dp(2).toFloat()
-            strokeCap = Paint.Cap.BUTT
+            strokeCap = Paint.Cap.SQUARE
+            strokeJoin = Paint.Join.MITER
+        }
+        private val square = Path()
+        private val run = Path()
+        private val measure = android.graphics.PathMeasure()
+
+        override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+            super.onSizeChanged(w, h, oldw, oldh)
+            val inset = stroke.strokeWidth / 2
+            square.reset()
+            square.moveTo(inset, inset)
+            square.lineTo(w - inset, inset)
+            square.lineTo(w - inset, h - inset)
+            square.lineTo(inset, h - inset)
+            square.close()
+            measure.setPath(square, true)
         }
 
         override fun onDraw(canvas: Canvas) {
-            if (fraction == null) return super.onDraw(canvas)
-            val inset = stroke.strokeWidth / 2
-            val bounds = RectF(inset, inset, width - inset, height - inset)
+            val length = measure.length
+            if (length <= 0f) return
             stroke.color = PROGRESS_TRACK
-            canvas.drawArc(bounds, 0f, 360f, false, stroke)
+            canvas.drawPath(square, stroke)
             stroke.color = TUNGSTEN
-            canvas.drawArc(bounds, -90f, progress.toFloat() / max * 360f, false, stroke)
+            run.reset()
+            if (fraction == null) {
+                // A quarter of the square, once round every 1.2 s.
+                val start = (android.os.SystemClock.uptimeMillis() % 1200L) / 1200f * length
+                val end = start + length / 4
+                measure.getSegment(start, minOf(end, length), run, true)
+                if (end > length) measure.getSegment(0f, end - length, run, true)
+                canvas.drawPath(run, stroke)
+                if (isShown) postInvalidateOnAnimation()
+            } else {
+                measure.getSegment(0f, progress.toFloat() / max * length, run, true)
+                canvas.drawPath(run, stroke)
+            }
         }
     }.apply {
         require(fraction == null || (fraction.isFinite() && fraction in 0f..1f))
-        isIndeterminate = fraction == null
-        indeterminateTintList = android.content.res.ColorStateList.valueOf(TUNGSTEN)
+        isIndeterminate = false // drawn here, not by Android's round spinner
         max = 1000
         if (fraction != null) progress = (fraction * max).toInt()
     }
@@ -639,7 +668,7 @@ abstract class Screen : Activity() {
     /** Light line, for secondary buttons and chips: a sharp outline, lit white with a faint fill when focused. */
     protected fun outline(focused: Boolean): Drawable = GradientDrawable().apply {
         setColor(if (focused) 0x26FFFFFF else 0)
-        cornerRadius = dp(BUTTON_R).toFloat()
+        cornerRadius = dp(minOf(BUTTON_R, CORNER)).toFloat()
         setStroke(dp(1), if (focused) TEXT else 0x59FFFFFF)
     }
 
@@ -663,7 +692,7 @@ abstract class Screen : Activity() {
     protected fun View.lift(on: Boolean, radiusDp: Int = 6) {
         foreground = if (on) GradientDrawable().apply {
             setColor(Color.TRANSPARENT)
-            cornerRadius = dp(radiusDp).toFloat()
+            cornerRadius = dp(minOf(radiusDp, CORNER)).toFloat()
             setStroke(dp(2), TUNGSTEN_RIM) // the emerald ring; the glow and the lift carry the rest
         } else null
         if (on && android.os.Build.VERSION.SDK_INT >= 28) {
@@ -949,12 +978,12 @@ abstract class Screen : Activity() {
 
         private var loadedFonts: Fonts? = null // main thread only
         const val PAD = 48
-        const val TILE_RADIUS = 8
+        const val TILE_RADIUS = 0
         const val GLASS_INSET = 28 // dp a glass panel sits in from the screen's edges
         const val FROST_W = 360 // px the art is shrunk to before the blur: wider is less blur (240 read as fog, 480 as smeared)
         const val HERO_W = 520 // dp: a title's block on Home and its page, half the screen so the story reads in full lines
         const val BUTTON_H = 38 // TV-sized: Play and the squares beside it
-        const val BUTTON_R = 4 // dp: buttons and chips are sharp rectangles
+        const val BUTTON_R = 0 // dp: buttons and chips are sharp rectangles
         const val SHORT_LIST = 5 // "What's new" entries shown before See all changes
         const val WHATS_NEW_W = 480 // dp
         const val CHIP_H = 24 // the mocks' 46–48 px chips
@@ -1001,7 +1030,7 @@ abstract class Screen : Activity() {
         val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)
         const val GLASS_HIGHLIGHT = 0x4DF0F6FF
         const val ROW_FOCUSED = 0x1FFFFFFF // Light line: the faint wash a focused row starts with
-        const val CORNER = 6 // dp: the most any glass or button is rounded. No capsules anywhere.
+        const val CORNER = 0 // dp: nothing in Canopy is rounded. Sharp rectangles only, no capsules or circles.
         const val PROGRESS_TRACK = 0x4DFFFFFF // light enough that a short fill still reads as a bar, not a dash
         private val pool = Executors.newFixedThreadPool(6)
     }

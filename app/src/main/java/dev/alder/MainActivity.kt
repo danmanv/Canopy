@@ -1913,7 +1913,7 @@ class MainActivity : Screen() {
             init {
                 outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) =
-                        outline.setRoundRect(0, 0, view.width, view.height, dp(if (grid) 6 else RADIUS).toFloat())
+                        outline.setRect(0, 0, view.width, view.height)
                 }
                 clipToOutline = true
                 setBackgroundColor(TILE) // a quiet placeholder until the poster fades in over it
@@ -2240,7 +2240,7 @@ class MainActivity : Screen() {
         const val SWITCH_WAIT = 300L // ms the remote rests on a page's name before it opens: passing over names opens nothing
         const val LOGO_W = 360 // the cinema's title logo
         const val LOGO_H = 100
-        const val RADIUS = 6
+        const val RADIUS = 0 // posters are sharp rectangles
         const val ROW_TOP_ROOM = HEADING_GAP + 9 // dp between the row title and its cards, plus the focused card's growth (5% of 180 dp a side)
         const val ROW_BOTTOM_ROOM = 18 // the focused card's growth below it (nothing is written under the posters)
         const val SAFE_BOTTOM = 27
