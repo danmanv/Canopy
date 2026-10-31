@@ -371,7 +371,7 @@ class DetailsActivity : Screen() {
             setPadding(room, room, room, room)
             clipToPadding = false
             addView(seasonStrip)
-        }, FrameLayout.LayoutParams(width - dp(LOGO_W) + 2 * room, dp(SEASON_TAB_H) + 2 * room).apply {
+        }, FrameLayout.LayoutParams(width - dp(LOGO_W) + 2 * room, dp(TAB_H) + 2 * room).apply {
             // Seasons sit on the logo's line, beside it.
             leftMargin = x + dp(LOGO_W) - room; topMargin = dp(29) - room
         })
@@ -394,41 +394,18 @@ class DetailsActivity : Screen() {
         fillGuide()
     }
 
-    /**
-     * A season, as the top bar's pages: a name with no box. The open season is bright over a tungsten line; the focused
-     * one is bright over a white line and glows softly; the rest are quiet.
-     */
-    private fun seasonTab(label: String, open: Boolean) = text(label, BODY, bold = open).apply {
-        isFocusable = true
-        gravity = Gravity.CENTER
-        setPadding(dp(SEASON_TAB_PAD), 0, dp(SEASON_TAB_PAD), 0)
-        fun style(focused: Boolean) {
-            setTextColor(if (open || focused) TEXT else TEXT_2)
-            setShadowLayer(if (focused) dp(10).toFloat() else 0f, 0f, 0f, if (focused) 0x99FFFFFF.toInt() else 0)
-            background = if (!open && !focused) null else android.graphics.drawable.LayerDrawable(arrayOf(
-                GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN) })).apply {
-                setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
-                setLayerHeight(0, dp(2))
-                setLayerInsetLeft(0, dp(SEASON_TAB_PAD))
-                setLayerInsetRight(0, dp(SEASON_TAB_PAD))
-            }
-        }
-        style(false)
-        setOnFocusChangeListener { _, has -> style(has) }
-    }
-
     private fun fillGuide() {
         val videos = meta?.videos.orEmpty()
         val seasons = videos.map { it.season }.distinct()
         seasonStrip.removeAllViews()
         seasonButtons = seasons.associateWith { season ->
-            seasonTab(if (season == 0) "Specials" else "Season $season", open = season == selectedSeason).apply {
+            tab(if (season == 0) "Specials" else "Season $season", open = season == selectedSeason).apply {
                 setOnClickListener {
                     selectedSeason = season
                     fillGuide()
                     seasonButtons[season]?.requestFocus()
                 }
-                seasonStrip.addView(this, LinearLayout.LayoutParams(-2, dp(SEASON_TAB_H)))
+                seasonStrip.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)))
             }
         }
         guideRows.removeAllViews()
@@ -742,8 +719,6 @@ class DetailsActivity : Screen() {
 
     private companion object {
         const val LOGO_W = 170 // dp: the guide's logo slot, with the season tabs after it
-        const val SEASON_TAB_H = 38 // dp, as the top bar's tabs
-        const val SEASON_TAB_PAD = 14 // dp either side of a season's name, and its line's inset
         const val GUIDE_ART = 0.6f // the film's brightness behind the episode guide
         const val STARTED = 60_000L // ms watched before a title counts as started
         const val ICON_BUTTON = Screen.BUTTON_H // the small square buttons beside Play are as tall as Play

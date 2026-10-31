@@ -454,6 +454,35 @@ abstract class Screen : Activity() {
         setOnFocusChangeListener { v, has -> v.background = outline(has); v.grow(has, CHIP_GROW).start() }
     }
 
+    /**
+     * A choice among a few, as the top bar's pages: a name with no box. The open one is bright over a tungsten line; the
+     * focused one is bright over a white line and glows softly; the rest are quiet, with a shadow to read over art.
+     */
+    protected fun tab(label: String, open: Boolean, sp: Float = BODY): TextView = text(label, sp).apply {
+        isFocusable = true
+        gravity = Gravity.CENTER
+        setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
+        tag = open
+        styleTab(false)
+        setOnFocusChangeListener { _, has -> styleTab(has) }
+    }
+
+    /** Opens or closes a [tab]. */
+    protected fun TextView.tabOpen(open: Boolean) { tag = open; styleTab(isFocused) }
+
+    protected fun TextView.styleTab(focused: Boolean) {
+        val open = tag == true
+        setTextColor(if (open || focused) TEXT else TEXT_2)
+        if (focused) setShadowLayer(dp(10).toFloat(), 0f, 0f, 0x99FFFFFF.toInt()) else onArt()
+        background = if (!open && !focused) null else android.graphics.drawable.LayerDrawable(arrayOf(
+            GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN) })).apply {
+            setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+            setLayerHeight(0, dp(2))
+            setLayerInsetLeft(0, dp(TAB_PAD))
+            setLayerInsetRight(0, dp(TAB_PAD))
+        }
+    }
+
     /** A [chip]'s open state: the tungsten dot and full-strength words. */
     protected fun TextView.select(label: String, selected: Boolean) {
         setTextColor(if (selected) TEXT else TEXT_2)
@@ -997,6 +1026,8 @@ abstract class Screen : Activity() {
         const val SHORT_LIST = 5 // "What's new" entries shown before See all changes
         const val WHATS_NEW_W = 480 // dp
         const val CHIP_H = 24 // the mocks' 46–48 px chips
+        const val TAB_PAD = 14 // dp either side of a tab's name, and its line's inset
+        const val TAB_H = 38 // dp, as the top bar's tabs
         const val CARD_GROW = 1.08f
         const val CHIP_GROW = 1.04f // a wide chip grown as much as a card filled the gap to its neighbour
         const val CARD_LIFT = 8

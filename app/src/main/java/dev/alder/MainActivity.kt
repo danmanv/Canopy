@@ -1400,19 +1400,17 @@ class MainActivity : Screen() {
         listFilterChips.clear()
         listSortChips.clear()
         lastListChip = null
-        val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(PAD), dp(2), dp(PAD), dp(2)) }
+        // The first name lines up with the page's edge; its tab's own padding sits outside it.
+        val line = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(PAD - TAB_PAD), dp(2), dp(PAD), dp(2)) }
         fun add(label: String, selected: Boolean, click: () -> Unit): TextView {
-            // A dark pane under each chip: over a bright poster the words alone were lost.
-            fun rest() = GradientDrawable().apply { setColor(0x8C000000.toInt()); setStroke(dp(1), 0x59FFFFFF) }
-            val control = chip(label, selected).apply {
-                background = rest()
-                setOnFocusChangeListener { v, has ->
-                    v.background = if (has) glass(CHIP_H / 2, true) else rest()
+            val control = tab(label, selected, SMALL).apply {
+                setOnFocusChangeListener { _, has ->
+                    styleTab(has)
                     if (has) lastListChip = this
                 }
                 setOnClickListener { click() }
             }
-            line.addView(control, LinearLayout.LayoutParams(-2, dp(CHIP_H)).apply { if (line.childCount > 0) marginStart = dp(6) })
+            line.addView(control, LinearLayout.LayoutParams(-2, dp(LIST_TAB_H)))
             return control
         }
         listOf(ListFilter.ALL to "All", ListFilter.MOVIES to "Movies", ListFilter.SHOWS to "Shows").forEach { (value, label) ->
@@ -1420,7 +1418,7 @@ class MainActivity : Screen() {
                 if (listFilter != value) { listFilter = value; styleListChips(); redrawLibrary() }
             }
         }
-        line.addView(text("Sort", SMALL, color = TEXT_2).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(20) })
+        line.addView(text("Sort", SMALL, color = TEXT_3).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(20) })
         listOf(ListSort.RECENT to "Recently added", ListSort.NAME to "A–Z", ListSort.UNWATCHED to "Unwatched first")
             .forEach { (value, label) ->
                 listSortChips[value] = add(label, value == listSort) {
@@ -1431,12 +1429,8 @@ class MainActivity : Screen() {
     }
 
     private fun styleListChips() {
-        listFilterChips.forEach { (value, view) -> view.select(when (value) {
-            ListFilter.ALL -> "All"; ListFilter.MOVIES -> "Movies"; ListFilter.SHOWS -> "Shows"
-        }, value == listFilter) }
-        listSortChips.forEach { (value, view) -> view.select(when (value) {
-            ListSort.RECENT -> "Recently added"; ListSort.NAME -> "A–Z"; ListSort.UNWATCHED -> "Unwatched first"
-        }, value == listSort) }
+        listFilterChips.forEach { (value, view) -> view.tabOpen(value == listFilter) }
+        listSortChips.forEach { (value, view) -> view.tabOpen(value == listSort) }
     }
 
     private fun addedAgo(value: String): String {
@@ -2255,6 +2249,7 @@ class MainActivity : Screen() {
     }
 
     private companion object {
+        const val LIST_TAB_H = 32 // dp: My List's filter and sort tabs, inside the 44 dp strip
         const val TRAILER_WAIT = 3_000L // ms the remote rests on a card before its trailer shows
         const val TRAILER_LOAD = 800L // ms before it starts loading out of sight: racing along a row loads none
         const val TRAILER_FADE = 800L
@@ -2275,8 +2270,6 @@ class MainActivity : Screen() {
         const val LIST_TOP = 280 - LIST_TOP_ROOM
         const val INFO_W = 360 // the cinema's line
         const val NAV_GAP = 4 // dp between them
-        const val TAB_H = 38 // dp: a tab's height; the open page's underline sits at its foot
-        const val TAB_PAD = 14 // dp either side of a tab's name, and the underline's inset
         const val BRAND_GAP = 40 // dp from the wordmark to the first tab
         const val WORDMARK_BAR = 19f // sp: "canopy" beside its mark in the top bar
         const val BODY_LARGE = 16f // sp: the tabs' names
