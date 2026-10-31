@@ -227,7 +227,8 @@ class SettingsActivity : Screen() {
         header.addView(profileName, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
         avatar = text(Profiles.active(this)?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = BASE).apply {
             gravity = Gravity.CENTER
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(ICE, TUNGSTEN)).apply { cornerRadius = dp(CORNER).toFloat() }
+            val colour = Profiles.active(this@SettingsActivity)?.color ?: TUNGSTEN
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(colour, darker(colour)))
         }
         header.addView(avatar, LinearLayout.LayoutParams(dp(30), dp(30)))
         root.addView(header, FrameLayout.LayoutParams(-1, dp(44), Gravity.TOP).apply {
@@ -608,7 +609,7 @@ class SettingsActivity : Screen() {
             recreate()
         }
         display.setCompoundDrawablesRelative(GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(theme.accent, theme.second)).apply {
-            cornerRadius = dp(2).toFloat(); setBounds(0, 0, dp(36), dp(14))
+            cornerRadius = dp(minOf(2, CORNER)).toFloat(); setBounds(0, 0, dp(36), dp(14))
         }, null, null, null)
         display.compoundDrawablePadding = dp(12)
         display.gravity = Gravity.CENTER_VERTICAL

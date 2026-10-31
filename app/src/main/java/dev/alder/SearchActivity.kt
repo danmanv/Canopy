@@ -671,7 +671,7 @@ class SearchActivity : Screen() {
             tag = "${meta.type}:${meta.id}"
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) =
-                    outline.setRoundRect(0, 0, view.width, view.height, dp(6).toFloat())
+                    outline.setRect(0, 0, view.width, view.height)
             }
             clipToOutline = true
             addView(image, FrameLayout.LayoutParams(-1, -1))

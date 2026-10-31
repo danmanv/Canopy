@@ -174,7 +174,7 @@ class ProfilesActivity : Screen() {
             gravity = Gravity.CENTER
             alpha = 0.6f
             background = GradientDrawable().apply {
-                cornerRadius = dp(PORTRAIT_R).toFloat(); setColor(profile?.color ?: GLASS)
+                cornerRadius = dp(minOf(PORTRAIT_R, CORNER)).toFloat(); setColor(profile?.color ?: GLASS)
                 if (add) setStroke(dp(1), GLASS_EDGE, dp(2).toFloat(), dp(3).toFloat())
             }
         }
@@ -297,7 +297,7 @@ class ProfilesActivity : Screen() {
             b.text = when {
                 digits[i] < 0 -> ""
                 i == at -> "${digits[i]}"
-                else -> "•"
+                else -> "\u25AA" // a small square, not a round dot
             }
             b.background = glass(14, i == at)
         }
@@ -391,7 +391,7 @@ class ProfilesActivity : Screen() {
                 setOnFocusChangeListener { view, focused -> view.background = face(focused) }
                 setOnClickListener {
                     draftColor = color
-                    avatar.background = GradientDrawable().apply { cornerRadius = dp(PORTRAIT_R).toFloat(); setColor(color) }
+                    avatar.background = GradientDrawable().apply { cornerRadius = dp(minOf(PORTRAIT_R, CORNER)).toFloat(); setColor(color) }
                     marks.forEachIndexed { i, view -> view.text = if (i == index) "✓" else "" }
                 }
             }
@@ -633,7 +633,7 @@ class ProfilesActivity : Screen() {
         serif = true, color = BASE).apply {
         gravity = Gravity.CENTER
         background = GradientDrawable().apply {
-            cornerRadius = dp(if (size > 50) PORTRAIT_R else CORNER).toFloat()
+            cornerRadius = dp(minOf(if (size > 50) PORTRAIT_R else CORNER, CORNER)).toFloat()
             setColor(color)
         }
         layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
@@ -753,7 +753,7 @@ class ProfilesActivity : Screen() {
     }
 
     private companion object {
-        const val PORTRAIT_R = 18 // dp: portraits are softened squares, not circles
+        const val PORTRAIT_R = 0 // dp: portraits are sharp squares
         const val LIFT_ROOM = 8 // dp above the portraits for the focused one's 10% lift and ring
         const val KEY_H = 25 // dp a key row on the name step, so Continue fits under the colours
     }

@@ -315,7 +315,7 @@ class DetailsActivity : Screen() {
         clipToOutline = true
         outlineProvider = object : android.view.ViewOutlineProvider() {
             override fun getOutline(view: View, outline: android.graphics.Outline) =
-                outline.setRoundRect(0, 0, view.width, view.height, dp(14).toFloat())
+                outline.setRect(0, 0, view.width, view.height)
         }
     }
 
@@ -592,7 +592,7 @@ class DetailsActivity : Screen() {
                 background = rounded(TILE, 6) // held for the poster
                 outlineProvider = object : android.view.ViewOutlineProvider() {
                     override fun getOutline(view: View, outline: android.graphics.Outline) =
-                        outline.setRoundRect(0, 0, view.width, view.height, dp(6).toFloat())
+                        outline.setRect(0, 0, view.width, view.height)
                 }
                 clipToOutline = true
                 val image = ImageView(context).apply { scaleType = ImageView.ScaleType.CENTER_CROP }
