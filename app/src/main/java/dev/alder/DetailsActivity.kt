@@ -519,7 +519,7 @@ class DetailsActivity : Screen() {
         similarOverlay = FrameLayout(this).apply { visibility = View.GONE }
         similarOverlay.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                intArrayOf(0xF7070B16.toInt(), 0xA6070B16.toInt(), 0x00070B16))
+                intArrayOf(baseAt(0xF7), baseAt(0xA6), baseAt(0x00)))
         }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
         val content = column(Gravity.START)
         content.addView(caps(heading).onArt(), LinearLayout.LayoutParams(-1, -2).apply {

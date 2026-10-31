@@ -115,7 +115,7 @@ class StreamsActivity : Screen() {
             addView(art, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                    intArrayOf(0xB3070B16.toInt(), 0x73070B16, 0x59070B16))
+                    intArrayOf(baseAt(0xB3), baseAt(0x73), baseAt(0x59)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
@@ -379,7 +379,7 @@ class StreamsActivity : Screen() {
             detail.addView(text(tag.uppercase(), 9f, bold = true, color = TUNGSTEN).apply {
                 letterSpacing = 0.03f
                 background = GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT); cornerRadius = dp(3).toFloat(); setStroke(dp(1), 0x807CF2D0.toInt())
+                    setColor(Color.TRANSPARENT); cornerRadius = dp(3).toFloat(); setStroke(dp(1), withAlpha(TUNGSTEN, 0x80))
                 }
                 setPadding(dp(4), dp(1), dp(4), dp(1))
             }, wrap().apply { marginEnd = dp(5) })

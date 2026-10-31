@@ -113,8 +113,12 @@ abstract class Screen : Activity() {
     protected val main = Handler(Looper.getMainLooper())
     /** The Stremio account of the profile in use. */
     protected val authKey: String? get() = Profiles.active(this)?.authKey
+    /** The colours this screen was drawn in; when Settings changes them, the screen draws itself again on return. */
+    private var drawnIn: Theme? = null
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        Theme.load(this)
+        drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
@@ -193,6 +197,7 @@ abstract class Screen : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (drawnIn != null && drawnIn !== Theme.now) return recreate()
         armScreensaver()
         val release = pendingInstall ?: return
         pendingInstall = null
@@ -260,8 +265,8 @@ abstract class Screen : Activity() {
             if (art !== shadeSource) return@background
             // A bright film keeps the shade dark across the whole text column, not just at the screen's edge.
             windowShade?.background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                if (bright) intArrayOf(0xF7070B16.toInt(), 0xE0070B16.toInt(), 0x80070B16.toInt(), 0x00070B16)
-                else intArrayOf(0xEB070B16.toInt(), 0x00070B16, 0x00070B16))
+                if (bright) intArrayOf(baseAt(0xF7), baseAt(0xE0), baseAt(0x80), baseAt(0x00))
+                else intArrayOf(baseAt(0xEB), baseAt(0x00), baseAt(0x00)))
         }
     }
 
@@ -273,14 +278,14 @@ abstract class Screen : Activity() {
         setContentView(FrameLayout(this).apply {
             addView(backdrop, FrameLayout.LayoutParams(-1, -1))
             windowShade = View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xEB070B16.toInt(), 0x00070B16, 0x00070B16))
+                background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(baseAt(0xEB), baseAt(0x00), baseAt(0x00)))
             }.also { addView(it, FrameLayout.LayoutParams(-1, -1)) }
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF7070B16.toInt(), 0x00070B16, 0x00070B16))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xF7), baseAt(0x00), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x8C070B16.toInt(), 0x00070B16, 0x00070B16, 0x00070B16, 0x00070B16, 0x00070B16, 0x00070B16))
+                    intArrayOf(baseAt(0x8C), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
                 GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
@@ -509,10 +514,10 @@ abstract class Screen : Activity() {
             setBackgroundColor(BASE)
             addView(art, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BL_TR, intArrayOf(0xF2070B16.toInt(), 0x99070B16.toInt(), 0x33070B16))
+                background = GradientDrawable(GradientDrawable.Orientation.BL_TR, intArrayOf(baseAt(0xF2), baseAt(0x99), baseAt(0x33)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC070B16.toInt(), 0x00070B16))
+                background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xCC), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, -1))
             addView(block, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START).apply {
                 leftMargin = dp(PAD); bottomMargin = dp(PAD + 8)
@@ -537,7 +542,7 @@ abstract class Screen : Activity() {
      */
     protected fun lineFocus(gloss: Boolean = false): Drawable = LayerDrawable(listOfNotNull(
         GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-            if (gloss) intArrayOf(0x33FFFFFF, 0x14BFE9FF, 0x05FFFFFF) else intArrayOf(0x29FFFFFF, 0x0FFFFFFF, 0x00FFFFFF)),
+            if (gloss) intArrayOf(0x33FFFFFF, withAlpha(ICE, 0x14), 0x05FFFFFF) else intArrayOf(0x29FFFFFF, 0x0FFFFFFF, 0x00FFFFFF)),
         android.graphics.drawable.ColorDrawable(TUNGSTEN),
         // [gloss] (Settings): a bright hairline along the top edge, like light catching polished glass.
         if (gloss) GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(0xD9FFFFFF.toInt(), 0x26FFFFFF)) else null,
@@ -556,10 +561,10 @@ abstract class Screen : Activity() {
             gradientRadius = w * r
         }
         return LayerDrawable(arrayOf(
-            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0xFF0A1122.toInt(), BASE, 0xFF04060C.toInt())),
-            light(0x387CF2D0, 0.9f, -0.05f, 0.45f),
-            light(0x409B8CFF, 0.6f, -0.1f, 0.4f),
-            light(0x2E3C6EBE, 1f, 1.1f, 0.5f),
+            GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(Theme.now.glass, BASE, Theme.now.deep)),
+            light(Theme.now.lights[0], 0.9f, -0.05f, 0.45f),
+            light(Theme.now.lights[1], 0.6f, -0.1f, 0.4f),
+            light(Theme.now.lights[2], 1f, 1.1f, 0.5f),
             // A faint diagonal sheen across the glass.
             GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(0, 0, 0x0BFFFFFF, 0x04FFFFFF, 0, 0)),
         ))
@@ -895,19 +900,20 @@ abstract class Screen : Activity() {
         const val CODE = 36f
         val LEADING = mapOf(SERIF_HERO to 40f, SERIF_TITLE to 30f, SERIF_NAME to 21f, BODY to 20f, SMALL to 17f, CODE to 40f)
 
-        const val BASE = 0xFF070B16.toInt() // Aurora's midnight
-        const val TEXT = 0xFFF2F5FF.toInt()
-        const val TEXT_2 = 0xB8D4DCF0.toInt()
-        const val TEXT_3 = 0x73D4DCF0
-        // Canopy's Aurora look: the accent keeps Alder's name (fewer conflicts when merging upstream) but is mint.
-        const val TUNGSTEN = 0xFF7CF2D0.toInt()
+        // The colours come from the chosen Theme; Tangerine unless the viewer picks another in Settings.
+        val BASE get() = Theme.now.base
+        val TEXT get() = Theme.now.text
+        val TEXT_2 get() = withAlpha(Theme.now.dim, 0xB8)
+        val TEXT_3 get() = withAlpha(Theme.now.dim, 0x73)
+        // The accent keeps Alder's name (fewer conflicts when merging upstream).
+        val TUNGSTEN get() = Theme.now.accent
         const val TUNGSTEN_RIM = 0xFFFFFFFF.toInt() // Light line: a focused card's ring is white
-        const val TUNGSTEN_GLOW = 0x737CF2D0
-        const val ICE = 0xFFBFE9FF.toInt() // values and the second light in Aurora's sky
+        val TUNGSTEN_GLOW get() = withAlpha(Theme.now.accent, 0x73)
+        val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
-        const val GLASS = 0x4D101626
+        val GLASS get() = withAlpha(Theme.now.glass, 0x4D)
         const val GLASS_FOCUSED = 0x33FFFFFF
-        const val GLASS_EDGE = 0x24DCE8FF
+        val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)
         const val GLASS_HIGHLIGHT = 0x4DF0F6FF
         const val ROW_FOCUSED = 0x1FFFFFFF // Light line: the faint wash a focused row starts with
         const val CORNER = 6 // dp: the most any glass or button is rounded. No capsules anywhere.

@@ -410,7 +410,7 @@ class PlayerActivity : Screen() {
 
     private fun buildLoading() = FrameLayout(this).apply {
         visibility = View.GONE
-        addView(View(context).apply { setBackgroundColor(0x80070B16.toInt()) }, FrameLayout.LayoutParams(-1, -1))
+        addView(View(context).apply { setBackgroundColor(baseAt(0x80)) }, FrameLayout.LayoutParams(-1, -1))
         val center = column(Gravity.CENTER_HORIZONTAL).apply {
             addView(ring(), LinearLayout.LayoutParams(dp(40), dp(40)))
             addView(status, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(12) })
@@ -987,11 +987,11 @@ class PlayerActivity : Screen() {
             alpha = 0f
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                    intArrayOf(0x99070B16.toInt(), 0x00070B16))
+                    intArrayOf(baseAt(0x99), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, dp(120), Gravity.TOP))
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
-                    intArrayOf(0xF2070B16.toInt(), 0xB3070B16.toInt(), 0x00070B16))
+                    intArrayOf(baseAt(0xF2), baseAt(0xB3), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
             addView(playerLogo, FrameLayout.LayoutParams(dp(150), dp(50)).apply {
                 leftMargin = dp(PAD); topMargin = dp(26)
@@ -1247,7 +1247,7 @@ class PlayerActivity : Screen() {
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
-            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(0xF0070B16.toInt(), 14), glass(14)))
+            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
         }, FrameLayout.LayoutParams(dp(310), resources.displayMetrics.heightPixels - dp(54)).apply {
             leftMargin = dp(27); topMargin = dp(27)
         })
