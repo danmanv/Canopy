@@ -15,6 +15,15 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+## 1.3.2
+
+- **New search screen.** The text you type is large. The letters are on one line below it. Move left and right to select a letter. The results use the full width of the screen.
+- **No more boxes.** Seasons, the **My List** filters, the language list and other small choices are names with a line below them, as at the top of the screen.
+- When you pause, the controls stay on the screen until you push a button.
+- The loading mark is a ring that turns.
+- The **Play** button is level with the other buttons in the player.
+- The clock stays bright above the episode list.
+
 ## 1.3.1
 
 - **New episode list.** Each episode shows its picture, its length, its date and a short story. A bar under the story shows how much you watched.
