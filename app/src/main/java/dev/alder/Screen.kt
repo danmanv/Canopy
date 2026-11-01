@@ -443,22 +443,35 @@ abstract class Screen : Activity() {
         return animate().scaleX(if (on) by else 1f).scaleY(if (on) by else 1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE)
     }
 
-    /** A persistent choice: its dot remains after remote focus moves. */
-    protected fun chip(label: String, selected: Boolean = false) = text(label, SMALL).apply {
-        select(label, selected)
+    /** A small choice or quiet action: a [tab] in small type. [selected] keeps its line after the remote moves on. */
+    protected fun chip(label: String, selected: Boolean = false) = tab(label, selected, SMALL).apply { minHeight = dp(CHIP_H) }
+
+    /**
+     * A choice among a few, as the top bar's pages: a name with no box. The open one is bright over a tungsten line; the
+     * focused one is bright over a white line and glows softly; the rest are quiet, with a shadow to read over art.
+     */
+    protected fun tab(label: String, open: Boolean, sp: Float = BODY): TextView = text(label, sp).apply {
         isFocusable = true
         gravity = Gravity.CENTER
-        minHeight = dp(CHIP_H)
-        setPadding(dp(16), 0, dp(16), 0)
-        background = outline(false)
-        setOnFocusChangeListener { v, has -> v.background = outline(has); v.grow(has, CHIP_GROW).start() }
+        setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
+        tag = open
+        styleTab(false)
+        setOnFocusChangeListener { _, has -> styleTab(has) }
     }
 
-    /** A [chip]'s open state: the tungsten dot and full-strength words. */
-    protected fun TextView.select(label: String, selected: Boolean) {
-        setTextColor(if (selected) TEXT else TEXT_2)
-        text = if (!selected) label else android.text.SpannableString("\u25AA  $label").apply {
-            setSpan(android.text.style.ForegroundColorSpan(TUNGSTEN), 0, 1, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+    /** Opens or closes a [tab]. */
+    protected fun TextView.tabOpen(open: Boolean) { tag = open; styleTab(isFocused) }
+
+    protected fun TextView.styleTab(focused: Boolean) {
+        val open = tag == true
+        setTextColor(if (open || focused) TEXT else TEXT_2)
+        if (focused) setShadowLayer(dp(10).toFloat(), 0f, 0f, 0x99FFFFFF.toInt()) else onArt()
+        background = if (!open && !focused) null else android.graphics.drawable.LayerDrawable(arrayOf(
+            GradientDrawable().apply { setColor(if (focused) TEXT else TUNGSTEN) })).apply {
+            setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+            setLayerHeight(0, dp(2))
+            setLayerInsetLeft(0, dp(TAB_PAD))
+            setLayerInsetRight(0, dp(TAB_PAD))
         }
     }
 
@@ -518,8 +531,8 @@ abstract class Screen : Activity() {
     }
 
     /**
-     * The loading and countdown mark: a small square outline, never a circle. Null animates loading (a short lit run
-     * travelling round the square); for countdowns set progress to fraction × max and the square fills clockwise.
+     * The loading and countdown mark: a thin ring. Null animates loading (a short lit arc spinning round it); for
+     * countdowns set progress to fraction × max and the ring fills clockwise from the top.
      */
     protected fun ring(fraction: Float? = null): ProgressBar = object : ProgressBar(this, null,
         // A countdown needs a style that keeps its progress; the default one is indeterminate-only and reads 0.
@@ -527,34 +540,30 @@ abstract class Screen : Activity() {
         private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             style = Paint.Style.STROKE
             strokeWidth = dp(2).toFloat()
-            strokeCap = Paint.Cap.SQUARE
-            strokeJoin = Paint.Join.MITER
+            strokeCap = Paint.Cap.ROUND
         }
-        private val square = Path()
+        private val circle = Path()
         private val run = Path()
         private val measure = android.graphics.PathMeasure()
 
         override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
             super.onSizeChanged(w, h, oldw, oldh)
             val inset = stroke.strokeWidth / 2
-            square.reset()
-            square.moveTo(inset, inset)
-            square.lineTo(w - inset, inset)
-            square.lineTo(w - inset, h - inset)
-            square.lineTo(inset, h - inset)
-            square.close()
-            measure.setPath(square, true)
+            circle.reset()
+            // From twelve o'clock, clockwise, so a countdown fills the way a clock hand moves.
+            circle.addArc(RectF(inset, inset, w - inset, h - inset), -90f, 359.9f)
+            measure.setPath(circle, false)
         }
 
         override fun onDraw(canvas: Canvas) {
             val length = measure.length
             if (length <= 0f) return
             stroke.color = PROGRESS_TRACK
-            canvas.drawPath(square, stroke)
+            canvas.drawPath(circle, stroke)
             stroke.color = TUNGSTEN
             run.reset()
             if (fraction == null) {
-                // A quarter of the square, once round every 1.2 s.
+                // A quarter of the ring, once round every 1.2 s.
                 val start = (android.os.SystemClock.uptimeMillis() % 1200L) / 1200f * length
                 val end = start + length / 4
                 measure.getSegment(start, minOf(end, length), run, true)
@@ -1001,8 +1010,9 @@ abstract class Screen : Activity() {
         const val SHORT_LIST = 5 // "What's new" entries shown before See all changes
         const val WHATS_NEW_W = 480 // dp
         const val CHIP_H = 24 // the mocks' 46–48 px chips
+        const val TAB_PAD = 14 // dp either side of a tab's name, and its line's inset
+        const val TAB_H = 38 // dp, as the top bar's tabs
         const val CARD_GROW = 1.08f
-        const val CHIP_GROW = 1.04f // a wide chip grown as much as a card filled the gap to its neighbour
         const val CARD_LIFT = 8
         // Spacing, everywhere rows of pictures appear: between cards, from a row's heading to its cards (plus room for
         // the focused card to grow), and above a heading, so each heading belongs to the row under it.

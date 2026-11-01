@@ -50,7 +50,7 @@ internal fun <T> rankSearchTitles(items: List<T>, query: String, title: (T) -> S
 
 internal fun <T> searchAnswersInAddonOrder(answers: Array<List<T>?>): List<T> = answers.filterNotNull().flatten()
 
-/** House Lights search: remote keyboard on the left, focused title and poster rows on the right. */
+/** Search: what you type in large type, the alphabet on one line under it, and poster rows across the screen. */
 class SearchActivity : Screen() {
     private lateinit var art: ImageView
     private lateinit var artBack: ImageView
@@ -60,19 +60,11 @@ class SearchActivity : Screen() {
     private lateinit var recentBox: LinearLayout
     private lateinit var results: LinearLayout
     private lateinit var resultsScroll: ScrollView
-    private lateinit var hero: View
-    private lateinit var heroLogo: ImageView
-    private lateinit var heroName: TextView
-    private lateinit var heroFacts: TextView
-    private lateinit var heroAbout: TextView
-    private lateinit var heroTag: TextView
-    private lateinit var heroScore: TextView
     private lateinit var keyboard: LinearLayout
     private val characterKeys = mutableListOf<TextView>()
-    private val rightEdgeKeys = mutableSetOf<View>()
     private val cards = mutableListOf<Pair<View, View>>()
+    private val topRowCards = mutableSetOf<View>()
     private var firstKey: View? = null
-    private var lastKey: View? = null
     private var lastKeyboardFocus: View? = null
     private var firstResult: View? = null
     private var focused: Meta? = null
@@ -98,7 +90,7 @@ class SearchActivity : Screen() {
         root.addView(art, FrameLayout.LayoutParams(-1, -1))
         root.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(baseAt(0xF2), baseAt(0xD9), baseAt(0xA0), baseAt(0x1A)))
+                intArrayOf(baseAt(0xE6), baseAt(0xBF), baseAt(0x8C), baseAt(0x40)))
         }, FrameLayout.LayoutParams(-1, -1))
         root.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
@@ -106,46 +98,43 @@ class SearchActivity : Screen() {
         }, FrameLayout.LayoutParams(-1, dp(260), Gravity.BOTTOM))
         root.addView(View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-                intArrayOf(baseAt(0x8C), baseAt(0x00)))
-        }, FrameLayout.LayoutParams(-1, dp(80), Gravity.TOP))
+                intArrayOf(baseAt(0xD9), baseAt(0x8C), baseAt(0x00)))
+        }, FrameLayout.LayoutParams(-1, dp(220), Gravity.TOP))
         root.addView(header(), FrameLayout.LayoutParams(-1, dp(40)).apply { topMargin = dp(24) })
 
-        val field = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(12), 0, dp(10), 0)
-        }
-        field.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_search)
-            imageTintList = ColorStateList.valueOf(TEXT_2)
-        }, LinearLayout.LayoutParams(dp(15), dp(15)))
+        // What you type, large, over a hairline: no field box.
+        val field = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         input = EditText(this).apply {
             hint = "Search"
             setHintTextColor(TEXT_3)
             setTextColor(TEXT)
-            textSize = BODY
+            textSize = QUERY_SP
+            typeface = text("", QUERY_SP, bold = true).typeface
             setSingleLine()
             imeOptions = EditorInfo.IME_ACTION_SEARCH
             showSoftInputOnFocus = false
             background = null
-            setPadding(dp(10), 0, dp(5), 0)
+            setPadding(0, 0, dp(5), 0)
             setSelectAllOnFocus(false)
+            onArt()
         }
-        // The field's own caret shows only while it has focus, and focus lives on our keys: a tungsten bar after the
+        // The field's own caret shows only while it has focus, and focus lives on the letters: a tungsten bar after the
         // last letter stands in for it.
         val inputBox = FrameLayout(this)
         inputBox.addView(input, FrameLayout.LayoutParams(-1, -1))
         cursor = View(this).apply { setBackgroundColor(TUNGSTEN) }
-        inputBox.addView(cursor, FrameLayout.LayoutParams(dp(1), dp(15), Gravity.CENTER_VERTICAL))
-        field.addView(inputBox, LinearLayout.LayoutParams(0, dp(34), 1f))
-        resultCount = text("", SMALL, color = TEXT_3)
+        inputBox.addView(cursor, FrameLayout.LayoutParams(dp(2), dp(26), Gravity.CENTER_VERTICAL))
+        field.addView(inputBox, LinearLayout.LayoutParams(0, dp(44), 1f))
+        resultCount = text("", SMALL, color = TEXT_3).onArt()
         field.addView(resultCount)
         val clear = ImageView(this).apply {
             setImageResource(R.drawable.ic_close)
             imageTintList = ColorStateList.valueOf(TEXT_2)
-            setPadding(dp(4), dp(4), dp(4), dp(4))
+            setPadding(dp(5), dp(5), dp(5), dp(5))
             contentDescription = "Clear search"
             visibility = View.GONE
-            rowFocus(11)
+            isFocusable = true
+            setOnFocusChangeListener { v, has -> imageTintList = ColorStateList.valueOf(if (has) TEXT else TEXT_2); v.background = if (has) underline(TEXT, 4) else null }
             setOnClickListener {
                 input.setText("")
                 main.removeCallbacks(typed)
@@ -153,59 +142,39 @@ class SearchActivity : Screen() {
                 firstKey?.requestFocus()
             }
         }
-        field.addView(clear, LinearLayout.LayoutParams(dp(22), dp(22)).apply { marginStart = dp(4) })
+        field.addView(clear, LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginStart = dp(8) })
         clearSearch = clear
-        val fieldRest = glassOver(field, 17, shade = LEFT_SHADE)
-        field.background = fieldRest
         input.setOnFocusChangeListener { _, has ->
-            field.background = if (has) glass(17, true) else fieldRest
             placeCursor()
             if (!has) {
                 (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken, 0)
             }
         }
-        root.addView(field, FrameLayout.LayoutParams(dp(228), dp(34)).apply { leftMargin = dp(48); topMargin = dp(88) })
+        root.addView(field, FrameLayout.LayoutParams(dp(QUERY_W), dp(44)).apply { leftMargin = dp(48); topMargin = dp(78) })
+        root.addView(View(this).apply { setBackgroundColor(0x40FFFFFF) },
+            FrameLayout.LayoutParams(dp(QUERY_W), dp(1)).apply { leftMargin = dp(48); topMargin = dp(123) })
 
-        keyboard = column(Gravity.START).apply {
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            background = glassOver(this, 14, shade = LEFT_SHADE)
-        }
+        // The alphabet on one line; left and right glide along it.
+        keyboard = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(48 - KEY_PAD), 0, dp(48), 0) }
         buildKeyboard()
-        root.addView(keyboard, FrameLayout.LayoutParams(dp(228), dp(220)).apply { leftMargin = dp(48); topMargin = dp(134) })
+        root.addView(HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            clipToPadding = false
+            addView(keyboard)
+        }, FrameLayout.LayoutParams(-1, dp(KEY_H)).apply { topMargin = dp(132) })
 
-        recentBox = column(Gravity.START)
-        root.addView(recentBox, FrameLayout.LayoutParams(dp(228), -2).apply { leftMargin = dp(48); topMargin = dp(375) })
+        recentBox = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(48), 0, dp(48), 0) }
+        root.addView(recentBox, FrameLayout.LayoutParams(-1, dp(28)).apply { topMargin = dp(172) })
         showRecent()
 
-        heroLogo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START }
-        heroName = text("", 48f, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
-        heroFacts = text("", SMALL, color = TEXT_2).onArt()
-        heroTag = imdbTag()
-        heroScore = text("", SMALL, color = TEXT_2).onArt()
-        heroAbout = text("", BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
-        hero = column(Gravity.START).apply {
-            addView(heroLogo, LinearLayout.LayoutParams(dp(210), dp(46)))
-            addView(heroName, LinearLayout.LayoutParams(-1, -2))
-            addView(LinearLayout(this@SearchActivity).apply {
-                gravity = Gravity.CENTER_VERTICAL
-                addView(heroFacts)
-                addView(heroTag, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
-                addView(heroScore, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(5) })
-            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
-            addView(heroAbout, LinearLayout.LayoutParams(dp(420), -2).apply { topMargin = dp(5) })
-            visibility = View.INVISIBLE
-        }
-        root.addView(hero, FrameLayout.LayoutParams(dp((width - 368).toInt()), dp(122)).apply {
-            leftMargin = dp(320); topMargin = dp(88)
-        })
         results = column(Gravity.START)
         resultsScroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             addView(results)
         }
-        // Runs to the screen's right edge, as Home's rows do: stopping 48 dp short sliced the last poster in half.
-        root.addView(resultsScroll, FrameLayout.LayoutParams(dp((width - 320).toInt()), dp((height - 220).toInt())).apply {
-            leftMargin = dp(320); topMargin = dp(220)
+        // Runs to the screen's right edge, as Home's rows do.
+        root.addView(resultsScroll, FrameLayout.LayoutParams(-1, dp((height - RESULTS_TOP).toInt())).apply {
+            leftMargin = dp(48 - 6); topMargin = dp(RESULTS_TOP)
         })
         window.setBackgroundDrawable(null)
         setContentView(root)
@@ -291,10 +260,11 @@ class SearchActivity : Screen() {
     private fun header(): View {
         val profile = Profiles.active(this)
         val bar = FrameLayout(this).apply { setPadding(dp(48), 0, dp(48), 0) }
-        val avatar = text(profile?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = TUNGSTEN).apply {
+        val avatar = text(profile?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = BASE).apply {
             gravity = Gravity.CENTER
-            background = glass(15)
-            rowFocus(15, rest = { glass(15) })
+            background = rounded(profile?.color ?: TEXT_2, CORNER)
+            isFocusable = true
+            setOnFocusChangeListener { v, has -> v.grow(has).start() }
             setOnClickListener {
                 choose(profile?.name ?: "Profile", listOf("Switch profile", "Settings")) { picked ->
                     startActivity(Intent(this@SearchActivity,
@@ -307,10 +277,7 @@ class SearchActivity : Screen() {
             }
         }
         bar.addView(avatar, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.START or Gravity.CENTER_VERTICAL))
-        val nav = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(4), dp(4), dp(4))
-        }
+        val nav = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val searchTab = FrameLayout(this).apply {
             isFocusable = true
             contentDescription = "Search"
@@ -318,30 +285,22 @@ class SearchActivity : Screen() {
                 setImageResource(R.drawable.ic_search)
                 imageTintList = ColorStateList.valueOf(TEXT)
             }, FrameLayout.LayoutParams(dp(17), dp(17), Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(3) })
-            addView(View(this@SearchActivity).apply { setBackgroundColor(TUNGSTEN) },
-                FrameLayout.LayoutParams(dp(3), dp(3), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(2) })
-            setOnFocusChangeListener { _, has -> background = if (has) glass(18, true) else null }
+            // The open page: a tungsten line under it, white with the remote on it.
+            background = underline(TUNGSTEN, 12)
+            setOnFocusChangeListener { _, has -> background = underline(if (has) TEXT else TUNGSTEN, 12) }
             setOnClickListener { input.requestFocus() }
         }
         nav.addView(searchTab, LinearLayout.LayoutParams(dp(44), dp(30)))
         listOf("Home", "Shows", "Movies", "My List").forEach { page ->
-            nav.addView(text(page, BODY, color = TEXT_2).apply {
-                gravity = Gravity.CENTER
-                setPadding(dp(12), 0, dp(12), 0)
-                isFocusable = true
-                setOnFocusChangeListener { _, has ->
-                    background = if (has) glass(18, true) else null
-                    setTextColor(if (has) TEXT else TEXT_2)
-                }
+            nav.addView(tab(page, open = false).apply {
                 setOnClickListener {
                     startActivity(Intent(this@SearchActivity, MainActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                         .putExtra("page", page))
                     finish()
                 }
-            }, LinearLayout.LayoutParams(-2, dp(30)).apply { marginStart = dp(4) })
+            }, LinearLayout.LayoutParams(-2, dp(30)))
         }
-        nav.background = glassOver(nav, 20, shade = 0.4f)
         bar.addView(nav, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
         bar.addView(TextClock(this).apply {
             format12Hour = "h:mm a"
@@ -355,21 +314,13 @@ class SearchActivity : Screen() {
 
     private fun buildKeyboard() {
         val letters = "abcdefghijklmnopqrstuvwxyz"
-        for (rowIndex in 0 until 4) {
-            val row = keyRow()
-            for (column in 0 until 6) {
-                val key = key(letters[rowIndex * 6 + column].toString(), row, 1, column == 5) {
-                    append((characterKeys[rowIndex * 6 + column].text).toString())
-                }
-                characterKeys += key
-            }
+        letters.forEachIndexed { index, letter ->
+            characterKeys += key(letter.toString()) { append(characterKeys[index].text.toString()) }
         }
-        val fifth = keyRow()
-        for (index in 24..25) {
-            val key = key(letters[index].toString(), fifth, 1, false) { append(characterKeys[index].text.toString()) }
-            characterKeys += key
-        }
-        val mode = key("123", fifth, 1, false) {
+        gap()
+        key("space") { append(" ") }
+        key("⌫") { delete() }.contentDescription = "Delete"
+        modeLabel = key("123") {
             numeric = !numeric
             val symbols = "1234567890@#$%&*()!?.,:/+"
             characterKeys.forEachIndexed { index, view ->
@@ -377,50 +328,48 @@ class SearchActivity : Screen() {
             }
             modeLabel?.text = if (numeric) "ABC" else "123"
         }
-        modeLabel = mode
-        key("−", fifth, 1, false) { append("-") }
-        key("⌫", fifth, 2, true) { delete() }
-        val last = keyRow()
-        val speech = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-        val canSpeak = speech.resolveActivity(packageManager) != null
-        key("SPACE", last, if (canSpeak) 4 else 6, !canSpeak) { append(" ") }
-        if (canSpeak) {
-            key("", last, 2, true) { listen() }.apply {
+        key("−") { append("-") }
+        if (Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).resolveActivity(packageManager) != null) {
+            key("") { listen() }.apply {
                 contentDescription = "Voice search"
-                setCompoundDrawablesRelative(null, getDrawable(R.drawable.ic_mic)?.mutate()?.apply {
+                setCompoundDrawablesRelative(getDrawable(R.drawable.ic_mic)?.mutate()?.apply {
                     setTint(TUNGSTEN); setBounds(0, 0, dp(13), dp(17))
-                }, null, null)
+                }, null, null, null)
             }
         }
     }
 
     private var modeLabel: TextView? = null
 
-    private fun keyRow() = LinearLayout(this).apply {
-        gravity = Gravity.CENTER_VERTICAL
-        keyboard.addView(this, LinearLayout.LayoutParams(-1, dp(30)).apply { if (keyboard.childCount > 0) topMargin = dp(4) })
-    }
+    /** A little room between the letters and the other keys. */
+    private fun gap() = keyboard.addView(View(this), LinearLayout.LayoutParams(dp(14), 1))
 
-    private fun key(label: String, row: LinearLayout, span: Int, rightEdge: Boolean, click: () -> Unit): TextView {
-        val view = text(label, if (label.length > 1) SMALL else BODY, color = TEXT_2).apply {
+    /** A key: a letter or word with no tile. Bright and glowing over a white line with the remote on it. */
+    private fun key(label: String, click: () -> Unit): TextView {
+        val view = text(label, if (label.length > 1) SMALL else KEY_SP, color = TEXT_2).onArt().apply {
             gravity = Gravity.CENTER
             isFocusable = true
+            setPadding(dp(KEY_PAD), 0, dp(KEY_PAD), 0)
         }
-        view.rowFocus(7, rest = { if (lastKey === view) tile(7) else null }) { has ->
+        view.setOnFocusChangeListener { _, has ->
+            view.setTextColor(if (has) TEXT else TEXT_2)
+            if (has) view.setShadowLayer(dp(10).toFloat(), 0f, 0f, 0x99FFFFFF.toInt()) else view.onArt()
+            view.background = if (has) underline(TEXT, KEY_PAD - 2) else null
             if (has) lastKeyboardFocus = view
         }
-        view.setOnClickListener {
-            val previous = lastKey
-            lastKey = view
-            if (previous != null && previous !== view && !previous.hasFocus()) previous.background = null
-            click()
-        }
-        row.addView(view, LinearLayout.LayoutParams(0, -1, span.toFloat()).apply {
-            if (row.childCount > 0) marginStart = dp(4)
-        })
+        view.setOnClickListener { click() }
+        keyboard.addView(view, LinearLayout.LayoutParams(-2, -1))
         if (firstKey == null) firstKey = view
-        if (rightEdge) rightEdgeKeys += view
         return view
+    }
+
+    /** A 2 dp line along a view's foot, [inset] dp in from each side: Canopy's focus and open-page mark. */
+    private fun underline(color: Int, inset: Int) = android.graphics.drawable.LayerDrawable(arrayOf(
+        GradientDrawable().apply { setColor(color) })).apply {
+        setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+        setLayerHeight(0, dp(2))
+        setLayerInsetLeft(0, dp(inset))
+        setLayerInsetRight(0, dp(inset))
     }
 
     private fun append(value: String) {
@@ -442,16 +391,22 @@ class SearchActivity : Screen() {
             val focus = currentFocus
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && focus === input && clearSearch.visibility == View.VISIBLE && clearSearch.requestFocus()) return true
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && focus === clearSearch && input.requestFocus()) return true
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && focus === input) {
-                if (firstKey?.requestFocus() == true) return true
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && (focus === input || focus === clearSearch)) {
+                if ((lastKeyboardFocus ?: firstKey)?.requestFocus() == true) return true
             }
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT && focus in rightEdgeKeys) {
-                if (firstResult?.requestFocus() == true) return true
+            // Down from the letters: the recent searches if there are any, else the results. Up from either: the letters.
+            val onKey = focus != null && focus.parent === keyboard
+            val onRecent = focus != null && focus.parent === recentBox
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onKey) {
+                (firstRecent() ?: firstResult)?.requestFocus()
+                return true
             }
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT && cards.any { it.first === focus }) {
-                if (firstResult === focus || cards.indexOfFirst { it.first === focus } == 0) {
-                    if ((lastKeyboardFocus ?: firstKey)?.requestFocus() == true) return true
-                }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && onKey && input.requestFocus()) return true
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && onRecent) { firstResult?.requestFocus(); return true }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && onRecent) { (lastKeyboardFocus ?: firstKey)?.requestFocus(); return true }
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && focus in topRowCards) {
+                val up = firstRecent() ?: lastKeyboardFocus ?: firstKey
+                if (up?.requestFocus() == true) return true
             }
             if (event.keyCode == KeyEvent.KEYCODE_DEL) { delete(); return true }
             if (event.keyCode == KeyEvent.KEYCODE_SPACE) { append(" "); return true }
@@ -482,42 +437,39 @@ class SearchActivity : Screen() {
         showRecent()
     }
 
+    private fun firstRecent(): View? = if (recentBox.visibility != View.VISIBLE) null
+        else (0 until recentBox.childCount).map(recentBox::getChildAt).firstOrNull { it.isFocusable }
+
     private fun showRecent() {
         recentBox.removeAllViews()
         val values = recent()
+        recentBox.visibility = if (values.isEmpty()) View.GONE else View.VISIBLE
         if (values.isEmpty()) return
-        recentBox.addView(caps("Recent", TEXT_3), LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) })
-        values.chunked(2).forEach { pair ->
-            val line = LinearLayout(this)
-            pair.forEach { query ->
-                line.addView(chip(query).apply {
-                    textSize = SMALL
-                    maxWidth = dp(110)
-                    maxLines = 1
-                    ellipsize = TextUtils.TruncateAt.END
-                    contentDescription = "$query. Hold OK to remove from recent searches"
-                    setOnClickListener {
-                        input.setText(query)
-                        input.setSelection(query.length)
-                        main.removeCallbacks(typed)
-                        search(true)
-                    }
-                    setOnLongClickListener {
-                        choose("Remove recent search?", listOf("Remove $query", "Cancel")) { picked ->
-                            if (picked == 0) {
-                                getSharedPreferences("search", MODE_PRIVATE).edit()
-                                    .putString(recentKey(), recent().filterNot { it == query }.joinToString("\n")).apply()
-                                showRecent()
-                            }
+        recentBox.addView(caps("Recent", TEXT_3).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(6) })
+        values.forEach { query ->
+            recentBox.addView(chip(query).apply {
+                maxWidth = dp(180)
+                maxLines = 1
+                ellipsize = TextUtils.TruncateAt.END
+                contentDescription = "$query. Hold OK to remove from recent searches"
+                setOnClickListener {
+                    input.setText(query)
+                    input.setSelection(query.length)
+                    main.removeCallbacks(typed)
+                    search(true)
+                }
+                setOnLongClickListener {
+                    choose("Remove recent search?", listOf("Remove $query", "Cancel")) { picked ->
+                        if (picked == 0) {
+                            getSharedPreferences("search", MODE_PRIVATE).edit()
+                                .putString(recentKey(), recent().filterNot { it == query }.joinToString("\n")).apply()
+                            showRecent()
                         }
-                        true
                     }
-                }, LinearLayout.LayoutParams(-2, dp(24)).apply { if (line.childCount > 0) marginStart = dp(5) })
-            }
-            recentBox.addView(line, LinearLayout.LayoutParams(-1, dp(27)))
+                    true
+                }
+            }, LinearLayout.LayoutParams(-2, -1))
         }
-        recentBox.addView(text("Hold OK to remove", SMALL, color = TEXT_3),
-            LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
     }
 
     private fun search(moveFocus: Boolean) {
@@ -528,7 +480,7 @@ class SearchActivity : Screen() {
         firstResult = null
         cards.clear()
         focused = null
-        hero.visibility = View.INVISIBLE
+        topRowCards.clear()
         results.removeAllViews()
         resultsScroll.scrollTo(0, 0)
         resultCount.text = ""
@@ -608,12 +560,12 @@ class SearchActivity : Screen() {
     private fun render(sections: Map<String, List<Meta>>, query: String, moveFocus: Boolean) {
         val selected = (currentFocus?.tag as? String)?.takeIf { resultsScroll.hasFocus() }
         cards.clear()
+        topRowCards.clear()
         firstResult = null
         results.removeAllViews()
         val total = sections.values.sumOf { it.size }
         resultCount.text = if (total == 0 || query.isEmpty()) "" else if (total == 1) "1 title" else "$total titles" // not for Popular
         if (total == 0) {
-            hero.visibility = View.INVISIBLE
             results.addView(text("No matches · Try a shorter title", BODY, color = TEXT_2))
             return
         }
@@ -650,8 +602,9 @@ class SearchActivity : Screen() {
                 isHorizontalScrollBarEnabled = false
                 addView(row)
             }
+            val topRow = results.childCount == 0
             list.forEachIndexed { index, meta ->
-                row.addView(card(meta, caption, scroller, index == 0), LinearLayout.LayoutParams(dp(88), dp(132)).apply {
+                row.addView(card(meta, caption, scroller).also { if (topRow) topRowCards += it }, LinearLayout.LayoutParams(dp(88), dp(132)).apply {
                     if (index > 0) marginStart = dp(14)
                 })
             }
@@ -664,7 +617,7 @@ class SearchActivity : Screen() {
         else if (moveFocus) firstResult?.requestFocus()
     }
 
-    private fun card(meta: Meta, caption: TextView, scroller: HorizontalScrollView, firstInRow: Boolean): View {
+    private fun card(meta: Meta, caption: TextView, scroller: HorizontalScrollView): View {
         val image = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; setBackgroundColor(TILE) }
         val shade = View(this).apply { setBackgroundColor(Color.BLACK); alpha = 0.5f }
         val card = FrameLayout(this).apply {
@@ -712,11 +665,6 @@ class SearchActivity : Screen() {
                     .putExtra("type", meta.type).putExtra("id", meta.id).putExtra("name", meta.name)
                     .putExtra("poster", meta.poster).putExtra("background", meta.background))
             }
-            if (firstInRow) setOnKeyListener { _, code, event ->
-                if (event.action == KeyEvent.ACTION_DOWN && code == KeyEvent.KEYCODE_DPAD_LEFT)
-                    (lastKeyboardFocus ?: firstKey)?.requestFocus() == true
-                else false
-            }
         }
         cards += card to shade
         if (firstResult == null) firstResult = card
@@ -727,7 +675,6 @@ class SearchActivity : Screen() {
     private fun show(meta: Meta) {
         if (focused?.type == meta.type && focused?.id == meta.id) return
         focused = meta
-        hero.visibility = View.VISIBLE
         val url = meta.background ?: meta.poster
         if (url != null && url != art.tag) {
             art.animate().cancel()
@@ -748,28 +695,6 @@ class SearchActivity : Screen() {
             artBack.setImageDrawable(null)
             refrost()
         }
-        heroName.text = meta.name
-        heroName.visibility = View.GONE
-        heroLogo.visibility = View.VISIBLE
-        Images.load(meta.logo ?: Images.logoFor(meta.id), heroLogo, dp(210), urgent = true, failed = {
-            if (focused === meta) { heroLogo.visibility = View.GONE; heroName.visibility = View.VISIBLE }
-        })
-        heroFacts.text = listOfNotNull(meta.year, meta.genres.firstOrNull(), meta.runtime?.let(::runtime)).joinToString("  ·  ") +
-            if (meta.rating != null) "  ·" else ""
-        heroTag.visibility = if (meta.rating == null) View.GONE else View.VISIBLE
-        heroScore.visibility = heroTag.visibility
-        heroScore.text = meta.rating.orEmpty()
-        val description = meta.description.orEmpty()
-        heroAbout.text = description
-        heroAbout.visibility = if (meta.description.isNullOrBlank()) View.GONE else View.VISIBLE
-        heroAbout.post {
-            if (focused !== meta || heroAbout.text.toString() != description) return@post
-            val layout = heroAbout.layout ?: return@post
-            if (layout.lineCount >= 2 && layout.getEllipsisCount(1) > 0) {
-                val end = layout.getLineStart(1) + layout.getEllipsisStart(1)
-                heroAbout.text = synopsisAtSentence(description, end)
-            }
-        }
     }
 
     companion object {
@@ -777,7 +702,12 @@ class SearchActivity : Screen() {
         const val LISTEN = "listen"
         private const val ASSISTANT_SEARCH = "com.google.android.gms.actions.SEARCH_ACTION"
         private const val RECENT = 6
-        private const val LEFT_SHADE = 0.85f // the left shade's strength behind the field and keyboard
+        private const val QUERY_SP = 28f
+        private const val QUERY_W = 420 // dp: the query's line
+        private const val KEY_SP = 17f
+        private const val KEY_PAD = 9 // dp either side of a key's letter
+        private const val KEY_H = 36 // dp: the alphabet's line
+        private const val RESULTS_TOP = 206 // dp
         private const val PER_TYPE = 12
         private const val TYPING_PAUSE = 500L
         private const val SEARCH_WAIT = 6000L

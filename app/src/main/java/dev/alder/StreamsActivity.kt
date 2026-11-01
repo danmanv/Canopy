@@ -260,7 +260,7 @@ class StreamsActivity : Screen() {
             val control = chip(label(code), code == audio).apply {
                 setOnClickListener {
                     audio = code
-                    chips.forEach { (value, chip) -> chip.select(label(value), value == code) }
+                    chips.forEach { (value, chip) -> chip.tabOpen(value == code) }
                     redraw()
                 }
             }

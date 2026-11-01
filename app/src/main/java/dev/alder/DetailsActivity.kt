@@ -371,9 +371,9 @@ class DetailsActivity : Screen() {
             setPadding(room, room, room, room)
             clipToPadding = false
             addView(seasonStrip)
-        }, FrameLayout.LayoutParams(width - dp(LOGO_W) + 2 * room, dp(32) + 2 * room).apply {
+        }, FrameLayout.LayoutParams(width - dp(LOGO_W) + 2 * room, dp(TAB_H) + 2 * room).apply {
             // Seasons sit on the logo's line, beside it.
-            leftMargin = x + dp(LOGO_W) - room; topMargin = dp(32) - room
+            leftMargin = x + dp(LOGO_W) - room; topMargin = dp(29) - room
         })
 
         guideRows = column(Gravity.START)
@@ -388,7 +388,8 @@ class DetailsActivity : Screen() {
             clipToPadding = false
             addView(guideRows)
         }, FrameLayout.LayoutParams(width + 2 * room2, height).apply { leftMargin = x - room2; topMargin = top })
-        root.addView(guide, FrameLayout.LayoutParams(-1, -1))
+        // Just over the title page and under the clock, so the guide's scrim doesn't dim the time.
+        root.addView(guide, root.indexOfChild(hero) + 1, FrameLayout.LayoutParams(-1, -1))
         selectedSeason = playTarget(meta)?.second?.season ?: videos.first().season
         fillGuide()
     }
@@ -398,17 +399,13 @@ class DetailsActivity : Screen() {
         val seasons = videos.map { it.season }.distinct()
         seasonStrip.removeAllViews()
         seasonButtons = seasons.associateWith { season ->
-            chip(if (season == selectedSeason) {
-                if (season == 0) "Specials" else "Season $season"
-            } else if (season == 0) "Specials" else season.toString(), season == selectedSeason).apply {
+            tab(if (season == 0) "Specials" else "Season $season", open = season == selectedSeason).apply {
                 setOnClickListener {
                     selectedSeason = season
                     fillGuide()
                     seasonButtons[season]?.requestFocus()
                 }
-                seasonStrip.addView(this, LinearLayout.LayoutParams(-2, dp(24)).apply {
-                    if (seasonStrip.childCount > 0) marginStart = dp(8)
-                })
+                seasonStrip.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)))
             }
         }
         guideRows.removeAllViews()
@@ -434,7 +431,8 @@ class DetailsActivity : Screen() {
             row.addView(still, LinearLayout.LayoutParams(dp(144), dp(81)))
             val title = text("${video.episode}  ·  " + video.title.ifBlank { "Episode ${video.episode}" } + if (seen) "  ✓" else "",
                 BODY, bold = true, color = if (seen) TEXT_2 else TEXT).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-            val facts = text(listOfNotNull(meta?.runtime?.takeIf { it.isNotBlank() }, episodeDate(video.released),
+            // Started: what's left stands in for the runtime, which is the add-on's figure and not always this file's.
+            val facts = text(listOfNotNull(meta?.runtime?.takeIf { it.isNotBlank() && !started }, episodeDate(video.released),
                 if (started) "${(duration - resumeAt) / 60_000} min left" else null).joinToString(DOT),
                 SMALL, color = if (started) TUNGSTEN else TEXT_2).apply { maxLines = 1 }
             val about = text(video.overview.orEmpty(), SMALL, color = TEXT_2).apply {
@@ -720,7 +718,7 @@ class DetailsActivity : Screen() {
     }
 
     private companion object {
-        const val LOGO_W = 190 // dp: the guide's logo slot, with the season chips after it
+        const val LOGO_W = 170 // dp: the guide's logo slot, with the season tabs after it
         const val GUIDE_ART = 0.6f // the film's brightness behind the episode guide
         const val STARTED = 60_000L // ms watched before a title counts as started
         const val ICON_BUTTON = Screen.BUTTON_H // the small square buttons beside Play are as tall as Play
