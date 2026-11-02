@@ -96,7 +96,7 @@ internal fun catalogAnswerKey(page: String, title: String, genre: String?, sourc
 //    where you are and Resume, moving on to the next every ADVANCE. OK resumes; any other key returns to where you were.
 //    The TV's own screensaver takes over later (10 min on the test TV), so nothing stays still for hours.
 class MainActivity : Screen() {
-    private enum class Page(val label: String) { HOME("Home"), SHOWS("Shows"), MOVIES("Movies"), LIVE("Live"), LIBRARY("My List") }
+    private enum class Page(val label: String) { HOME("Home"), MOVIES("Movies"), SHOWS("Shows"), LIVE("Live"), LIBRARY("My List") }
     private enum class Mode { CINEMA, BROWSE }
     private enum class ListFilter { ALL, MOVIES, SHOWS }
     private enum class ListSort { RECENT, NAME, UNWATCHED }
@@ -410,7 +410,7 @@ class MainActivity : Screen() {
             .sortedByDescending { it.optString("_ctime") }.take(LIST_COLUMNS * 3)
             .forEach { libraryItem(it).poster?.let { url -> Images.prefetch(url, (dp(LIST_W) * CARD_GROW).toInt()) } }
         val catalogs = Stremio.savedAddons(profile.authKey).orEmpty().flatMap { it.catalogs }
-        for (p in listOf(Page.SHOWS, Page.MOVIES)) {
+        for (p in listOf(Page.MOVIES, Page.SHOWS)) {
             val shelves = catalogs.mapNotNull { c -> shelf(c)?.takeIf { it.page == p }?.let { c to it } }.sortedBy { it.second.rank }
             sections(p, shelves).forEachIndexed { i, (title, sources, picked) ->
                 val key = catalogAnswerKey(p.label, title, picked, sources.map { (c, _) ->
