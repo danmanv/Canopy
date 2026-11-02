@@ -603,7 +603,8 @@ class MainActivity : Screen() {
         }
         // A page opens as soon as the remote rests on its name. OK on Shows or Movies opens its genre list.
         Page.entries.filter { it != Page.LIVE }.forEach { p ->
-            navItems[p] = text(p.label, BODY_LARGE).apply {
+            // Shows and Movies carry a small caret: like any drop-down, OK on them opens a list (their genres).
+            navItems[p] = text(if (p.isCatalog) "${p.label} \u25BE" else p.label, BODY_LARGE).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
                 setOnFocusChangeListener { _, has ->
@@ -676,6 +677,7 @@ class MainActivity : Screen() {
             // The focused name glows softly, as if lit by its line.
             item.setShadowLayer(if (focused) dp(10).toFloat() else 0f, 0f, 0f, if (focused) 0x99FFFFFF.toInt() else 0)
         }
+        styleGenreLine()
         search?.let {
             it.background = tabFace(it.isFocused, open = false)
             it.setColorFilter(if (it.isFocused) TEXT else TEXT_2)
@@ -1457,25 +1459,28 @@ class MainActivity : Screen() {
             clipChildren = false
             setPadding(dp(PAD - TAB_PAD), dp(2), dp(PAD), dp(2))
         }
-        // Plain words, no box: lit like a top-bar tab (white, with its line underneath) only while the remote is on it.
+        // A label, not a stop on the way down: it names the genre in view, and while the remote rests on the open page's
+        // tab it says what OK does there, so a first-time viewer finds the genres without being told.
         val button = text(genreLabel(), SMALL, color = TEXT_2).apply {
-            isFocusable = true
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
-            setOnFocusChangeListener { _, has ->
-                background = tabFace(has, open = false)
-                setTextColor(if (has) TEXT else TEXT_2)
-                setShadowLayer(if (has) dp(10).toFloat() else 0f, 0f, 0f, if (has) 0x99FFFFFF.toInt() else 0)
-            }
-            setOnClickListener { pickGenre() }
         }
         genreButton = button
         line.addView(button, LinearLayout.LayoutParams(-2, dp(CHIP_H + 8)))
         genreStrip.addView(line)
-        if (hadFocus) button.requestFocus()
+        styleGenreLine()
+        if (hadFocus) navItems[page]?.requestFocus()
     }
 
-    private fun genreLabel() = "${genre ?: "All genres"}  \u25BE"
+    private fun genreLabel() = genre ?: "All genres"
+
+    /** The line under the menu: the genre in view, or "OK · Choose a genre" while the open page's tab is lit. */
+    private fun styleGenreLine() {
+        val label = genreButton ?: return
+        val hint = page.isCatalog && navItems[page]?.isFocused == true && genreOptions.isNotEmpty()
+        label.text = if (hint) "OK  \u00B7  Choose a genre" else genreLabel()
+        label.setTextColor(if (hint) TUNGSTEN else TEXT_2)
+    }
 
     private fun pickGenre() {
         val options = listOf<String?>(null) + genreOptions
@@ -1491,7 +1496,7 @@ class MainActivity : Screen() {
 
     private fun markChip(rowTitle: String) {
         genre = rowTitle.takeIf { it in genreOptions } // Back and Down from the top bar return to the control
-        genreButton?.text = genreLabel()
+        styleGenreLine()
     }
 
     /**
