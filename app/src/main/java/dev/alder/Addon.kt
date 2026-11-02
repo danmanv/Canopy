@@ -328,7 +328,7 @@ class Stream(
                 json.text("description") ?: json.text("title") ?: "",
                 url,
                 headers?.keys()?.asSequence()?.associateWith { headers.getString(it) } ?: emptyMap(),
-                hints?.optLong("videoSize") ?: 0L,
+                hints?.optLong("videoSize")?.takeIf { it > 0 } ?: sizeIn("${json.text("description") ?: json.text("title") ?: ""} ${json.text("name") ?: ""}"),
                 hints?.text("filename"),
                 hints?.text("bingeGroup"),
             )
@@ -342,6 +342,17 @@ class Stream(
                 json.text("filename"), json.text("binge"))
         }
     }
+}
+
+/**
+ * The file size an addon writes into its text ("💾 12.4 GB", "850 MB") when it leaves out behaviorHints.videoSize, as
+ * Torrentio and MediaFusion do; 0 when there's none. Decimal units, so the list shows the number the addon wrote.
+ */
+internal fun sizeIn(text: String): Long {
+    val m = Regex("(\\d+(?:[.,]\\d+)?)\\s*(TB|TiB|GB|GiB|MB|MiB)\\b", RegexOption.IGNORE_CASE).find(text) ?: return 0L
+    val n = m.groupValues[1].replace(',', '.').toDoubleOrNull() ?: return 0L
+    val unit = when (m.groupValues[2].uppercase().first()) { 'T' -> 1e12; 'G' -> 1e9; else -> 1e6 }
+    return (n * unit).toLong()
 }
 
 fun JSONArray?.items(): List<Any> = if (this == null) emptyList() else (0 until length()).map { get(it) }
