@@ -720,9 +720,10 @@ class MainActivity : Screen() {
             art.alpha = 0f
             Images.load(url, art, artW, urgent = true, look = shaded, failed = ready) {
                 // Once the new art covers it, the old one lets go: otherwise the GPU paints a hidden full screen every frame.
+                // No slow zoom afterwards: a 20 s scale on the full-screen art made the TV redraw the whole screen every
+                // frame while the remote rested, so each press started on a GPU that was already busy.
                 art.animate().alpha(1f).setDuration(if (artBack.drawable == null) 800 else 600).withEndAction {
                     artBack.setImageDrawable(null)
-                    art.animate().scaleX(1.03f).scaleY(1.03f).setDuration(20_000).start()
                 }.start()
                 refrost()
                 ready?.invoke()

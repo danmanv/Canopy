@@ -34,13 +34,23 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
     private var done: (() -> Unit)? = null
     private val giveUp = Runnable { finish() }
     // Emptied a moment after it stops, so the art fades in over the last frames rather than over black.
-    private val blank = Runnable { web?.loadUrl("about:blank") }
+    private val blank = Runnable { web?.let { it.loadUrl("about:blank"); wake(it, false) } }
+
+    /**
+     * Between trailers the WebView is hidden and paused. Visible, it was drawn in every frame of Home (under the art,
+     * where nothing shows) and its page kept running.
+     */
+    private fun wake(view: WebView, on: Boolean) {
+        if (on) { view.onResume(); view.visibility = View.VISIBLE }
+        else { view.visibility = View.INVISIBLE; view.onPause() }
+    }
 
     /** Starts [id] out of sight: [onPlaying] once its picture moves, [onDone] when it ends, fails or [stop] is called. */
     fun play(id: String, onPlaying: () -> Unit, onDone: () -> Unit) {
         stop()
         val view = web ?: make() ?: return onDone()
         main.removeCallbacks(blank)
+        wake(view, true)
         playing = onPlaying
         done = onDone
         main.postDelayed(giveUp, START_WAIT)
@@ -102,6 +112,7 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
         box.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
         box.importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
         web = view
+        wake(view, false) // made ahead (warm): nothing to show yet
         return view
     }
 

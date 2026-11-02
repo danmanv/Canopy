@@ -15,6 +15,9 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Faster after each update.** Canopy tells the TV to compile the app before you use it. Before, the app was slow for some time after each update.
+- Home does less work when you stop on a title. The art does not zoom slowly, and the trailer player stops between trailers.
+
 ## 1.3.2
 
 - **New search screen.** The text you type is large. The letters are on one line below it. Move left and right to select a letter. The results use the full width of the screen.

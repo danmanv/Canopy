@@ -1,0 +1,6 @@
+# Canopy is small: compile all of it ahead of time, plus the Kotlin library it leans on. ProfileInstaller hands this to
+# Android after an install or update (see build.gradle.kts).
+HSPLdev/alder/**->**(**)**
+Ldev/alder/**;
+HSPLkotlin/**->**(**)**
+Lkotlin/**;

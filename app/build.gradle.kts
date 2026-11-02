@@ -4,7 +4,8 @@ plugins {
     id("com.android.application")
 }
 
-// Framework Views only, like Plume. The only libraries are for playback: Media3 (ExoPlayer) and an ffmpeg audio decoder.
+// Framework Views only, like Plume. The only libraries are for playback (Media3 and an ffmpeg audio decoder) and
+// profileinstaller, which makes the app start compiled.
 android {
     namespace = "dev.alder"
     compileSdk = 36
@@ -99,5 +100,9 @@ dependencies {
     implementation("androidx.media3:media3-ui:$media3")
     // Software audio for what TVs can't decode themselves (DTS, TrueHD), so those files still have sound.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:$media3+1")
+    // Hands the baseline profile (src/main/baseline-prof.txt) to Android on a sideloaded install or update, so the
+    // TV compiles Canopy's code ahead of time instead of running it interpreted until `cmd package compile` or a night
+    // of idle maintenance. Media3's own profiles come along too.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
 }
