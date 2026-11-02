@@ -66,7 +66,12 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
         val wasOn = done != null
         playing = null
         done?.let { done = null; it() }
-        if (wasOn) main.postDelayed(blank, BLANK_AFTER)
+        if (wasOn) {
+            // Paused at once: a playing video makes the whole screen redraw for each of its frames, and this runs as
+            // the remote moves. The art fades back in over the still frame, then the page is emptied.
+            web?.evaluateJavascript("try{player.pauseVideo()}catch(e){}", null)
+            main.postDelayed(blank, BLANK_AFTER)
+        }
     }
 
     fun destroy() {
@@ -124,7 +129,7 @@ class Trailer(private val context: Context, private val box: FrameLayout) {
         #p{position:absolute;left:-8%;top:-8%;width:116%;height:116%;border:0;pointer-events:none}</style></head>
         <body><div id="p"></div><script>
         var n=0;function say(s){document.title=s+':'+(++n)}
-        function onYouTubeIframeAPIReady(){new YT.Player('p',{host:'https://www.youtube-nocookie.com',videoId:'$id',
+        var player;function onYouTubeIframeAPIReady(){player=new YT.Player('p',{host:'https://www.youtube-nocookie.com',videoId:'$id',
           playerVars:{autoplay:1,mute:1,controls:0,disablekb:1,fs:0,iv_load_policy:3,modestbranding:1,playsinline:1,rel:0,
             cc_load_policy:0,origin:location.origin},
           events:{onReady:function(e){e.target.mute();e.target.playVideo()},

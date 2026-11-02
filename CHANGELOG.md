@@ -17,6 +17,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 - **Faster after each update.** Canopy tells the TV to compile the app before you use it. Before, the app was slow for some time after each update.
 - Home does less work when you stop on a title. The art does not zoom slowly, and the trailer player stops between trailers.
+- A trailer stops at once when you push a button. Before, it continued for a short time and made the next move slow.
+- A trailer starts to load 1.5 seconds after you stop on a title. Before, it started after 0.8 seconds.
 
 ## 1.3.2
 

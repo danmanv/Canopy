@@ -165,6 +165,9 @@ class MainActivity : Screen() {
     private var trailerFrom = 0L // uptime ms the remote landed on the trailer's card
     private val trailerReveal = Runnable { if (trailerItem != null) showTrailer(true) }
 
+    private val shadeLock = Any()
+    private var shadeCanvas: Bitmap? = null
+
     /**
      * The art cropped to the screen with its shades painted in, once per picture: the left darkening behind the words
      * and the long one down to the cards. As views over the art they were two more layers the GPU blended every frame,
@@ -173,29 +176,35 @@ class MainActivity : Screen() {
     private val shaded = Images.Look("shaded") { src ->
         val w = artW
         val h = resources.displayMetrics.heightPixels
-        val out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(out)
-        val scale = maxOf(w / src.width.toFloat(), h / src.height.toFloat())
-        val dw = src.width * scale
-        val dh = src.height * scale
-        canvas.drawBitmap(src, null, RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), Paint(Paint.FILTER_BITMAP_FLAG))
-        val bright = samplePixels(src, 16, 24)?.let { brightLeft(it, 16) } ?: false
-        val shade = Paint().apply {
-            shader = LinearGradient(0f, 0f, w * 0.55f, 0f,
-                if (bright) baseAt(0xF7) else baseAt(0xEB), baseAt(0x00), Shader.TileMode.CLAMP)
+        // One full-screen canvas reused for every picture (one shades at a time): a new 8 MB bitmap per title set off
+        // a garbage collection every few presses.
+        synchronized(shadeLock) {
+            val out = shadeCanvas?.takeIf { it.width == w && it.height == h }
+                ?: Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { shadeCanvas = it }
+            out.eraseColor(Color.TRANSPARENT)
+            val canvas = Canvas(out)
+            val scale = maxOf(w / src.width.toFloat(), h / src.height.toFloat())
+            val dw = src.width * scale
+            val dh = src.height * scale
+            canvas.drawBitmap(src, null, RectF((w - dw) / 2, (h - dh) / 2, (w + dw) / 2, (h + dh) / 2), Paint(Paint.FILTER_BITMAP_FLAG))
+            val bright = samplePixels(src, 16, 24)?.let { brightLeft(it, 16) } ?: false
+            val shade = Paint().apply {
+                shader = LinearGradient(0f, 0f, w * 0.55f, 0f,
+                    if (bright) baseAt(0xF7) else baseAt(0xEB), baseAt(0x00), Shader.TileMode.CLAMP)
+            }
+            canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
+            shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, baseAt(0xF7), baseAt(0x00), Shader.TileMode.CLAMP)
+            canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
+            shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, baseAt(0x8C), baseAt(0x00), Shader.TileMode.CLAMP)
+            canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
+            for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
+                GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
+                GradientDrawable(edge, intArrayOf(0x73000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000))
+                    .apply { setBounds(0, 0, w, h); draw(canvas) }
+            }
+            src.recycle()
+            out.copy(Bitmap.Config.HARDWARE, false)
         }
-        canvas.drawRect(0f, 0f, w * 0.55f, h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, h.toFloat(), 0f, h * 0.55f, baseAt(0xF7), baseAt(0x00), Shader.TileMode.CLAMP)
-        canvas.drawRect(0f, h * 0.55f, w.toFloat(), h.toFloat(), shade)
-        shade.shader = LinearGradient(0f, 0f, 0f, h * 0.14f, baseAt(0x8C), baseAt(0x00), Shader.TileMode.CLAMP)
-        canvas.drawRect(0f, 0f, w.toFloat(), h * 0.14f, shade)
-        for (edge in listOf(GradientDrawable.Orientation.LEFT_RIGHT, GradientDrawable.Orientation.RIGHT_LEFT,
-            GradientDrawable.Orientation.TOP_BOTTOM, GradientDrawable.Orientation.BOTTOM_TOP)) {
-            GradientDrawable(edge, intArrayOf(0x73000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000))
-                .apply { setBounds(0, 0, w, h); draw(canvas) }
-        }
-        src.recycle()
-        out.copy(Bitmap.Config.HARDWARE, false).also { out.recycle() }
     }
 
     // Browse: the focused title, top left.
@@ -2252,7 +2261,9 @@ class MainActivity : Screen() {
     private companion object {
         const val LIST_TAB_H = 32 // dp: My List's filter and sort tabs, inside the 44 dp strip
         const val TRAILER_WAIT = 3_000L // ms the remote rests on a card before its trailer shows
-        const val TRAILER_LOAD = 800L // ms before it starts loading out of sight: racing along a row loads none
+        // ms before it starts loading out of sight: racing along a row loads none. Not sooner: a trailer starting under
+        // the art redraws the whole screen for each video frame, which made the next press stutter when browsing slowly.
+        const val TRAILER_LOAD = 1_500L
         const val TRAILER_FADE = 800L
         const val HEADER_H = 76 // dp
         const val WHATS_NEW_WAIT = 1_500L // ms after Home opens: its first row draws before the pop-up covers it
