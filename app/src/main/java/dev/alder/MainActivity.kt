@@ -504,10 +504,10 @@ class MainActivity : Screen() {
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && (page.isCatalog || page == Page.LIBRARY) && mode == Mode.BROWSE) {
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && header.hasFocus()) {
-                (if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton)
-                    ?.requestFocus()?.let { if (it) return true }
-                if (page.isCatalog && genreStrip.visibility != View.VISIBLE && firstRow()?.focusFirst() == true) return true
+            // Down from the top bar on My List lands on its chips. On Shows and Movies it skips the genre control and
+            // goes straight to the titles (handled below); the genres are one Up from the first row, or OK on the tab.
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && header.hasFocus() && page == Page.LIBRARY) {
+                (lastListChip ?: listFilterChips[listFilter])?.requestFocus()?.let { if (it) return true }
             }
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && genreStrip.hasFocus()) {
                 (last?.takeIf { it.isAttachedToWindow && it.isShown } ?: firstRow()?.cards?.firstOrNull())
@@ -601,7 +601,7 @@ class MainActivity : Screen() {
             isFocusable = true
             tabs.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)).apply { if (tabs.childCount > 0) marginStart = dp(NAV_GAP) })
         }
-        // A page opens as soon as the remote rests on its name. OK on Shows or Movies goes to its genres.
+        // A page opens as soon as the remote rests on its name. OK on Shows or Movies opens its genre list.
         Page.entries.filter { it != Page.LIVE }.forEach { p ->
             navItems[p] = text(p.label, BODY_LARGE).apply {
                 gravity = Gravity.CENTER
@@ -615,7 +615,7 @@ class MainActivity : Screen() {
                     main.removeCallbacks(switchPage)
                     when {
                         p != page -> { jump = true; showPage(p) }
-                        p.isCatalog -> genreButton?.requestFocus()
+                        p.isCatalog -> if (genreOptions.isNotEmpty()) pickGenre() else firstRow()?.focusFirst()
                         p == Page.LIBRARY -> (lastListChip ?: listFilterChips[listFilter])?.requestFocus()
                         else -> firstRow()?.focusFirst()
                     }
