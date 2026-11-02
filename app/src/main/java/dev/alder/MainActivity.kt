@@ -494,18 +494,19 @@ class MainActivity : Screen() {
             }
             if (!ok) return true
         }
-        // Back from the rows goes up, not out: to the chips on a page that has them (a genre jump left you deep in
-        // the page), else to the open page's name. Back from there leaves as usual.
+        // Back from the rows goes up, not out: to My List's chips, else to the open page's name (Shows and Movies keep
+        // their genre control off the Up/Down path; OK on the tab opens it). Back from there leaves as usual.
         if (event.keyCode == KeyEvent.KEYCODE_BACK && mode == Mode.BROWSE && scroller.hasFocus()) {
             if (event.action == KeyEvent.ACTION_UP) {
-                val chip = if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton
+                val chip = if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else null
                 if (chip?.isShown != true || !chip.requestFocus()) navItems[page]?.requestFocus()
             }
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && (page.isCatalog || page == Page.LIBRARY) && mode == Mode.BROWSE) {
             // Down from the top bar on My List lands on its chips. On Shows and Movies it skips the genre control and
-            // goes straight to the titles (handled below); the genres are one Up from the first row, or OK on the tab.
+            // goes straight to the titles (handled below), and Up from the first row goes straight back; OK on the tab
+            // opens the genres.
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && header.hasFocus() && page == Page.LIBRARY) {
                 (lastListChip ?: listFilterChips[listFilter])?.requestFocus()?.let { if (it) return true }
             }
@@ -516,9 +517,8 @@ class MainActivity : Screen() {
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && currentFocus?.let { focused ->
                     firstRow()?.view?.let { isInside(focused, it) }
                 } == true) {
-                (if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton)
-                    ?.requestFocus()?.let { if (it) return true }
-                if (page.isCatalog && genreStrip.visibility != View.VISIBLE && navItems[page]?.requestFocus() == true) return true
+                if (page == Page.LIBRARY) (lastListChip ?: listFilterChips[listFilter])?.requestFocus()?.let { if (it) return true }
+                if (page.isCatalog && navItems[page]?.requestFocus() == true) return true
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN && scroller.hasFocus() && mode == Mode.BROWSE &&
