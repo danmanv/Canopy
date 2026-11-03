@@ -242,7 +242,7 @@ class PlayerActivity : Screen() {
                 playerLogo.visibility = View.VISIBLE; topName.visibility = View.GONE
             }
             nextCell.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
-            startOverCell.visibility = if (nextVideo() == null) View.VISIBLE else View.GONE
+            startOverCell.visibility = if (nextVideo() == null && !touch) View.VISIBLE else View.GONE // a phone: Daniel left Start over out
         }
 
         player.addListener(object : Player.Listener {
@@ -1177,7 +1177,7 @@ class PlayerActivity : Screen() {
         val startOverButton = button("Start over", R.drawable.ic_restart) { if (canSeek()) { player.seekTo(0); player.play() } }
         val fitButton = button("Picture size", R.drawable.ic_aspect) { setFit((fitIndex() + 1) % fits.size) }
         nextCell = buttonCell(nextButton).apply { visibility = View.GONE }
-        startOverCell = buttonCell(startOverButton)
+        startOverCell = buttonCell(startOverButton).apply { if (touch) visibility = View.GONE }
         val buttons = LinearLayout(this).apply {
             clipChildren = false // a focused button's label is wider than its cell
             gravity = Gravity.CENTER_HORIZONTAL or Gravity.TOP
@@ -1191,7 +1191,8 @@ class PlayerActivity : Screen() {
                 LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginStart = dp(10) })
             addView(nextCell)
             addView(startOverCell)
-            addView(buttonCell(infoButton))
+            // A phone leaves Info out: its Back arrow goes to the same title page.
+            if (!touch) addView(buttonCell(infoButton))
             if (touch) addView(buttonCell(fitButton))
         }
         for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton, fitButton))
