@@ -312,7 +312,7 @@ class PlayerActivity : Screen() {
                 if (isFinishing) return
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
-                bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, TEXT)
+                bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 46, TEXT)
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady || touch) View.GONE else View.VISIBLE // a phone has the name at the top and Play in the middle
                 // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
@@ -1213,7 +1213,8 @@ class PlayerActivity : Screen() {
             val nameAt = if (touch) PAD + 70 else PAD
             if (touch) addView(button("Back", R.drawable.ic_back) { press(KeyEvent.KEYCODE_BACK) }.apply {
                 buttonLabels.remove(this) // no word under it: the arrow says it
-                foreground = centred(R.drawable.ic_back, 30, TEXT)
+                foreground = centred(R.drawable.ic_back, 32, TEXT)
+                background = null
             }, FrameLayout.LayoutParams(dp(62), dp(62)).apply { leftMargin = dp(PAD - 10); topMargin = dp(16) })
             addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 300)), dp(sized(50, 84))).apply {
                 leftMargin = dp(nameAt); topMargin = dp(sized(26, 10))
@@ -1268,17 +1269,18 @@ class PlayerActivity : Screen() {
                 fun big(control: TextView, icon: Int, size: Int, iconSize: Int, tint: Int) = control.apply {
                     buttonLabels.remove(this)
                     foreground = centred(icon, iconSize, if (tint == BASE) TEXT else tint)
-                    // See-through, so the picture shows under it: Play in a faint accent, the others in faint dark glass.
+                    // Bare icons over the picture (Daniel's pick): Play on a faint dark disc that the picture shows through.
                     background = if (tint == BASE) GradientDrawable().apply {
-                        setColor(withAlpha(TUNGSTEN, 0x59)); setStroke(dp(2), withAlpha(TUNGSTEN, 0xCC)); cornerRadius = dp(CORNER).toFloat()
-                    } else rounded(baseAt(0x4D), CORNER)
+                        shape = GradientDrawable.OVAL; setColor(baseAt(0x47))
+                    } else null
+                    elevation = 0f
                     setOnFocusChangeListener(null) // no solid face on focus: a finger needs no focus mark
                 }.also { addView(it, LinearLayout.LayoutParams(dp(size), dp(size)).apply { marginStart = dp(28); marginEnd = dp(28) }) }
-                big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 66, 36, TEXT)
+                big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 66, 44, TEXT)
                 bigPlay = big(button("Pause", R.drawable.ic_pause, primary = true) {
                     if (player.playWhenReady) player.pause() else player.play()
-                }, R.drawable.ic_pause, 84, 40, BASE)
-                big(button("Ahead 10 seconds", R.drawable.ic_forward10) { if (canSeek()) { showControls(null); scrub(SKIP) } }, R.drawable.ic_forward10, 66, 36, TEXT)
+                }, R.drawable.ic_pause, 84, 46, BASE)
+                big(button("Ahead 10 seconds", R.drawable.ic_forward10) { if (canSeek()) { showControls(null); scrub(SKIP) } }, R.drawable.ic_forward10, 66, 44, TEXT)
             }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER).apply { bottomMargin = dp(50) }) // centred in the picture above the dock
             addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
                 leftMargin = dp(sized(DOCK_INSET, PAD)); rightMargin = dp(sized(DOCK_INSET, PAD)); bottomMargin = dp(sized(DOCK_INSET - 4, 10))
@@ -1294,6 +1296,7 @@ class PlayerActivity : Screen() {
         }
     }
 
+    @android.annotation.SuppressLint("ClickableViewAccessibility") // the touch listener only dims; clicks go on as usual
     private fun button(label: String, res: Int, primary: Boolean = false, onClick: () -> Unit): TextView {
         // On a phone every button says its name: there's no focus to show it.
         val words = text(label, sized(SMALL, 15f), color = TEXT_2).onArt().apply {
@@ -1320,11 +1323,19 @@ class PlayerActivity : Screen() {
                     words.visibility = if (focused || touch) View.VISIBLE else View.INVISIBLE
                 }
             } else {
-                // Light line: a quiet glass square, outlined in white with the remote on it.
-                background = rounded(0x1FFFFFFF, radius)
+                // Light line: a quiet glass square, outlined in white with the remote on it. A phone: the bare icon
+                // over the picture (Daniel's pick), dimming under the finger.
+                background = if (touch) null else rounded(0x1FFFFFFF, radius)
+                if (touch) setOnTouchListener { view, event ->
+                    when (event.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> view.alpha = 0.5f
+                        android.view.MotionEvent.ACTION_UP, android.view.MotionEvent.ACTION_CANCEL -> view.alpha = 1f
+                    }
+                    false
+                }
                 setOnFocusChangeListener { view, focused ->
-                    view.background = if (focused) outline(true) else rounded(0x1FFFFFFF, radius)
-                    view.grow(focused).start()
+                    if (!touch) view.background = if (focused) outline(true) else rounded(0x1FFFFFFF, radius)
+                    if (!touch) view.grow(focused).start()
                     words.visibility = if (focused || touch) View.VISIBLE else View.INVISIBLE
                 }
             }
@@ -1357,7 +1368,7 @@ class PlayerActivity : Screen() {
             controls.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             updateProgress()
             // Its mark follows the player, whatever started it (a resume plays before the listener hears of it).
-            bigPlay?.foreground = centred(if (player.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, TEXT)
+            bigPlay?.foreground = centred(if (player.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 46, TEXT)
             if (touch) loadingCenter.translationY = -dp(130).toFloat()
             (focus ?: bigPlay ?: playPause).requestFocus()
         } else focus?.requestFocus()
@@ -1771,12 +1782,12 @@ private class SeekBar(context: Context) : View(context) {
             canvas.drawRect(x - d, y - line / 2 - 4 * d, x + d, y + line / 2 + 4 * d, paint)
         }
         if (thumb) {
-            // A soft square knob to take hold of (no round shapes in Canopy), glowing in the accent.
+            // A round knob to take hold of, glowing in the accent (as in the bare-icons mockup Daniel picked).
             val x = xOf(position)
-            val half = 15 * d // about 27 dp of the phone's own
+            val half = 13 * d // about 24 dp of the phone's own
             paint.color = Screen.TEXT
             paint.setShadowLayer(8 * d, 0f, 0f, Screen.TUNGSTEN_GLOW)
-            canvas.drawRoundRect(x - half, y - half, x + half, y + half, Screen.CORNER * d, Screen.CORNER * d, paint)
+            canvas.drawCircle(x, y, half, paint)
             paint.clearShadowLayer()
         } else if (isFocused) {
             // The head: a slim upright line of light, standing past the bar's edges.
