@@ -183,6 +183,7 @@ class PhoneActivity : Screen() {
     // ---------- pages ----------
 
     private fun showPage(p: Page) {
+        android.util.Log.d("CanopyPhone", "showPage $p", Throwable("who"))
         page = p
         val g = ++generation
         styleTabs()
@@ -380,6 +381,7 @@ class PhoneActivity : Screen() {
             var flung = false
             override fun fling(velocityX: Int) { flung = true; settle(velocityX) }
             override fun onTouchEvent(ev: MotionEvent): Boolean {
+                if (ev.actionMasked != MotionEvent.ACTION_MOVE) android.util.Log.d("CanopyPhone", "strip ${ev.actionMasked} x=${ev.x} scroll=$scrollX")
                 if (ev.actionMasked == MotionEvent.ACTION_DOWN) flung = false
                 val used = super.onTouchEvent(ev)
                 if ((ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) && !flung) settle(0)
