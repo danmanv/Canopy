@@ -232,8 +232,12 @@ class PhoneActivity : Screen() {
         fun build(addons: List<Addon>) {
             if (built || g != generation) return
             built = true
-            val catalogs = if (p == Page.HOME) HomeRows.arranged(this, addons.flatMap { it.catalogs }).filter { it.second }.map { it.first }
-            else addons.flatMap { it.catalogs }.filter { it.type == if (p == Page.MOVIES) "movie" else "series" }
+            val all = addons.flatMap { it.catalogs }
+            // Home has the rows chosen in Settings; with none chosen, the add-ons' first film and show catalogs.
+            val catalogs = if (p == Page.HOME) HomeRows.arranged(this, all).filter { it.second }.map { it.first }
+                .ifEmpty { all.filter { it.type == "movie" || it.type == "series" }.take(HOME_FALLBACK) }
+            else all.filter { it.type == if (p == Page.MOVIES) "movie" else "series" }
+            if (p == Page.HOME) warmTabs(all)
             if (catalogs.isEmpty()) {
                 rowsSlot.addView(text(if (p == Page.HOME) "Choose rows for Home in Settings, under Home."
                     else "None of your add-ons has ${p.label.lowercase()}. Add one in Stremio.", BODY_SP, color = TEXT_2)
@@ -268,6 +272,17 @@ class PhoneActivity : Screen() {
         }
         background({ Stremio.savedAddons(key) }) { r -> r.getOrNull()?.let(::build) }
         background({ Stremio.addons(key, refresh = true) }) { r -> r.fold(::build) { e -> if (!built && g == generation) failedToLoad(e) } }
+    }
+
+    /** Shows' and Movies' first catalogs, fetched while Home shows: their tabs then open with posters, not grey boxes. */
+    private fun warmTabs(all: List<Addon.Catalog>) = listOf("series", "movie").forEach { type ->
+        val c = all.firstOrNull { it.type == type } ?: return@forEach
+        val px = dp(CAROUSEL_W)
+        background({
+            val metas = runCatching { c.addon.savedCatalog(c) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: c.addon.catalog(c)
+            Images.warmAll(metas.take(4).mapNotNull { it.poster }, px, 4000)
+            Images.warmAll(metas.take(12).mapNotNull { it.poster }, posterW, 4000)
+        }) {}
     }
 
     private fun slot() = FrameLayout(this).also { content.addView(it, LinearLayout.LayoutParams(-1, -2)) }
@@ -589,6 +604,7 @@ class PhoneActivity : Screen() {
         const val POSTER_W = 112 // dp: a row's posters
         const val BACKDROP_H = 560
         const val MAX_ROWS = 14
+        const val HOME_FALLBACK = 6
         const val ROW_MAX = 40
         const val BODY_SP = 15f
         const val SMALL_SP = 13f
