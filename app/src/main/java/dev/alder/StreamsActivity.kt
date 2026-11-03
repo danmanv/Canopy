@@ -13,6 +13,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextClock
+import android.widget.TextView
 import org.json.JSONArray
 import java.util.Locale
 
@@ -22,8 +23,8 @@ import java.util.Locale
 internal fun readyStreams(answers: Array<List<Stream>?>, allowGaps: Boolean): List<Stream> =
     (if (allowGaps) answers.asList() else answers.takeWhile { it != null }).flatMap { it.orEmpty() }
 
-class StreamsActivity : Screen() {
-    private val pick by lazy { intent.getBooleanExtra("pick", false) || Settings.alwaysList(this) }
+open class StreamsActivity : Screen() {
+    private val pick by lazy { phoneLayout || intent.getBooleanExtra("pick", false) || Settings.alwaysList(this) }
 
     private lateinit var art: ImageView
     override val backdrop get() = art
@@ -135,10 +136,11 @@ class StreamsActivity : Screen() {
                 topMargin = dp(36); rightMargin = dp(PAD)
             })
         }
+        val sourcesView = if (phoneLayout) phoneList(name, where, count, scroll) else list
         // Play: the starting screen until the player takes over; the list only when asked for, or when nothing fits.
         val starting = startingScreen().apply { status.text = "Finding the best source" }
         var listShown = pick
-        setContentView(if (pick) list else starting.view)
+        setContentView(if (pick) sourcesView else starting.view)
         fun say(message: String) { status.text = message; starting.fail(message) }
         val tv = Device.of(this)
 
@@ -181,14 +183,15 @@ class StreamsActivity : Screen() {
                     }
                 } else {
                     val best = eligible.firstOrNull { it in shown }
-                    shown.forEach { stream -> rows.addView(streamRow(stream, providers[stream].orEmpty(), stream === best),
-                        LinearLayout.LayoutParams(-1, dp(ROW_H)).apply { bottomMargin = dp(2) }) }
-                    if (focusList) rows.getChildAt(0).requestFocus()
+                    shown.forEach { stream -> rows.addView(
+                        if (phoneLayout) phoneRow(stream, providers[stream].orEmpty(), stream === best) else streamRow(stream, providers[stream].orEmpty(), stream === best),
+                        LinearLayout.LayoutParams(-1, if (phoneLayout) -2 else dp(ROW_H)).apply { bottomMargin = dp(2) }) }
+                    if (focusList && !phoneLayout) rows.getChildAt(0).requestFocus()
                 }
             }
             fun showList() {
                 listed = true
-                if (!listShown) { listShown = true; setContentView(list) }
+                if (!listShown) { listShown = true; setContentView(sourcesView) }
                 val available = addons.flatMapIndexed { i, addon -> answers[i].orEmpty()
                     .filter { it.isVideo && it.playableOn(tv) }.map { it to addon.name } }
                 providers = available.toMap()
@@ -265,7 +268,7 @@ class StreamsActivity : Screen() {
                 }
             }
             chips[code] = control
-            line.addView(control, LinearLayout.LayoutParams(-2, dp(CHIP_H)).apply { if (line.childCount > 0) marginStart = dp(6) })
+            line.addView(control, LinearLayout.LayoutParams(-2, dp(if (phoneLayout) 40 else CHIP_H)).apply { if (line.childCount > 0) marginStart = dp(6) })
         }
         languageStrip.addView(line)
         languageStrip.visibility = View.VISIBLE
@@ -396,6 +399,78 @@ class StreamsActivity : Screen() {
         }
     }
 
+    // ---------- on a phone, held upright (PhoneStreamsActivity) ----------
+
+    /** The list on a phone: Back and the title across the top, then the sources as tall two-line rows. */
+    private fun phoneList(name: String, where: List<String>, count: TextView, scroll: ScrollView): View {
+        (scroll.parent as? android.view.ViewGroup)?.removeView(scroll)
+        (languageStrip.parent as? android.view.ViewGroup)?.removeView(languageStrip)
+        (count.parent as? android.view.ViewGroup)?.removeView(count)
+        scroll.setPadding(0, 0, 0, dp(24))
+        scroll.isFocusable = false
+        val back = ImageView(this).apply {
+            setImageResource(R.drawable.ic_back); setColorFilter(TEXT); scaleType = ImageView.ScaleType.CENTER
+            contentDescription = "Back"
+            setOnClickListener { finish() }
+        }
+        val title = column(Gravity.START,
+            text(name, 18f, serif = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+            text(where.joinToString(" · ").ifBlank { "Choose a source" }, 13f, color = TEXT_2).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END })
+        count.gravity = Gravity.END
+        val top = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(8), dp(16), dp(8))
+            addView(back, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(title, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(4) })
+            addView(count, LinearLayout.LayoutParams(-2, -2))
+        }
+        languageStrip.setPadding(dp(16), 0, dp(16), dp(8))
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(BASE)
+            addView(top, LinearLayout.LayoutParams(-1, -2))
+            addView(languageStrip, LinearLayout.LayoutParams(-1, -2))
+            addView(View(context).apply { setBackgroundColor(GLASS_EDGE) }, LinearLayout.LayoutParams(-1, dp(1)))
+            addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+    }
+
+    /** A source on a phone: quality and size large on the first line, what it is and who found it under them. */
+    private fun phoneRow(s: Stream, addon: String, best: Boolean): View {
+        val provider = s.title.lineSequence().firstOrNull().orEmpty().substringBefore('(')
+            .replace(Regex("^\\[[^]]+]\\s*"), "").trim().takeIf { it.isNotBlank() && !it.matches(Regex("\\d+p")) } ?: addon
+        val first = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(text(if (s.height > 0) "${s.height}p" else "Auto", 17f, bold = true))
+            if (best) addView(badge("BEST MATCH"), wrap().apply { marginStart = dp(10) })
+            addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(text(sourceSize(s.size), 15f, bold = true))
+        }
+        val second = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(text(sourceSummary(s), 13f, color = TEXT_2).apply { maxLines = 1 })
+            (listOfNotNull(s.debrid?.tag) + s.tags.filter { it !in listOf("BluRay", "WEB") }.take(3)).forEach { tag ->
+                addView(badge(tag.uppercase(), filled = false), wrap().apply { marginStart = dp(6) })
+            }
+        }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(12), dp(20), dp(12))
+            minimumHeight = dp(64)
+            addView(first, LinearLayout.LayoutParams(-1, -2))
+            addView(second, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            addView(text(provider, 12f, color = TEXT_3).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END },
+                LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            alpha = if (s.height in 1..719) 0.55f else 1f
+            background = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(withAlpha(TEXT, 0x22)), null,
+                android.graphics.drawable.ColorDrawable(0xFFFFFFFF.toInt()))
+            setOnClickListener {
+                startActivity(Intent(this@StreamsActivity, PlayerActivity::class.java).putExtras(intent)
+                    .putExtra("sources", JSONArray(listOf(s.toJson())).toString()).putExtra("picked", true))
+            }
+        }
+    }
+
     private fun presetName(): String {
         val release = Settings.release(this)
         val hdr = Settings.hdrPref(this)
@@ -447,4 +522,10 @@ internal fun sourceSummary(s: Stream): String {
         else -> null
     }
     return listOfNotNull(release, codec, audio).joinToString(" · ")
+}
+
+/** The sources list on a phone, held upright, at the phone's own size: opened to choose a source by hand. */
+class PhoneStreamsActivity : StreamsActivity() {
+    override val phoneLayout get() = true
+    override val backArrow get() = false
 }

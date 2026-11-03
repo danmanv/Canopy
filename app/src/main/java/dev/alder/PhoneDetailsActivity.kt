@@ -334,7 +334,7 @@ class PhoneDetailsActivity : PhoneScreen() {
         val at = videos.indexOfFirst { it.id == videoId }
         val video = videos.getOrNull(at)
         val short = label ?: video?.let { "S${it.season} E${it.episode}" }
-        startActivity(Intent(this, StreamsActivity::class.java)
+        startActivity(Intent(this, if (pick) PhoneStreamsActivity::class.java else StreamsActivity::class.java)
             .putExtra("type", type).putExtra("id", metaId).putExtra("name", m?.name ?: name).putExtra("poster", m?.poster ?: poster)
             .putExtra("videoId", videoId).putExtra("nextVideoId", if (at >= 0) videos.getOrNull(at + 1)?.id else null)
             .putExtra("startOver", startOver).putExtra("pick", pick)

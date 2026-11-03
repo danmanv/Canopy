@@ -569,7 +569,7 @@ class PhoneActivity : PhoneScreen() {
         val at = videos.indexOfFirst { it.id == videoId }
         val next = if (at >= 0) videos.getOrNull(at + 1) else null
         val episode = item.left?.substringBefore(DOT_SHORT)?.takeIf { item.type == "series" && it.startsWith("S") }
-        startActivity(Intent(this, StreamsActivity::class.java)
+        startActivity(Intent(this, if (pick) PhoneStreamsActivity::class.java else StreamsActivity::class.java)
             .putExtra("type", item.type).putExtra("id", item.id).putExtra("name", item.name).putExtra("poster", item.poster)
             .putExtra("videoId", videoId).putExtra("nextVideoId", next?.id).putExtra("pick", pick)
             .putExtra("background", meta?.background ?: item.art)
