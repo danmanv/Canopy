@@ -267,6 +267,14 @@ class MainActivity : Screen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A phone has its own Home, upright, made for a thumb (PhoneActivity).
+        if (touch) {
+            startActivity(Intent(this, PhoneActivity::class.java).putExtras(intent)
+                .addFlags(intent.flags and (Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP))
+            finish()
+            return
+        }
         profile = Profiles.active(this) ?: return switchProfile()
         main.postDelayed({ if (!isFinishing) whatsNewOnce() }, WHATS_NEW_WAIT)
         // Last launch's first cinema title: start its art and logo now, while the library is still being read.

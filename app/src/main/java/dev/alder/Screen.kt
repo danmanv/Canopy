@@ -126,16 +126,19 @@ abstract class Screen : Activity() {
     /** A phone or tablet ([Device.touch]): taps, swipes and the back gesture drive the screens made for the remote. */
     protected val touch: Boolean get() = Device.touch(this)
 
-    // On a phone every screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
+    /** A screen made for a phone (PhoneActivity): drawn at the phone's own size, and its taps are plain taps. */
+    protected open val phoneLayout: Boolean get() = false
+
+    // On a phone every TV screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+        if (!phoneLayout) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
     }
 
     private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
 
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
-        if (touch) taps.feed(event)
+        if (touch && !phoneLayout) taps.feed(event)
         return super.dispatchTouchEvent(event)
     }
 

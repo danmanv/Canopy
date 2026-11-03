@@ -37,6 +37,8 @@
             </intent-filter>
         </activity>
         <activity android:name=".MainActivity" android:screenOrientation="sensorLandscape" />
+        <!-- Home on a phone, held upright -->
+        <activity android:name=".PhoneActivity" android:screenOrientation="portrait" />
         <!-- The TV's own search hands a query here: the Assistant's "search for … on Canopy" and global search. -->
         <activity
             android:name=".SearchActivity"
