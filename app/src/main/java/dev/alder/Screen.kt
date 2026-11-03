@@ -149,6 +149,9 @@ abstract class Screen : Activity() {
     protected fun vertical(velocityX: Float, velocityY: Float) =
         kotlin.math.abs(velocityY) > 2 * kotlin.math.abs(velocityX) && kotlin.math.abs(velocityY) > dp(SWIPE_SPEED)
 
+    /** False where the picture runs under a phone's camera notch too (the player); elsewhere the screen keeps clear of it. */
+    protected open val clearOfCutout: Boolean get() = true
+
     /** A dialog's taps move the focus too, as the screen's do. */
     protected fun android.app.Dialog.touchable() = apply {
         if (touch) window?.let { Taps(context, { it.decorView }).into(it) }
@@ -156,7 +159,7 @@ abstract class Screen : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && touch) fullScreen() // the bars come back after the keyboard or a swipe from the edge
+        if (hasFocus && touch) fullScreen(clearOfCutout) // the bars come back after the keyboard or a swipe from the edge
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -164,7 +167,7 @@ abstract class Screen : Activity() {
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
-        if (touch) fullScreen()
+        if (touch) fullScreen(clearOfCutout)
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback

@@ -249,6 +249,11 @@ class MainActivity : Screen() {
     private var loadMoreSections: (() -> Unit)? = null
     private var revealRows: android.view.ViewTreeObserver.OnPreDrawListener? = null
     private var loadSection: ((String) -> Unit)? = null // builds the page down to a genre chip's row
+    // A phone is held closer than a TV but its screen is wider in dp: Home's posters are a quarter larger there.
+    private val posterW get() = if (touch) CARD_W * 5 / 4 else CARD_W
+    private val posterH get() = if (touch) CARD_H * 5 / 4 else CARD_H
+    private val wideW get() = if (touch) WIDE_W * 5 / 4 else WIDE_W
+    private val wideH get() = if (touch) WIDE_H * 5 / 4 else WIDE_H
     private var touched = false // a key was pressed since the page opened: fresh data then waits for the next visit
     private var cinemaReady = false // the cinema's title has its art and logo (or gave up waiting) and may show
     private var cinemaToken = Any()
@@ -273,7 +278,7 @@ class MainActivity : Screen() {
         val screenH = resources.displayMetrics.heightPixels
         // A row heading's real height: the TV's font size setting can make it taller than any fixed guess.
         val headingH = caps("").lineHeight
-        val rowH = headingH + dp(ROW_TOP_ROOM + CARD_H + ROW_BOTTOM_ROOM)
+        val rowH = headingH + dp(ROW_TOP_ROOM + posterH + ROW_BOTTOM_ROOM)
         val rowTop = screenH - rowH - dp(SAFE_BOTTOM) // one row on screen; the track in the left margin says where you are
         browseRowTop = rowTop
         browseRowH = rowH
@@ -329,10 +334,10 @@ class MainActivity : Screen() {
             track = FrameLayout(context).apply { alpha = 0f }
             thumb = View(context).apply { setBackgroundColor(0xB3FFFFFF.toInt()) }
             track.addView(thumb, FrameLayout.LayoutParams(-1, dp(12)))
-            addView(track, FrameLayout.LayoutParams(dp(2), dp(CARD_H)).apply { leftMargin = dp(PAD) / 2; topMargin = rowTop + headingH + dp(ROW_TOP_ROOM) })
+            addView(track, FrameLayout.LayoutParams(dp(2), dp(posterH)).apply { leftMargin = dp(PAD) / 2; topMargin = rowTop + headingH + dp(ROW_TOP_ROOM) })
             moreHint = ImageView(context).apply { setImageResource(R.drawable.ic_back); scaleX = -1f; alpha = 0f }
             addView(moreHint, FrameLayout.LayoutParams(dp(32), dp(32), Gravity.END).apply {
-                rightMargin = (dp(PAD) - dp(32)) / 2; topMargin = rowTop + headingH + dp(ROW_TOP_ROOM + CARD_H / 2 - 16)
+                rightMargin = (dp(PAD) - dp(32)) / 2; topMargin = rowTop + headingH + dp(ROW_TOP_ROOM + posterH / 2 - 16)
             })
             nextRowHint = caps("").apply { visibility = View.GONE }
             addView(nextRowHint, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
@@ -423,7 +428,7 @@ class MainActivity : Screen() {
                 if (answers.containsKey(key)) return@forEachIndexed
                 val kept = sources.map { (c, _) -> (c.addon.savedCatalog(c, picked) ?: return@forEachIndexed) to true }
                 answers.putIfAbsent(key, kept)
-                if (i < 3) kept.flatMap { it.first }.take(FIRST).forEach { Images.prefetch(it.poster ?: it.background, (dp(CARD_W) * CARD_GROW).toInt()) }
+                if (i < 3) kept.flatMap { it.first }.take(FIRST).forEach { Images.prefetch(it.poster ?: it.background, (dp(posterW) * CARD_GROW).toInt()) }
                 // The first title's full-screen art too, so the page opens on its own picture, not the last page's.
                 if (i == 0) kept.firstOrNull()?.first?.firstOrNull()?.background?.let { Images.prefetch(it, artW, look = shaded) }
             }
@@ -1671,7 +1676,7 @@ class MainActivity : Screen() {
     }
 
     /** A browse card's poster width in pixels, as Card asks for it. */
-    private val cardPx get() = (dp(CARD_W) * CARD_GROW).toInt()
+    private val cardPx get() = (dp(posterW) * CARD_GROW).toInt()
 
     /** The rest of a list already in hand, a page at a time: a row of hundreds of cards would be slow to build. */
     private fun later(all: List<Item>): ((Int) -> List<Item>)? =
@@ -1741,8 +1746,8 @@ class MainActivity : Screen() {
      */
     private inner class Row(val title: String, first: List<Item>, private var more: ((Int) -> List<Item>)?, val wide: Boolean = false, val grid: Boolean = false,
                             private val seeAll: (() -> Unit)? = null) {
-        val cardW = if (grid) LIST_W else if (wide) WIDE_W else CARD_W
-        val cardH = if (grid) LIST_H else if (wide) WIDE_H else CARD_H
+        val cardW = if (grid) LIST_W else if (wide) wideW else posterW
+        val cardH = if (grid) LIST_H else if (wide) wideH else posterH
         val items = first.toMutableList()
         val cards = items.mapIndexed { i, item -> Card(item, i) }.toMutableList()
         private var fetching = false
@@ -1797,7 +1802,7 @@ class MainActivity : Screen() {
             alpha = QUIET
             if (grid) visibility = View.GONE
         }
-        val view: View = column(Gravity.START, heading, scroller).apply { if (wide) setPadding(0, dp(CARD_H - WIDE_H), 0, 0) }
+        val view: View = column(Gravity.START, heading, scroller).apply { if (wide) setPadding(0, dp(posterH - wideH), 0, 0) }
 
         /** The row's last card: "See all" opens the whole catalog as a grid. */
         private val seeAllCard: View? = seeAll?.let { open ->
@@ -1886,11 +1891,11 @@ class MainActivity : Screen() {
             showVisibleCards()
             val beyond = cards.any { it.right - targetScroll > right }
             moreHint.animate().alpha(if (beyond && mode == Mode.BROWSE && page != Page.HOME && !page.isCatalog) 0.9f else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
-            moreHint.translationY = if (wide) dp(CARD_H - WIDE_H + WIDE_H / 2 - CARD_H / 2).toFloat() else 0f
+            moreHint.translationY = if (wide) dp(posterH - wideH + wideH / 2 - posterH / 2).toFloat() else 0f
             if (!grid && wideRow != wide) {
                 wideRow = wide
                 browseInfo.layoutParams = (browseInfo.layoutParams as FrameLayout.LayoutParams).apply {
-                    bottomMargin = heroBottom - if (wide) dp(CARD_H - WIDE_H) else 0
+                    bottomMargin = heroBottom - if (wide) dp(posterH - wideH) else 0
                 }
             }
             // A held key repeats every 50 ms. Restarting a slowing-down slide on each repeat made the row lurch and brake
@@ -2179,10 +2184,10 @@ class MainActivity : Screen() {
         val order = rows.filter { it.view.isAttachedToWindow }.map { it.view }.sortedBy { offsetIn(it) }
         val n = order.size
         val at = order.indexOf(rowView).coerceAtLeast(0)
-        val thumbH = maxOf(dp(12), dp(CARD_H) / maxOf(n, 1))
+        val thumbH = maxOf(dp(12), dp(posterH) / maxOf(n, 1))
         // Only when it changes: setting the layout params lays the whole screen out again, on every move of the remote.
         if (thumb.layoutParams.height != thumbH) thumb.layoutParams = thumb.layoutParams.apply { height = thumbH }
-        thumb.animate().translationY(if (n > 1) (dp(CARD_H) - thumbH) * at / (n - 1f) else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
+        thumb.animate().translationY(if (n > 1) (dp(posterH) - thumbH) * at / (n - 1f) else 0f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         if (rowView !== indicatedRow) {
             indicatedRow = rowView
             main.removeCallbacks(hideTrack)

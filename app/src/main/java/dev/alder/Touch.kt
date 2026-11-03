@@ -72,7 +72,7 @@ internal class Taps(
 
 /** A phone shows the whole screen, as a TV does: no status bar or navigation bar until swiped in from an edge. */
 @Suppress("DEPRECATION")
-internal fun Activity.fullScreen() {
+internal fun Activity.fullScreen(clearOfCutout: Boolean = true) {
     // The window's view first: Android 17's insetsController no longer makes it, and found none (a crash on start).
     val decor = window.decorView
     if (Build.VERSION.SDK_INT >= 28)
@@ -90,7 +90,7 @@ internal fun Activity.fullScreen() {
     // window's dark background fills the strip.
     if (Build.VERSION.SDK_INT >= 28) findViewById<View>(android.R.id.content).setOnApplyWindowInsetsListener { v, insets ->
         val cut = insets.displayCutout
-        v.setPadding(cut?.safeInsetLeft ?: 0, 0, cut?.safeInsetRight ?: 0, 0)
+        if (clearOfCutout) v.setPadding(cut?.safeInsetLeft ?: 0, 0, cut?.safeInsetRight ?: 0, 0) else v.setPadding(0, 0, 0, 0)
         insets
     }
 }

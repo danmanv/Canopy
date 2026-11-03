@@ -69,6 +69,7 @@ internal fun animeEpisode(videoId: String): Triple<String, String, Int>? {
 // at the same second, and when the list runs out the sources page opens. Network blips are retried first, twice
 // after 1.5 s (NuvioTV's rule), so a dropped connection doesn't cost the source.
 class PlayerActivity : Screen() {
+    override val clearOfCutout: Boolean get() = false // the film fills a phone's whole screen, camera notch and all
     override val screensaver: Boolean get() = false // the film is the picture; the TV keeps the screen on while it plays
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView
@@ -1154,11 +1155,16 @@ class PlayerActivity : Screen() {
                 background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP,
                     intArrayOf(baseAt(0xF2), baseAt(0xB3), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
+            // A phone has no remote's Back: a Back button top left, the title moved along beside it.
+            val nameAt = if (touch) PAD + 52 else PAD
+            if (touch) addView(button("Back", R.drawable.ic_back) { press(KeyEvent.KEYCODE_BACK) }.apply {
+                buttonLabels.remove(this) // no word under it: the arrow says it
+            }, FrameLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(PAD); topMargin = dp(26) })
             addView(playerLogo, FrameLayout.LayoutParams(dp(150), dp(50)).apply {
-                leftMargin = dp(PAD); topMargin = dp(26)
+                leftMargin = dp(nameAt); topMargin = dp(26)
             })
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
-                leftMargin = dp(PAD); topMargin = dp(31)
+                leftMargin = dp(nameAt); topMargin = dp(31)
             })
             // The time now, then when this finishes if it played straight through from here.
             addView(LinearLayout(context).apply {
