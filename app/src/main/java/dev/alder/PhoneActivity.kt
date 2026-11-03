@@ -26,9 +26,7 @@ import kotlin.math.roundToInt
  * fixed frame in the middle, with the posters either side sliding through it, and the title's Resume (or Play) under it.
  * Rows of posters follow. Titles, sources and the player are still the TV's screens, held sideways.
  */
-class PhoneActivity : Screen() {
-    override val phoneLayout get() = true
-    override val backArrow get() = false
+class PhoneActivity : PhoneScreen() {
 
     private enum class Page(val label: String, val icon: Int) {
         HOME("Home", R.drawable.ic_home), SHOWS("Shows", R.drawable.ic_tv), MOVIES("Movies", R.drawable.ic_movie), LIST("My List", R.drawable.ic_add)
@@ -146,14 +144,6 @@ class PhoneActivity : Screen() {
             }
         }, LinearLayout.LayoutParams(dp(TOUCH), dp(TOUCH)))
         addView(buttons, FrameLayout.LayoutParams(-2, -2, Gravity.END or Gravity.CENTER_VERTICAL).apply { rightMargin = dp(8) })
-    }
-
-    private fun iconButton(icon: Int, label: String, click: () -> Unit) = ImageView(this).apply {
-        setImageResource(icon)
-        setColorFilter(TEXT)
-        scaleType = ImageView.ScaleType.CENTER
-        contentDescription = label
-        setOnClickListener { click() }
     }
 
     // Soft: the bar fades up out of the page instead of starting at a hard line, and the open tab glows.
@@ -528,20 +518,6 @@ class PhoneActivity : Screen() {
         Images.load(item.poster, this, widthPx, orElse = item.art)
     }
 
-    private fun button(label: String, primary: Boolean, click: () -> Unit) = LinearLayout(this).apply {
-        gravity = Gravity.CENTER
-        background = if (primary) rounded(TUNGSTEN, CORNER)
-            else GradientDrawable().apply { setColor(withAlpha(TEXT, 0x14)); setStroke(dp(1), withAlpha(TEXT, 0x40)); cornerRadius = dp(CORNER).toFloat() }
-        if (primary) addView(ImageView(context).apply { setImageResource(R.drawable.ic_play); setColorFilter(BASE) },
-            LinearLayout.LayoutParams(dp(20), dp(20)).apply { rightMargin = dp(8) })
-        addView(text(label, 16f, bold = true, color = if (primary) BASE else TEXT))
-        setOnClickListener { click() }
-    }
-
-    private fun setLabel(button: LinearLayout, label: String) {
-        (button.getChildAt(button.childCount - 1) as TextView).text = label
-    }
-
     // ---------- titles ----------
 
     /** Details the catalog or library didn't send (art, year, runtime, episodes), fetched once per title. */
@@ -605,7 +581,7 @@ class PhoneActivity : Screen() {
     }
 
     private fun openDetails(item: Item) {
-        startActivity(Intent(this, DetailsActivity::class.java)
+        startActivity(Intent(this, PhoneDetailsActivity::class.java)
             .putExtra("type", item.type).putExtra("id", item.id).putExtra("name", item.name)
             .putExtra("poster", item.poster).putExtra("background", item.art).putExtra("videoId", item.videoId))
     }
@@ -630,8 +606,6 @@ class PhoneActivity : Screen() {
     private companion object {
         const val TOP_BAR = 60
         const val TAB_BAR = 64
-        const val TOUCH = 48 // dp: the smallest thing a thumb is asked to hit
-        const val BIG_BUTTON = 52
         const val CAROUSEL_W = 200 // dp: the framed poster
         const val POSTER_W = 112 // dp: a row's posters
         const val BACKDROP_H = 560
@@ -639,8 +613,5 @@ class PhoneActivity : Screen() {
         const val HOME_FALLBACK = 6
         const val WASH = 0.55f // the framed title's art behind the page
         const val ROW_MAX = 40
-        const val BODY_SP = 15f
-        const val SMALL_SP = 13f
-        const val DOT_SHORT = " · "
     }
 }

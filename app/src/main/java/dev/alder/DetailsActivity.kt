@@ -61,6 +61,13 @@ class DetailsActivity : Screen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A phone has its own title page, upright (PhoneDetailsActivity).
+        if (touch) {
+            startActivity(Intent(intent).setClass(this, PhoneDetailsActivity::class.java))
+            finish()
+            @Suppress("DEPRECATION") overridePendingTransition(0, 0)
+            return
+        }
         key = authKey ?: return finish()
         val artWidth = resources.displayMetrics.widthPixels
         heroArt = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
