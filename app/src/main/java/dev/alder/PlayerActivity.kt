@@ -310,6 +310,7 @@ class PlayerActivity : Screen() {
                 if (isFinishing) return
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
+                bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 34, BASE)
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
@@ -1044,6 +1045,7 @@ class PlayerActivity : Screen() {
     private lateinit var elapsed: TextView
     private lateinit var length: TextView
     private lateinit var playPause: TextView
+    private var bigPlay: TextView? = null // a phone's Play in the middle of the picture, with back and ahead 10 s beside it
     private lateinit var audioButton: TextView
     private lateinit var endsAt: TextView // "  ·  Ends 11:20 AM" beside the clock, top right
     private lateinit var nextCell: FrameLayout
@@ -1133,8 +1135,9 @@ class PlayerActivity : Screen() {
             addView(buttonCell(streamButton))
             addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
                 LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginEnd = dp(10) })
-            addView(buttonCell(playPause, true))
-            addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
+            // On a phone Play is in the middle of the picture instead, big, for a thumb.
+            if (!touch) addView(buttonCell(playPause, true))
+            if (!touch) addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
                 LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginStart = dp(10) })
             addView(nextCell)
             addView(startOverCell)
@@ -1206,6 +1209,19 @@ class PlayerActivity : Screen() {
                 }, LinearLayout.LayoutParams(-1, -2))
                 addView(buttons, LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(2) })
             }
+            if (touch) addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                fun big(control: TextView, icon: Int, size: Int, iconSize: Int, tint: Int) = control.apply {
+                    buttonLabels.remove(this)
+                    foreground = centred(icon, iconSize, tint)
+                    if (tint != BASE) background = rounded(baseAt(0x66), CORNER)
+                }.also { addView(it, LinearLayout.LayoutParams(dp(size), dp(size)).apply { marginStart = dp(28); marginEnd = dp(28) }) }
+                big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 56, 30, TEXT)
+                bigPlay = big(button("Pause", R.drawable.ic_pause, primary = true) {
+                    if (player.playWhenReady) player.pause() else player.play()
+                }, R.drawable.ic_pause, 72, 34, BASE)
+                big(button("Ahead 10 seconds", R.drawable.ic_forward10) { if (canSeek()) { showControls(null); scrub(SKIP) } }, R.drawable.ic_forward10, 56, 30, TEXT)
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
             addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
                 leftMargin = dp(DOCK_INSET); rightMargin = dp(DOCK_INSET); bottomMargin = dp(DOCK_INSET - 4)
             })
@@ -1280,7 +1296,7 @@ class PlayerActivity : Screen() {
             controls.visibility = View.VISIBLE
             controls.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             updateProgress()
-            (focus ?: playPause).requestFocus()
+            (focus ?: bigPlay ?: playPause).requestFocus()
         } else focus?.requestFocus()
         if (player.playWhenReady) main.postDelayed(hideTask, HIDE)
     }
