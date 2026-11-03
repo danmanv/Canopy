@@ -1715,7 +1715,8 @@ class MainActivity : Screen() {
         // Set only when it changes: a new text lays the screen out again, and this runs on every move of the remote.
         val hint = visible.getOrNull(active + 1)?.let { "▾  ${it.title.uppercase()}" } ?: ""
         if (nextRowHint.text.toString() != hint) nextRowHint.text = hint
-        nextRowHint.visibility = if (hint.isEmpty()) View.GONE else View.VISIBLE
+        // Not on a phone: the row sits lower there and the hint covered the cards' ratings; a swipe up shows the next row anyway.
+        nextRowHint.visibility = if (hint.isEmpty() || touch) View.GONE else View.VISIBLE
     }
 
     private val focusTop = Runnable {
