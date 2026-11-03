@@ -54,6 +54,7 @@ class PhoneActivity : PhoneScreen() {
     private lateinit var scroll: ScrollView
     private lateinit var host: FrameLayout
     private lateinit var wash: ImageView
+    private val barShade by lazy { View(this).apply { setBackgroundColor(baseAt(0xF5)); alpha = 0f; elevation = 0f } }
     private val tabs = mutableMapOf<Page, LinearLayout>()
 
     private val screenW by lazy { resources.displayMetrics.widthPixels }
@@ -78,11 +79,16 @@ class PhoneActivity : PhoneScreen() {
             addView(wash, FrameLayout.LayoutParams(-1, dp(BACKDROP_H)))
             addView(fade, FrameLayout.LayoutParams(-1, dp(BACKDROP_H)))
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
+            addView(barShade, FrameLayout.LayoutParams(-1, dp(TOP_BAR), Gravity.TOP))
             addView(topBar(), FrameLayout.LayoutParams(-1, dp(TOP_BAR), Gravity.TOP))
             addView(tabBar(), FrameLayout.LayoutParams(-1, dp(TAB_BAR), Gravity.BOTTOM))
         })
         // The wash scrolls away with the carousel above it.
-        scroll.setOnScrollChangeListener { _, _, y, _, _ -> wash.translationY = -y.toFloat() }
+        // Scrolled, the top bar gets a solid backing, so the logo and buttons never sit on the posters.
+        scroll.setOnScrollChangeListener { _, _, y, _, _ ->
+            wash.translationY = -y.toFloat()
+            barShade.alpha = (y / dp(60).toFloat()).coerceIn(0f, 1f)
+        }
         showPage(pageNamed(intent.getStringExtra("page")))
     }
 

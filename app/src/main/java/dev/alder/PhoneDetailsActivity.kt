@@ -20,6 +20,7 @@ import org.json.JSONObject
  * then the episodes by season (a show) or More like this (a film). Sources and the player are still the TV's screens.
  */
 class PhoneDetailsActivity : PhoneScreen() {
+    override val clearOfCutout get() = false
     private val type by lazy { intent.getStringExtra("type") ?: "movie" }
     private val metaId by lazy { intent.getStringExtra("id")!! }
     private val name by lazy { intent.getStringExtra("name") ?: "" }
@@ -111,10 +112,30 @@ class PhoneDetailsActivity : PhoneScreen() {
             background = rounded(baseAt(0x8C), CORNER)
             elevation = dp(4).toFloat()
         }
+        // Past the art, a solid bar with the title comes in behind Back, so Back never sits on an episode.
+        val barTitle = text(name, 17f, serif = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_VERTICAL }
+        val bar = FrameLayout(this).apply {
+            setBackgroundColor(baseAt(0xF5))
+            alpha = 0f
+            elevation = dp(3).toFloat()
+            addView(barTitle, FrameLayout.LayoutParams(-1, dp(TOUCH + 16), Gravity.BOTTOM).apply { leftMargin = dp(TOUCH + 20); rightMargin = dp(16) })
+        }
+        title.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ -> barTitle.text = title.text }
+        scroll.setOnScrollChangeListener { _, _, y, _, _ ->
+            bar.alpha = ((y - dp(ART_H - 140)) / dp(60).toFloat()).coerceIn(0f, 1f)
+        }
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE))
         setContentView(FrameLayout(this).apply {
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
+            addView(bar, FrameLayout.LayoutParams(-1, dp(TOUCH + 16)))
             addView(back, FrameLayout.LayoutParams(dp(TOUCH), dp(TOUCH), Gravity.TOP or Gravity.START).apply { leftMargin = dp(8); topMargin = dp(8) })
+            // The art runs up behind the camera; Back and the bar keep clear of it.
+            setOnApplyWindowInsetsListener { _, insets ->
+                val top = if (android.os.Build.VERSION.SDK_INT >= 28) insets.displayCutout?.safeInsetTop ?: 0 else 0
+                back.layoutParams = (back.layoutParams as FrameLayout.LayoutParams).apply { topMargin = dp(8) + top }
+                bar.layoutParams = (bar.layoutParams as FrameLayout.LayoutParams).apply { height = dp(TOUCH + 16) + top }
+                insets
+            }
         })
 
         (initialArt ?: Images.backgroundFor(metaId) ?: poster)?.let { url ->

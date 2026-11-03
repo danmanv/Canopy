@@ -201,9 +201,12 @@ class PhoneSearchActivity : PhoneScreen() {
             var done = 0
             fun update() {
                 if (token != request) return
+                // Titles with no picture are mostly noise; among equal matches, newer ones lead (Dexter: Resurrection
+                // before a 1990s cartoon).
                 found = rankSearchTitles(searchAnswersInAddonOrder(answers)
-                    .filter { it.type == "movie" || it.type == "series" }.filterNot { isAddonMessage(it.name) }
-                    .distinctBy { it.type to it.id }, query) { it.name }
+                    .filter { (it.type == "movie" || it.type == "series") && it.poster != null }.filterNot { isAddonMessage(it.name) }
+                    .distinctBy { it.type to it.id }
+                    .sortedByDescending { it.year?.take(4)?.toIntOrNull() ?: 0 }, query) { it.name }
                 heading = ""
                 if (found.isNotEmpty() || done == addons.size) draw()
             }
@@ -250,7 +253,7 @@ class PhoneSearchActivity : PhoneScreen() {
                         contentDescription = m.name
                         Images.load(m.poster ?: m.background, this, w)
                     }, LinearLayout.LayoutParams(w, w * 3 / 2))
-                    addView(text(m.name, SMALL_SP, bold = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END },
+                    addView(text(m.name, SMALL_SP, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END },
                         LinearLayout.LayoutParams(w, -2).apply { topMargin = dp(6) })
                     setOnClickListener { open(m) }
                 }, LinearLayout.LayoutParams(w, -2).apply { if (i > 0) leftMargin = gap })
