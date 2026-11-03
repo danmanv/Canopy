@@ -42,6 +42,7 @@ import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
 import androidx.media3.ui.CaptionStyleCompat
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import androidx.media3.ui.SubtitleView
 import org.json.JSONArray
@@ -193,6 +194,7 @@ class PlayerActivity : Screen() {
                 if (Settings.subtitleBackground(context)) 0xB3000000.toInt() else Color.TRANSPARENT, Color.TRANSPARENT,
                 CaptionStyleCompat.EDGE_TYPE_DROP_SHADOW, Color.BLACK, null))
             setBackgroundColor(Color.BLACK)
+            resizeMode = fits[fitIndex()].second
         }
         status = text("", BODY).onArt().apply {
             gravity = Gravity.CENTER
@@ -206,8 +208,8 @@ class PlayerActivity : Screen() {
         loading = buildLoading()
         starting = startingScreen().apply { status.text = "Starting playback" }
         stallPanel = FrameLayout(this).apply { visibility = View.GONE }
-        skip = text("", BODY, bold = true).onArt().apply {
-            setPadding(dp(22), dp(12), dp(22), dp(12))
+        skip = text("", sized(BODY, 18f), bold = true).onArt().apply {
+            setPadding(dp(sized(22, 26)), dp(sized(12, 16)), dp(sized(22, 26)), dp(sized(12, 16)))
             background = glass(10)
             visibility = View.GONE
         }
@@ -312,7 +314,7 @@ class PlayerActivity : Screen() {
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 34, BASE)
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
-                pauseInfo.visibility = if (playWhenReady) View.GONE else View.VISIBLE
+                pauseInfo.visibility = if (playWhenReady || touch) View.GONE else View.VISIBLE // a phone has the name at the top and Play in the middle
                 // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
                 main.removeCallbacks(ambientTask)
                 if (playWhenReady) hideAmbient()
@@ -428,6 +430,8 @@ class PlayerActivity : Screen() {
         loadingBar = SeekBar(this@PlayerActivity).apply { isFocusable = false }
         loadingStart = text("", SMALL, color = TEXT_2).onArt()
         loadingLeft = text("", SMALL, color = TEXT_2).onArt()
+        // Not on a phone: under the controls' own bar, it read as a second one at the top while a seek loaded.
+        if (touch) return@apply
         addView(loadingBar, FrameLayout.LayoutParams(-1, dp(12), Gravity.TOP).apply {
             leftMargin = dp(PAD + 30); rightMargin = dp(PAD + 30); topMargin = dp(32)
         })
@@ -625,18 +629,18 @@ class PlayerActivity : Screen() {
             addView(text("Switch to ${lower}p?", SERIF_TITLE, serif = true),
                 wrap().apply { topMargin = dp(4) })
             addView(text("This ${height}p source stopped 3 times in a minute. A smaller file may play more smoothly from ${clock(position())}.",
-                SMALL, color = TEXT_2), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
+                sized(SMALL, 15f), color = TEXT_2), LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
             val actions = LinearLayout(this@PlayerActivity).apply { gravity = Gravity.CENTER_VERTICAL }
-            val lowerButton = pill("Switch to ${lower}p").apply { setOnClickListener { lowerQuality() } }
+            val lowerButton = pill("Switch to ${lower}p").thumb().apply { setOnClickListener { lowerQuality() } }
             actions.addView(lowerButton, wrap())
-            actions.addView(chip("Keep ${height}p").apply { setOnClickListener { dismissStall() } },
+            actions.addView(chip("Keep ${height}p").thumb().apply { setOnClickListener { dismissStall() } },
                 wrap().apply { marginStart = dp(6) })
-            actions.addView(chip("Other sources").apply { setOnClickListener { changeStream() } },
+            actions.addView(chip("Other sources").thumb().apply { setOnClickListener { changeStream() } },
                 wrap().apply { marginStart = dp(6) })
             addView(actions, wrap().apply { topMargin = dp(12) })
             lowerButton.post { lowerButton.requestFocus() }
         }
-        stallPanel.addView(card, FrameLayout.LayoutParams(dp(460), -2, Gravity.BOTTOM or Gravity.END).apply {
+        stallPanel.addView(card, FrameLayout.LayoutParams(dp(sized(460, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(48)
         })
         stallPanel.visibility = View.VISIBLE
@@ -653,12 +657,12 @@ class PlayerActivity : Screen() {
         val card = column(Gravity.START,
             caps("Source failed", TUNGSTEN),
             text("Try another source", SERIF_TITLE, serif = true).marginTop(6),
-            pill("Other sources").apply { setOnClickListener { changeStream() } }.marginTop(12)
+            pill("Other sources").thumb().apply { setOnClickListener { changeStream() } }.marginTop(12)
         ).apply {
             setPadding(dp(18), dp(18), dp(18), dp(18))
             background = glass(14)
         }
-        stallPanel.addView(card, FrameLayout.LayoutParams(dp(310), -2, Gravity.BOTTOM or Gravity.END).apply {
+        stallPanel.addView(card, FrameLayout.LayoutParams(dp(sized(310, 360)), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(48)
         })
         stallPanel.visibility = View.VISIBLE
@@ -684,9 +688,9 @@ class PlayerActivity : Screen() {
         hideLoading()
         upNextPanel.removeAllViews()
         val actions = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val playNow = pill("Play now", R.drawable.ic_play).apply { setOnClickListener { playNext() } }
+        val playNow = pill("Play now", R.drawable.ic_play).thumb().apply { setOnClickListener { playNext() } }
         actions.addView(playNow, wrap())
-        actions.addView(chip("Watch the credits").apply { setOnClickListener { dismissUpNext() } },
+        actions.addView(chip("Watch the credits").thumb().apply { setOnClickListener { dismissUpNext() } },
             wrap().apply { marginStart = dp(8) })
         val content = column(Gravity.START).apply {
             setPadding(dp(18), dp(14), dp(18), dp(14))
@@ -695,14 +699,14 @@ class PlayerActivity : Screen() {
             addView(caps("Up next", TUNGSTEN).onArt())
             addView(text(next.title.ifBlank { "Episode ${next.episode}" }, SERIF_HERO, serif = true).onArt(),
                 wrap().apply { topMargin = dp(6) })
-            addView(text("S${next.season} E${next.episode}", SMALL, color = TEXT_2).onArt(), wrap().apply { topMargin = dp(5) })
-            countdownText = text("", SMALL, color = TEXT_2).onArt()
+            addView(text("S${next.season} E${next.episode}", sized(SMALL, 15f), color = TEXT_2).onArt(), wrap().apply { topMargin = dp(5) })
+            countdownText = text("", sized(SMALL, 15f), color = TEXT_2).onArt()
             addView(countdownText, wrap().apply { topMargin = dp(12) })
             countdownBar = SeekBar(this@PlayerActivity).apply { isFocusable = false }
             addView(countdownBar, LinearLayout.LayoutParams(-1, dp(12)).apply { topMargin = dp(4) })
             addView(actions, wrap().apply { topMargin = dp(12) })
         }
-        upNextPanel.addView(content, FrameLayout.LayoutParams(dp(500), -2, Gravity.BOTTOM or Gravity.END).apply {
+        upNextPanel.addView(content, FrameLayout.LayoutParams(dp(sized(500, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(68)
         })
         upNextPanel.visibility = View.VISIBLE
@@ -989,7 +993,7 @@ class PlayerActivity : Screen() {
         ambientKicker = caps("Paused", TUNGSTEN).onArt()
         ambientTitle = text("", SERIF_HERO, serif = true).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
         ambientAbout = text("", BODY, color = TEXT_2).onArt().apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
-        ambientEnds = text("", SMALL, color = TEXT).onArt()
+        ambientEnds = text("", sized(SMALL, 16f), color = TEXT).onArt()
         ambient = FrameLayout(this).apply {
             visibility = View.GONE
             alpha = 0f
@@ -1040,6 +1044,26 @@ class PlayerActivity : Screen() {
     }
 
     // ---------- player controls ----------
+    /** On a phone (held at arm's length, tapped with a thumb) the controls' words and buttons are larger than the TV's. */
+    private fun sized(tv: Float, phone: Float) = if (touch) phone else tv
+    private fun sized(tv: Int, phone: Int) = if (touch) phone else tv
+    /** On a phone, a pill or chip a thumb can hit, with words read at arm's length. */
+    private fun <T : TextView> T.thumb() = apply {
+        if (!touch) return@apply
+        textSize = 16f; minHeight = dp(48)
+        setPaddingRelative(paddingStart + dp(6), paddingTop, paddingEnd + dp(6), paddingBottom)
+    }
+
+    // ---------- picture size: Fit, Fill (crop to the screen) or Stretch; kept for next time ----------
+    private val fits = listOf("Fit" to AspectRatioFrameLayout.RESIZE_MODE_FIT, "Fill screen" to AspectRatioFrameLayout.RESIZE_MODE_ZOOM,
+        "Stretch" to AspectRatioFrameLayout.RESIZE_MODE_FILL)
+    private fun fitIndex() = getSharedPreferences("player", MODE_PRIVATE).getInt(Settings.profileKey(this, "fit"), 0).coerceIn(0, fits.lastIndex)
+    private fun setFit(index: Int, say: Boolean = true) {
+        getSharedPreferences("player", MODE_PRIVATE).edit().putInt(Settings.profileKey(this, "fit"), index).apply()
+        view.resizeMode = fits[index].second
+        if (say) notice(fits[index].first)
+    }
+
     private lateinit var controls: FrameLayout
     private lateinit var bar: SeekBar
     private lateinit var elapsed: TextView
@@ -1079,17 +1103,17 @@ class PlayerActivity : Screen() {
             ?: name, SERIF_HERO, serif = true).onArt().apply {
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
-        subtitle = text(intent.getStringExtra("episode")?.substringBefore("  ·  ").orEmpty(), SMALL, color = TEXT_2).onArt()
-        pauseFacts = text("", SMALL, color = TEXT_2).onArt()
+        subtitle = text(intent.getStringExtra("episode")?.substringBefore("  ·  ").orEmpty(), sized(SMALL, 15f), color = TEXT_2).onArt()
+        pauseFacts = text("", sized(SMALL, 15f), color = TEXT_2).onArt()
         pauseInfo = column(Gravity.START).apply {
             addView(caps("Paused", TUNGSTEN).onArt())
             addView(pauseTitle, LinearLayout.LayoutParams(dp(820), -2).apply { topMargin = dp(6) }) // most of the width: a long name was cut at half
             addView(pauseFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         }
 
-        endsAt = text("", SMALL, color = TEXT).onArt().apply { maxLines = 1 }
-        elapsed = text("", SMALL).onArt()
-        length = text("", SMALL).onArt()
+        endsAt = text("", sized(SMALL, 16f), color = TEXT).onArt().apply { maxLines = 1 }
+        elapsed = text("", sized(SMALL, 16f), bold = touch).onArt()
+        length = text("", sized(SMALL, 16f), bold = touch).onArt()
         bar = SeekBar(this).apply {
             id = View.generateViewId()
             isFocusable = true; isFocusableInTouchMode = true
@@ -1126,6 +1150,7 @@ class PlayerActivity : Screen() {
         }
         // Two a side, so Play sits in the middle: Next episode when there is one, else Start over in its place.
         val startOverButton = button("Start over", R.drawable.ic_restart) { if (canSeek()) { player.seekTo(0); player.play() } }
+        val fitButton = button("Picture size", R.drawable.ic_aspect) { setFit((fitIndex() + 1) % fits.size) }
         nextCell = buttonCell(nextButton).apply { visibility = View.GONE }
         startOverCell = buttonCell(startOverButton)
         val buttons = LinearLayout(this).apply {
@@ -1134,7 +1159,7 @@ class PlayerActivity : Screen() {
             addView(buttonCell(audioButton))
             addView(buttonCell(streamButton))
             addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
-                LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(14); marginEnd = dp(10) })
+                LinearLayout.LayoutParams(dp(1), dp(22)).apply { topMargin = dp(sized(14, 18)); marginEnd = dp(10) })
             // On a phone Play is in the middle of the picture instead, big, for a thumb.
             if (!touch) addView(buttonCell(playPause, true))
             if (!touch) addView(View(context).apply { setBackgroundColor(GLASS_EDGE) },
@@ -1142,8 +1167,9 @@ class PlayerActivity : Screen() {
             addView(nextCell)
             addView(startOverCell)
             addView(buttonCell(infoButton))
+            if (touch) addView(buttonCell(fitButton))
         }
-        for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton))
+        for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton, fitButton))
             button.nextFocusUpId = bar.id
         playPause.id = View.generateViewId()
         bar.nextFocusDownId = playPause.id
@@ -1160,12 +1186,13 @@ class PlayerActivity : Screen() {
                     intArrayOf(baseAt(0xF2), baseAt(0xB3), baseAt(0x00)))
             }, FrameLayout.LayoutParams(-1, dp(280), Gravity.BOTTOM))
             // A phone has no remote's Back: a Back button top left, the title moved along beside it.
-            val nameAt = if (touch) PAD + 52 else PAD
+            val nameAt = if (touch) PAD + 66 else PAD
             if (touch) addView(button("Back", R.drawable.ic_back) { press(KeyEvent.KEYCODE_BACK) }.apply {
                 buttonLabels.remove(this) // no word under it: the arrow says it
-            }, FrameLayout.LayoutParams(dp(40), dp(40)).apply { leftMargin = dp(PAD); topMargin = dp(26) })
-            addView(playerLogo, FrameLayout.LayoutParams(dp(150), dp(50)).apply {
-                leftMargin = dp(nameAt); topMargin = dp(26)
+                foreground = centred(R.drawable.ic_back, 26, TEXT)
+            }, FrameLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(PAD - 8); topMargin = dp(20) })
+            addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 180)), dp(sized(50, 58))).apply {
+                leftMargin = dp(nameAt); topMargin = dp(sized(26, 18))
             })
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
                 leftMargin = dp(nameAt); topMargin = dp(31)
@@ -1175,11 +1202,11 @@ class PlayerActivity : Screen() {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(TextClock(this@PlayerActivity).apply {
                     format12Hour = "h:mm a"; format24Hour = "HH:mm"
-                    textSize = SMALL; setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+                    textSize = sized(SMALL, 16f); setTextColor(TEXT_2); typeface = text("", SMALL).typeface
                 })
                 addView(endsAt)
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
-                topMargin = dp(34); rightMargin = dp(PAD)
+                topMargin = dp(sized(34, 35)); rightMargin = dp(PAD)
             })
             // Straight on the picture, no panel: what's playing at the lower left, a full-width timeline with the times
             // under its ends, then the buttons in the middle.
@@ -1189,8 +1216,8 @@ class PlayerActivity : Screen() {
                 clipToPadding = false
                 addView(pauseInfo, LinearLayout.LayoutParams(-1, -2))
                 // The bar, with the scrub time floating above its head while a seek is being lined up.
-                scrubTime = text("", BODY, bold = true).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
-                scrubJump = text("", SMALL, color = ICE).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubTime = text("", sized(BODY, 22f), bold = true).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+                scrubJump = text("", sized(SMALL, 15f), color = ICE).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
                 scrubBubble = column(Gravity.CENTER_HORIZONTAL, scrubTime, scrubJump).apply {
                     setPadding(dp(12), dp(5), dp(12), dp(6))
                     background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xD9), 2), glass(2)))
@@ -1201,13 +1228,13 @@ class PlayerActivity : Screen() {
                     clipToPadding = false
                     addView(bar, FrameLayout.LayoutParams(-1, -1))
                     addView(scrubBubble, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START))
-                }, LinearLayout.LayoutParams(-1, dp(26)).apply { topMargin = dp(14) })
+                }, LinearLayout.LayoutParams(-1, dp(sized(26, 40))).apply { topMargin = dp(14) })
                 addView(LinearLayout(context).apply {
                     addView(elapsed)
                     addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(length)
                 }, LinearLayout.LayoutParams(-1, -2))
-                addView(buttons, LinearLayout.LayoutParams(-1, dp(76)).apply { topMargin = dp(2) })
+                addView(buttons, LinearLayout.LayoutParams(-1, dp(sized(76, 96))).apply { topMargin = dp(sized(2, 6)) })
             }
             if (touch) addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -1216,14 +1243,14 @@ class PlayerActivity : Screen() {
                     foreground = centred(icon, iconSize, tint)
                     if (tint != BASE) background = rounded(baseAt(0x66), CORNER)
                 }.also { addView(it, LinearLayout.LayoutParams(dp(size), dp(size)).apply { marginStart = dp(28); marginEnd = dp(28) }) }
-                big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 56, 30, TEXT)
+                big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 66, 36, TEXT)
                 bigPlay = big(button("Pause", R.drawable.ic_pause, primary = true) {
                     if (player.playWhenReady) player.pause() else player.play()
-                }, R.drawable.ic_pause, 72, 34, BASE)
-                big(button("Ahead 10 seconds", R.drawable.ic_forward10) { if (canSeek()) { showControls(null); scrub(SKIP) } }, R.drawable.ic_forward10, 56, 30, TEXT)
-            }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
+                }, R.drawable.ic_pause, 84, 40, BASE)
+                big(button("Ahead 10 seconds", R.drawable.ic_forward10) { if (canSeek()) { showControls(null); scrub(SKIP) } }, R.drawable.ic_forward10, 66, 36, TEXT)
+            }, FrameLayout.LayoutParams(-2, -2, Gravity.CENTER).apply { bottomMargin = dp(50) }) // centred in the picture above the dock
             addView(dock, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
-                leftMargin = dp(DOCK_INSET); rightMargin = dp(DOCK_INSET); bottomMargin = dp(DOCK_INSET - 4)
+                leftMargin = dp(sized(DOCK_INSET, PAD)); rightMargin = dp(sized(DOCK_INSET, PAD)); bottomMargin = dp(sized(DOCK_INSET - 4, 10))
             })
         }
     }
@@ -1237,8 +1264,9 @@ class PlayerActivity : Screen() {
     }
 
     private fun button(label: String, res: Int, primary: Boolean = false, onClick: () -> Unit): TextView {
-        val words = text(label, SMALL, color = TEXT_2).onArt().apply {
-            gravity = Gravity.CENTER; visibility = View.INVISIBLE
+        // On a phone every button says its name: there's no focus to show it.
+        val words = text(label, sized(SMALL, 13f), color = TEXT_2).onArt().apply {
+            gravity = Gravity.CENTER; visibility = if (touch) View.VISIBLE else View.INVISIBLE
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
         val radius = CORNER // square-cornered: no round buttons
@@ -1246,7 +1274,7 @@ class PlayerActivity : Screen() {
             gravity = Gravity.CENTER
             contentDescription = label
             isFocusable = true; isFocusableInTouchMode = true
-            foreground = centred(res, if (primary) 25 else 20, if (primary) BASE else TEXT)
+            foreground = centred(res, if (primary) 25 else sized(20, 26), if (primary) BASE else TEXT)
             if (primary) {
                 // White at rest, mint and glowing with the remote on it.
                 fun face(focused: Boolean) = GradientDrawable().apply {
@@ -1258,7 +1286,7 @@ class PlayerActivity : Screen() {
                     view.background = face(focused)
                     view.elevation = if (focused) dp(10).toFloat() else 0f // a mint glow under the focused Play
                     view.grow(focused).start()
-                    words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
+                    words.visibility = if (focused || touch) View.VISIBLE else View.INVISIBLE
                 }
             } else {
                 // Light line: a quiet glass square, outlined in white with the remote on it.
@@ -1266,7 +1294,7 @@ class PlayerActivity : Screen() {
                 setOnFocusChangeListener { view, focused ->
                     view.background = if (focused) outline(true) else rounded(0x1FFFFFFF, radius)
                     view.grow(focused).start()
-                    words.visibility = if (focused) View.VISIBLE else View.INVISIBLE
+                    words.visibility = if (focused || touch) View.VISIBLE else View.INVISIBLE
                 }
             }
             setOnClickListener { onClick() }
@@ -1280,11 +1308,12 @@ class PlayerActivity : Screen() {
         clipToPadding = false
         // The small buttons sit 5dp lower, so every button's middle is on one line with the bigger Play's; the labels
         // all hang from the same line under them.
-        addView(control, FrameLayout.LayoutParams(dp(if (primary) 50 else 40), dp(if (primary) 50 else 40),
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(if (primary) 0 else 5) })
-        addView(buttonLabels.getValue(control), FrameLayout.LayoutParams(dp(160), dp(18),
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(53) })
-        layoutParams = LinearLayout.LayoutParams(dp(if (primary) 70 else 62), dp(76))
+        val size = if (primary) 50 else sized(40, 54)
+        addView(control, FrameLayout.LayoutParams(dp(size), dp(size),
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(if (primary) 0 else sized(5, 2)) })
+        addView(buttonLabels.getValue(control), FrameLayout.LayoutParams(dp(sized(160, 110)), dp(sized(18, 22)),
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(sized(53, 62)) })
+        layoutParams = LinearLayout.LayoutParams(dp(if (primary) 70 else sized(62, 104)), dp(sized(76, 96)))
     }
 
     /** Brings the controls up with [focus] focused (null: leaves focus where it is) and restarts the time to hide. */
@@ -1413,7 +1442,9 @@ class PlayerActivity : Screen() {
         list.addView(text("Audio & subtitles", SERIF_TITLE, serif = true), wrap())
         list.addView(text(listOfNotNull(pauseTitle.text.toString().takeIf { it.isNotBlank() },
             subtitle.text.toString().takeIf { it.isNotBlank() }).joinToString(DOT),
-            SMALL, color = TEXT_2).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, wrap().apply { topMargin = dp(5) })
+            sized(SMALL, 15f), color = TEXT_2).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }, wrap().apply { topMargin = dp(5) })
+        // Picture size first on a phone, where the screen is wider than the film.
+        if (touch) section(list, "Picture size", fits.map { it.first }, fitIndex()) { i -> setFit(i, say = false) }
 
         val audio = audioGroups.filter { it.isTrackSupported(0) }
         if (audio.isNotEmpty()) section(list, "Audio", audio.map { trackName(it.getTrackFormat(0), true) }, audio.indexOfFirst { it.isSelected }) { i ->
@@ -1453,11 +1484,11 @@ class PlayerActivity : Screen() {
         list.addView(View(this).apply { setBackgroundColor(GLASS_EDGE) }, LinearLayout.LayoutParams(-1, dp(1)).apply { setMargins(0, dp(18), 0, dp(10)) })
         list.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            val head = text("Change stream  →", BODY, bold = true).apply { setPadding(dp(8), dp(5), dp(8), dp(5)) }
+            val head = text("Change stream  →", sized(BODY, 17f), bold = true).apply { setPadding(dp(8), dp(5), dp(8), dp(5)) }
             addView(head, wrap())
             // "2160p · Torrentio" as the mock reads it: what you're watching first, where it comes from last.
             val label = sources[at].label.split(DOT.trim()).map { it.trim() }.filter { it.isNotEmpty() }
-            addView(text((label.drop(1) + label.take(1)).joinToString(DOT), SMALL, color = TEXT_3).apply { setPadding(dp(8), 0, 0, 0) }, wrap())
+            addView(text((label.drop(1) + label.take(1)).joinToString(DOT), sized(SMALL, 14f), color = TEXT_3).apply { setPadding(dp(8), 0, 0, 0) }, wrap())
             setPadding(0, 0, 0, dp(6))
             rowFocus(8)
             setOnClickListener { changeStream() }
@@ -1470,17 +1501,17 @@ class PlayerActivity : Screen() {
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
             background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
-        }, FrameLayout.LayoutParams(dp(310), resources.displayMetrics.heightPixels - dp(54)).apply {
-            leftMargin = dp(27); topMargin = dp(27)
+        }, FrameLayout.LayoutParams(dp(sized(310, 400)), resources.displayMetrics.heightPixels - dp(sized(54, 32))).apply {
+            leftMargin = dp(sized(27, PAD)); topMargin = dp(sized(27, 16))
         })
         optionsBar = SeekBar(this).apply { isFocusable = false }
-        optionsElapsed = text("", SMALL, color = TEXT_2).onArt()
-        optionsLeft = text("", SMALL, color = TEXT_2).onArt()
+        optionsElapsed = text("", sized(SMALL, 15f), color = TEXT_2).onArt()
+        optionsLeft = text("", sized(SMALL, 15f), color = TEXT_2).onArt()
         options.addView(optionsBar, FrameLayout.LayoutParams(dp(280), dp(12), Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(PAD); bottomMargin = dp(48)
+            rightMargin = dp(PAD); bottomMargin = dp(sized(48, 52))
         })
         options.addView(optionsElapsed, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
-            rightMargin = dp(PAD + 246); bottomMargin = dp(27)
+            rightMargin = dp(PAD + sized(246, 236)); bottomMargin = dp(27)
         })
         options.addView(optionsLeft, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(27)
@@ -1494,18 +1525,18 @@ class PlayerActivity : Screen() {
     private fun section(list: LinearLayout, heading: String, labels: List<String>, chosen: Int, pick: (Int) -> Unit): View {
         // The heading names the choice in use ("SUBTITLES · SPANISH"), so it reads before any scrolling.
         fun headingFor(index: Int) = (listOf(heading) + listOfNotNull(labels.getOrNull(index)?.substringBefore("  ·  "))).joinToString(" · ")
-        val title = caps(headingFor(chosen), TUNGSTEN)
+        val title = caps(headingFor(chosen), TUNGSTEN).apply { if (touch) textSize = 14f }
         list.addView(title, wrap().apply {
             topMargin = dp(18); bottomMargin = dp(5)
         })
         val checks = mutableListOf<View>()
         val names = mutableListOf<TextView>()
         val rows = labels.mapIndexed { index, label ->
-            val name = text(label.substringBefore("  ·  "), BODY, color = TEXT_2).apply {
+            val name = text(label.substringBefore("  ·  "), sized(BODY, 17f), color = TEXT_2).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             }
             names += name
-            val tag = text(label.substringAfter("  ·  ", ""), SMALL, color = TEXT_3).apply {
+            val tag = text(label.substringAfter("  ·  ", ""), sized(SMALL, 14f), color = TEXT_3).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             }
             // The choice in use: the tungsten dot before its name, as on chips and filters, and its name at full strength.
@@ -1532,7 +1563,7 @@ class PlayerActivity : Screen() {
                     title.text = headingFor(index).uppercase()
                     names.forEachIndexed { i, word -> word.setTextColor(if (i == index) TEXT else TEXT_2) }
                 }
-            }.also { list.addView(it, LinearLayout.LayoutParams(-1, dp(32))) }
+            }.also { list.addView(it, LinearLayout.LayoutParams(-1, dp(sized(32, 50)))) }
         }
         return rows[chosen.coerceIn(0, rows.lastIndex)]
     }
@@ -1701,7 +1732,7 @@ private class SeekBar(context: Context) : View(context) {
             val x = xOf(from)
             canvas.drawRect(x - d, y - line / 2 - 4 * d, x + d, y + line / 2 + 4 * d, paint)
         }
-        if (isFocused) {
+        if (isFocused || onDrag != null) { // a phone always shows where the thumb can take hold
             // The head: a slim upright line of light, standing past the bar's edges.
             paint.color = Screen.TEXT
             paint.setShadowLayer(6 * d, 0f, 0f, 0x99FFFFFF.toInt())

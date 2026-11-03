@@ -20,6 +20,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 - On a phone, **Search** is upright and uses the phone keyboard. Tap the microphone to search by voice. The results show as a grid of posters.
 - On a phone, the player has large **Back 10 seconds**, **Play** and **Ahead 10 seconds** buttons in the middle of the picture.
 - On a phone, the list of sources is upright, with tall rows that are easy to tap.
+- On a phone, the player's buttons, times, clock and panels are larger, and each button shows its name. The second time bar at the top while a seek loads is gone.
+- **Picture size** in the player: **Fit**, **Fill screen** or **Stretch**. On a phone, tap the button beside **Info**, or choose it in **Audio & subtitles**. Canopy remembers your choice.
 - **Canopy on your phone.** Install the same APK on an Android phone. Hold the phone sideways. Tap a title to open it. Swipe a row to see more titles. Swipe up or down to go to the next row.
 - On a phone, text and buttons are larger, and a tap near a button also selects it. When you swipe a row, it stops with a title at the start of the row, and that title is selected.
 - On a phone, the posters on **Home** are larger. The video uses the full screen, also the area around the camera. Tap the back arrow at the top left to go back.
