@@ -312,7 +312,7 @@ class PlayerActivity : Screen() {
                 if (isFinishing) return
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
-                bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, BASE)
+                bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, TEXT)
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady || touch) View.GONE else View.VISIBLE // a phone has the name at the top and Play in the middle
                 // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
@@ -1215,8 +1215,8 @@ class PlayerActivity : Screen() {
                 buttonLabels.remove(this) // no word under it: the arrow says it
                 foreground = centred(R.drawable.ic_back, 30, TEXT)
             }, FrameLayout.LayoutParams(dp(62), dp(62)).apply { leftMargin = dp(PAD - 10); topMargin = dp(16) })
-            addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 180)), dp(sized(50, 58))).apply {
-                leftMargin = dp(nameAt); topMargin = dp(sized(26, 18))
+            addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 300)), dp(sized(50, 84))).apply {
+                leftMargin = dp(nameAt); topMargin = dp(sized(26, 10))
             })
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
                 leftMargin = dp(nameAt); topMargin = dp(31)
@@ -1267,8 +1267,12 @@ class PlayerActivity : Screen() {
                 gravity = Gravity.CENTER_VERTICAL
                 fun big(control: TextView, icon: Int, size: Int, iconSize: Int, tint: Int) = control.apply {
                     buttonLabels.remove(this)
-                    foreground = centred(icon, iconSize, tint)
-                    if (tint != BASE) background = rounded(baseAt(0x66), CORNER)
+                    foreground = centred(icon, iconSize, if (tint == BASE) TEXT else tint)
+                    // See-through, so the picture shows under it: Play in a faint accent, the others in faint dark glass.
+                    background = if (tint == BASE) GradientDrawable().apply {
+                        setColor(withAlpha(TUNGSTEN, 0x59)); setStroke(dp(2), withAlpha(TUNGSTEN, 0xCC)); cornerRadius = dp(CORNER).toFloat()
+                    } else rounded(baseAt(0x4D), CORNER)
+                    setOnFocusChangeListener(null) // no solid face on focus: a finger needs no focus mark
                 }.also { addView(it, LinearLayout.LayoutParams(dp(size), dp(size)).apply { marginStart = dp(28); marginEnd = dp(28) }) }
                 big(button("Back 10 seconds", R.drawable.ic_replay10) { if (canSeek()) { showControls(null); scrub(-SKIP) } }, R.drawable.ic_replay10, 66, 36, TEXT)
                 bigPlay = big(button("Pause", R.drawable.ic_pause, primary = true) {
@@ -1353,7 +1357,7 @@ class PlayerActivity : Screen() {
             controls.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             updateProgress()
             // Its mark follows the player, whatever started it (a resume plays before the listener hears of it).
-            bigPlay?.foreground = centred(if (player.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, BASE)
+            bigPlay?.foreground = centred(if (player.playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 40, TEXT)
             if (touch) loadingCenter.translationY = -dp(130).toFloat()
             (focus ?: bigPlay ?: playPause).requestFocus()
         } else focus?.requestFocus()
