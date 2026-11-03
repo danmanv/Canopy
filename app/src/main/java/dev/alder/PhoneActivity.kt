@@ -51,7 +51,7 @@ class PhoneActivity : Screen() {
 
     private lateinit var scroll: ScrollView
     private lateinit var content: LinearLayout
-    private lateinit var backdrop: ImageView
+    private lateinit var wash: ImageView
     private val tabs = mutableMapOf<Page, LinearLayout>()
 
     private val screenW by lazy { resources.displayMetrics.widthPixels }
@@ -70,20 +70,20 @@ class PhoneActivity : Screen() {
             isFocusable = false
             addView(content, FrameLayout.LayoutParams(-1, -2))
         }
-        backdrop = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
+        wash = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         val fade = View(this).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(baseAt(0x80), baseAt(0x99), baseAt(0xFF)))
         }
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE))
         setContentView(FrameLayout(this).apply {
-            addView(backdrop, FrameLayout.LayoutParams(-1, dp(BACKDROP_H)))
+            addView(wash, FrameLayout.LayoutParams(-1, dp(BACKDROP_H)))
             addView(fade, FrameLayout.LayoutParams(-1, dp(BACKDROP_H)))
             addView(scroll, FrameLayout.LayoutParams(-1, -1))
             addView(topBar(), FrameLayout.LayoutParams(-1, dp(TOP_BAR), Gravity.TOP))
             addView(tabBar(), FrameLayout.LayoutParams(-1, dp(TAB_BAR), Gravity.BOTTOM))
         })
-        // The backdrop scrolls away with the carousel above it.
-        scroll.setOnScrollChangeListener { _, _, y, _, _ -> backdrop.translationY = -y.toFloat() }
+        // The wash scrolls away with the carousel above it.
+        scroll.setOnScrollChangeListener { _, _, y, _, _ -> wash.translationY = -y.toFloat() }
         showPage(pageNamed(intent.getStringExtra("page")))
     }
 
@@ -188,8 +188,8 @@ class PhoneActivity : Screen() {
         styleTabs()
         content.removeAllViews()
         scroll.scrollTo(0, 0)
-        backdrop.translationY = 0f
-        backdrop.animate().alpha(0f).setDuration(Motion.QUICK).start()
+        wash.translationY = 0f
+        wash.animate().alpha(0f).setDuration(Motion.QUICK).start()
         refreshLibrary = null
         val key = profile.authKey
         val carouselSlot = slot()
@@ -424,10 +424,10 @@ class PhoneActivity : Screen() {
 
     private fun showBackdrop(item: Item) {
         val url = item.art ?: Images.backgroundFor(item.id) ?: item.poster
-        if (backdrop.tag == url) return
-        backdrop.animate().cancel()
-        backdrop.alpha = 0f
-        Images.load(url, backdrop, screenW) { backdrop.animate().alpha(0.55f).setDuration(Motion.STANDARD).start() }
+        if (wash.tag == url) return
+        wash.animate().cancel()
+        wash.alpha = 0f
+        Images.load(url, wash, screenW) { wash.animate().alpha(0.55f).setDuration(Motion.STANDARD).start() }
     }
 
     // ---------- rows and the grid ----------
