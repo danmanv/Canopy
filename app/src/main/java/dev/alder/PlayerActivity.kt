@@ -70,6 +70,7 @@ internal fun animeEpisode(videoId: String): Triple<String, String, Int>? {
 // after 1.5 s (NuvioTV's rule), so a dropped connection doesn't cost the source.
 class PlayerActivity : Screen() {
     override val clearOfCutout: Boolean get() = false // the film fills a phone's whole screen, camera notch and all
+    override val backArrow: Boolean get() = false // its controls have their own
     override val screensaver: Boolean get() = false // the film is the picture; the TV keeps the screen on while it plays
     private lateinit var player: ExoPlayer
     private lateinit var view: PlayerView

@@ -149,6 +149,24 @@ abstract class Screen : Activity() {
     protected fun vertical(velocityX: Float, velocityY: Float) =
         kotlin.math.abs(velocityY) > 2 * kotlin.math.abs(velocityX) && kotlin.math.abs(velocityY) > dp(SWIPE_SPEED)
 
+    /** On a phone, a Back arrow top left, for the remote's Back key a phone hasn't got (the gesture is hidden). */
+    protected open val backArrow: Boolean get() = true
+
+    override fun onPostCreate(savedInstanceState: android.os.Bundle?) {
+        super.onPostCreate(savedInstanceState)
+        if (!touch || !backArrow) return
+        val content = findViewById<FrameLayout>(android.R.id.content) ?: return
+        content.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(TEXT)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(baseAt(0xB3), 4)
+            contentDescription = "Back"
+            elevation = dp(24).toFloat() // over the screen's own layers
+            setOnClickListener { press(KeyEvent.KEYCODE_BACK) }
+        }, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.START).apply { leftMargin = dp(2); topMargin = dp(8) })
+    }
+
     /** False where the picture runs under a phone's camera notch too (the player); elsewhere the screen keeps clear of it. */
     protected open val clearOfCutout: Boolean get() = true
 

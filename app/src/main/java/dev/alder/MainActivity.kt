@@ -568,6 +568,8 @@ class MainActivity : Screen() {
         return true
     }
 
+    override val backArrow: Boolean get() = false // Home is where Back leads
+
     private fun dimHome(on: Boolean) {
         if ((page != Page.HOME && !page.isCatalog && page != Page.LIBRARY) || mode != Mode.BROWSE || homeDimmed == on) return
         homeDimmed = on
@@ -1758,10 +1760,13 @@ class MainActivity : Screen() {
         var active = false
         var loaded = false
         private var anim: ValueAnimator? = null
+        private var dragging = false // a finger is sliding this row (a phone)
         private var held = false // the remote's key is held down: the row glides instead of stepping
         val strip = LinearLayout(this@MainActivity).apply {
             // Room above and below for the focused card to grow into without being clipped.
-            setPadding(dp(PAD), dp(if (grid) LIST_TOP_ROOM else ROW_TOP_ROOM), dp(PAD), if (grid) dp(LIST_GAP) else dp(ROW_BOTTOM_ROOM))
+            // On a phone the row runs on past its last card, so every card can slide into the frame at its start.
+            val end = if (touch && !grid) maxOf(dp(PAD), resources.displayMetrics.widthPixels - dp(PAD) - dp(cardW)) else dp(PAD)
+            setPadding(dp(PAD), dp(if (grid) LIST_TOP_ROOM else ROW_TOP_ROOM), end, if (grid) dp(LIST_GAP) else dp(ROW_BOTTOM_ROOM))
             clipToPadding = false
             cards.forEachIndexed { i, c -> addView(c, LinearLayout.LayoutParams(dp(cardW), dp(cardH)).apply { if (i > 0) marginStart = dp(if (grid) LIST_GAP else CARD_GAP) }) }
         }
@@ -1800,8 +1805,10 @@ class MainActivity : Screen() {
             @android.annotation.SuppressLint("ClickableViewAccessibility")
             override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
                 if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) { flung = false; anim?.cancel() }
+                if (touch && !grid && event.actionMasked == android.view.MotionEvent.ACTION_MOVE) dragging = true
                 val used = super.onTouchEvent(event)
                 val end = event.actionMasked == android.view.MotionEvent.ACTION_UP || event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+                if (end) dragging = false
                 if (touch && !grid && end && !flung) snap(0)
                 return used
             }
@@ -1812,6 +1819,12 @@ class MainActivity : Screen() {
             setOnScrollChangeListener { _, _, _, _, _ ->
                 showVisibleCards()
                 loadRest(this@Row)
+                // Under a finger, the card passing through the frame takes the focus as it goes.
+                if (dragging) {
+                    val step = (dp(cardW) + dp(CARD_GAP)).toFloat()
+                    val index = kotlin.math.round(scrollX / step).toInt().coerceIn(0, cards.lastIndex)
+                    if (index != selected || !cards[index].isFocused) cards[index].requestFocus()
+                }
             }
         }
         // The row the remote is in has a bright title; the next one, peeking in below, is a quiet hint.
@@ -1823,7 +1836,24 @@ class MainActivity : Screen() {
             alpha = QUIET
             if (grid) visibility = View.GONE
         }
-        val view: View = column(Gravity.START, heading, scroller).apply { if (wide) setPadding(0, dp(posterH - wideH), 0, 0) }
+        /**
+         * On a phone, the remote's spot as a frame that stays put at the row's start: the cards slide through it under
+         * the finger, and the one inside it is the focused one (its hero, its art).
+         */
+        private val focusFrame: View? = if (!touch || grid) null else View(this@MainActivity).apply {
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(dp(3), TUNGSTEN_RIM) }
+            visibility = View.INVISIBLE
+            elevation = dp(CARD_LIFT + 2).toFloat() // above the cards sliding under it
+        }
+        val view: View = column(Gravity.START, heading,
+            if (focusFrame == null) scroller else FrameLayout(this@MainActivity).apply {
+                clipChildren = false
+                addView(scroller, FrameLayout.LayoutParams(-1, -2))
+                addView(focusFrame, FrameLayout.LayoutParams(dp(cardW), dp(cardH)).apply {
+                    leftMargin = dp(PAD); topMargin = dp(ROW_TOP_ROOM)
+                })
+            }.apply { layoutParams = LinearLayout.LayoutParams(-1, -2) },
+        ).apply { if (wide) setPadding(0, dp(posterH - wideH), 0, 0) }
 
         /** The row's last card: "See all" opens the whole catalog as a grid. */
         private val seeAllCard: View? = seeAll?.let { open ->
@@ -1865,6 +1895,7 @@ class MainActivity : Screen() {
         fun light(on: Boolean) {
             if (active == on) return
             active = on
+            focusFrame?.visibility = if (on) View.VISIBLE else View.INVISIBLE
             if (on) peek(true)
             heading.animate().alpha(if (on) 1f else QUIET).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
             cards.forEachIndexed { i, c -> c.dim(if (grid) !on || i != selected else on && i != selected) }
@@ -1936,6 +1967,7 @@ class MainActivity : Screen() {
             }
             // A held key repeats every 50 ms. Restarting a slowing-down slide on each repeat made the row lurch and brake
             // twenty times a second; a straight slide that lasts until the next repeat joins them into one glide.
+            if (dragging) return // the finger moves the row; focus only follows it
             anim = ValueAnimator.ofInt(startScroll, targetScroll).setDuration(if (held) ViewConfiguration.getKeyRepeatDelay().toLong() else 200).apply {
                 interpolator = if (held) LinearInterpolator() else DecelerateInterpolator()
                 addUpdateListener { scroller.scrollTo(it.animatedValue as Int, 0) }
@@ -2033,7 +2065,7 @@ class MainActivity : Screen() {
                 setOnFocusChangeListener { _, has ->
                     // Focus grows into the gaps without moving its neighbours, and wears a white edge that reads from the
                     // couch on any poster (the clip to the card's outline keeps it inside the rounded corners).
-                    lift(has)
+                    if (focusFrame == null) lift(has) // a phone's row has its fixed frame instead
                     if (has) {
                         focus(index)
                         showHero(item)
