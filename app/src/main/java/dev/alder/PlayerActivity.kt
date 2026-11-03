@@ -800,11 +800,7 @@ class PlayerActivity : Screen() {
         // The OK that woke the controls: its repeats and release would otherwise press the button it focused.
         // Skip intro: OK jumps past it while the pill shows over the picture (the controls down).
         if (skip.visibility == View.VISIBLE && !shown && down && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
-            (skip.tag as? Segment)?.takeIf { canSeek() }?.let { s ->
-                if (s.jump == 0L) player.seekTo(s.end)
-                else { segments = segments - s; player.seekTo(player.currentPosition + s.jump) } // the guess is used once
-            }
-            skip.visibility = View.GONE
+            skipSegment()
             wakeKey = event.keyCode
             return true
         }
@@ -824,6 +820,81 @@ class PlayerActivity : Screen() {
         }
         if (shown) showControls(null) // any key keeps them up a while longer
         return super.dispatchKeyEvent(event)
+    }
+
+    /** Jumps past the intro (or recap) the Skip pill offers. */
+    private fun skipSegment() {
+        (skip.tag as? Segment)?.takeIf { canSeek() }?.let { s ->
+            if (s.jump == 0L) player.seekTo(s.end)
+            else { segments = segments - s; player.seekTo(player.currentPosition + s.jump) } // the guess is used once
+        }
+        skip.visibility = View.GONE
+    }
+
+    // ---------- touch, on a phone ----------
+    // A tap on the picture shows or hides the controls; two quick taps on its left or right third go back or ahead
+    // 10 s (more taps, further); a tap on the Skip pill skips; dragging along the bar seeks.
+
+    private var lastTap = 0L
+    private var lastTapSide = 0
+    private val singleTap = Runnable { if (shown) hideControls(force = true) else showControls(null) }
+
+    override fun onBareTap(event: android.view.MotionEvent) {
+        if (::ambient.isInitialized && ambient.visibility == View.VISIBLE) { hideAmbient(); showControls(playPause); return }
+        if (options.visibility == View.VISIBLE) { closeOptions(); return }
+        if (upNextPanel.visibility == View.VISIBLE || stallPanel.visibility == View.VISIBLE) return
+        if (skip.visibility == View.VISIBLE && !shown && under(skip, event)) { skipSegment(); return }
+        val side = when {
+            event.rawX < screen.width / 3f -> -1
+            event.rawX > screen.width * 2 / 3f -> 1
+            else -> 0
+        }
+        val now = android.os.SystemClock.uptimeMillis()
+        main.removeCallbacks(singleTap)
+        if (side != 0 && side == lastTapSide && now - lastTap < DOUBLE_TAP) {
+            lastTap = now
+            showControls(bar)
+            scrub(side * SKIP)
+            return
+        }
+        lastTap = now
+        lastTapSide = side
+        // A side tap waits a moment to see if a second follows; a tap in the middle shows or hides at once.
+        if (side == 0) singleTap.run() else main.postDelayed(singleTap, DOUBLE_TAP)
+    }
+
+    // A finger on the controls keeps them up a while longer, as any key does.
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (shown && event.actionMasked == android.view.MotionEvent.ACTION_DOWN && player.playWhenReady) {
+            main.removeCallbacks(hideTask)
+            main.postDelayed(hideTask, HIDE)
+        }
+        return super.dispatchTouchEvent(event)
+    }
+
+    private fun under(view: View, event: android.view.MotionEvent): Boolean {
+        val at = IntArray(2).also { view.getLocationOnScreen(it) }
+        return event.rawX >= at[0] && event.rawX < at[0] + view.width && event.rawY >= at[1] && event.rawY < at[1] + view.height
+    }
+
+    /** The finger on the bar at [fraction] of its length (-1: the drag was taken away); [done] when it lifts. */
+    private fun dragTo(fraction: Float, done: Boolean) {
+        val duration = player.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        if (player.isCurrentMediaItemLive) return
+        main.removeCallbacks(hideTask)
+        main.removeCallbacks(seekTask)
+        if (fraction < 0) { scrubTo = -1; endScrub(); return }
+        if (scrubTo < 0) {
+            if (!canSeek()) return
+            scrubFrom = player.currentPosition
+        }
+        scrubTo = (fraction * duration).toLong().coerceIn(0, maxOf(0, duration - 1_000))
+        updateProgress()
+        showScrub()
+        if (done) {
+            seekTask.run()
+            if (player.playWhenReady) main.postDelayed(hideTask, HIDE)
+        }
     }
 
     // ---------- skip intro, as NuvioTV does it ----------
@@ -1017,10 +1088,11 @@ class PlayerActivity : Screen() {
         length = text("", SMALL).onArt()
         bar = SeekBar(this).apply {
             id = View.generateViewId()
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             contentDescription = "Seek"
             setOnFocusChangeListener { _, _ -> invalidate() }
             setOnClickListener { if (player.playWhenReady) player.pause() else player.play() }
+            if (touch) onDrag = ::dragTo
             setOnKeyListener { _, code, event ->
                 val by = when (code) {
                     KeyEvent.KEYCODE_DPAD_LEFT -> -1
@@ -1150,7 +1222,7 @@ class PlayerActivity : Screen() {
         val control = text("", BODY).apply {
             gravity = Gravity.CENTER
             contentDescription = label
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             foreground = centred(res, if (primary) 25 else 20, if (primary) BASE else TEXT)
             if (primary) {
                 // White at rest, mint and glowing with the remote on it.
@@ -1528,6 +1600,7 @@ class PlayerActivity : Screen() {
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
+        const val DOUBLE_TAP = 300L // ms within which a second tap on the picture's side makes a double tap
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under
         const val SUB_WAIT = 2_000L // ms the start waits for the addon's subtitles
@@ -1551,6 +1624,23 @@ private class SeekBar(context: Context) : View(context) {
     private val d = context.resources.displayMetrics.density
 
     init { setLayerType(LAYER_TYPE_SOFTWARE, null) }
+
+    /** On a phone, a finger on the bar: where along it (0 to 1, or -1 when the drag is taken away), and whether it lifted. */
+    var onDrag: ((Float, Boolean) -> Unit)? = null
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+        val drag = onDrag ?: return super.onTouchEvent(event)
+        val edge = 2 * d
+        val at = ((event.x - edge) / (width - 2 * edge)).coerceIn(0f, 1f)
+        when (event.actionMasked) {
+            android.view.MotionEvent.ACTION_DOWN -> { parent?.requestDisallowInterceptTouchEvent(true); drag(at, false) }
+            android.view.MotionEvent.ACTION_MOVE -> drag(at, false)
+            android.view.MotionEvent.ACTION_UP -> drag(at, true)
+            android.view.MotionEvent.ACTION_CANCEL -> drag(-1f, true)
+        }
+        return true
+    }
 
     fun set(position: Long, buffered: Long, duration: Long) {
         this.position = position

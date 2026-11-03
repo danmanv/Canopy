@@ -292,6 +292,10 @@ class MainActivity : Screen() {
             // last row scrolled it away into the empty space below.
             override fun executeKeyEvent(event: KeyEvent) = false
 
+            // A finger doesn't drag the rows part-way either: a swipe moves a whole row, as Up and Down do (onSwipe).
+            override fun onInterceptTouchEvent(event: android.view.MotionEvent) = !touch && super.onInterceptTouchEvent(event)
+            override fun onTouchEvent(event: android.view.MotionEvent) = !touch && super.onTouchEvent(event)
+
             // Coming down from the top bar, the remote returns to where it was.
             override fun addFocusables(views: ArrayList<View>, direction: Int, focusableMode: Int) {
                 val back = last?.takeIf { it.isAttachedToWindow && !hasFocus() && direction == View.FOCUS_DOWN }
@@ -339,7 +343,7 @@ class MainActivity : Screen() {
                 leftMargin = dp(PAD); topMargin = dp(232)
             })
             // On glass: it sits over the next row's posters.
-            listHint = text("Hold OK for options", SMALL, color = TEXT_2).apply {
+            listHint = text(if (touch) "Press and hold for options" else "Hold OK for options", SMALL, color = TEXT_2).apply {
                 visibility = View.GONE
                 background = glass(CHIP_H / 2)
                 setPadding(dp(14), dp(4), dp(14), dp(5))
@@ -483,7 +487,7 @@ class MainActivity : Screen() {
                 if (event.action == KeyEvent.ACTION_DOWN) {
                     cinemaAwake = true
                     cinemaWakeKey = event.keyCode
-                    cinemaPlay.isFocusable = true
+                    cinemaPlay.isFocusable = true; cinemaPlay.isFocusableInTouchMode = true
                     cinemaPlay.requestFocus()
                 }
                 return true
@@ -547,6 +551,18 @@ class MainActivity : Screen() {
         return super.dispatchKeyEvent(event)
     }
 
+    /** On a phone, a swipe up or down moves a row at a time, like the remote's Down and Up (up the screen: the next row). */
+    override fun onSwipe(velocityX: Float, velocityY: Float): Boolean {
+        if (mode != Mode.BROWSE || !vertical(velocityX, velocityY)) return false
+        val down = velocityY < 0
+        if (!scroller.hasFocus() && !header.hasFocus() && !genreStrip.hasFocus()) {
+            if (down) firstRow()?.focusFirst() else navItems[page]?.requestFocus()
+            return true
+        }
+        press(if (down) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP)
+        return true
+    }
+
     private fun dimHome(on: Boolean) {
         if ((page != Page.HOME && !page.isCatalog && page != Page.LIBRARY) || mode != Mode.BROWSE || homeDimmed == on) return
         homeDimmed = on
@@ -591,14 +607,14 @@ class MainActivity : Screen() {
                 grow(focused).start()
             }
             style(false)
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setOnFocusChangeListener { _, has -> style(has) }
             setOnClickListener { profileMenu() }
         }
         // Wordmark tabs: the canopy mark and name, then the pages as plain words; no capsule behind them.
         val tabs = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         fun <V : View> V.inTabs() = apply {
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             tabs.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)).apply { if (tabs.childCount > 0) marginStart = dp(NAV_GAP) })
         }
         // A page opens as soon as the remote rests on its name. OK on Shows or Movies goes to its genres.
@@ -631,7 +647,7 @@ class MainActivity : Screen() {
         search = ImageView(this).apply {
             setImageResource(R.drawable.ic_search)
             contentDescription = "Search"
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setPadding(dp(10), dp(8), dp(10), dp(8))
             setOnFocusChangeListener { _, _ -> styleNav() }
             setOnClickListener { startActivity(Intent(this@MainActivity, SearchActivity::class.java)) }
@@ -843,7 +859,7 @@ class MainActivity : Screen() {
         cinemaWakeKey = -1
         cinemaPlay.isFocusable = false
         mode = Mode.CINEMA
-        stage.isFocusable = true
+        stage.isFocusable = true; stage.isFocusableInTouchMode = true
         stage.requestFocus()
         scroller.animate().translationY(dp(RISE).toFloat()).alpha(0f).setDuration(Motion.STANDARD).setInterpolator(Motion.EASE).withEndAction {
             if (mode == Mode.CINEMA) scroller.visibility = View.INVISIBLE
@@ -1459,7 +1475,7 @@ class MainActivity : Screen() {
         }
         // Plain words, no box: lit like a top-bar tab (white, with its line underneath) only while the remote is on it.
         val button = text(genreLabel(), SMALL, color = TEXT_2).apply {
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
             setOnFocusChangeListener { _, has ->
@@ -1791,7 +1807,7 @@ class MainActivity : Screen() {
                     text("See all", BODY, bold = true).apply { gravity = Gravity.CENTER },
                     text("Every title", SMALL, color = TEXT_2).apply { gravity = Gravity.CENTER }.marginTop(2),
                 ), FrameLayout.LayoutParams(-2, -2, Gravity.CENTER))
-                isFocusable = true
+                isFocusable = true; isFocusableInTouchMode = true
                 contentDescription = "See all"
                 setOnClickListener { open() }
                 setOnFocusChangeListener { v, has ->
@@ -1970,7 +1986,7 @@ class MainActivity : Screen() {
                     background = rounded(baseAt(0xBF), 2)
                 }, LayoutParams(dp(24), dp(24), Gravity.TOP or Gravity.END).apply { setMargins(0, dp(6), dp(6), 0) })
                 addView(shade, LayoutParams(-1, -1))
-                isFocusable = true
+                isFocusable = true; isFocusableInTouchMode = true
                 tag = "card:${item.id}"
                 item.onFill += { if (wanted) load() }
                 setOnFocusChangeListener { _, has ->

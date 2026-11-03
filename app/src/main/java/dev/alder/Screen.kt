@@ -123,11 +123,48 @@ abstract class Screen : Activity() {
     /** The colours this screen was drawn in; when Settings changes them, the screen draws itself again on return. */
     private var drawnIn: Theme? = null
 
+    /** A phone or tablet ([Device.touch]): taps, swipes and the back gesture drive the screens made for the remote. */
+    protected val touch: Boolean get() = Device.touch(this)
+
+    // On a phone every screen is drawn at a TV's size (540 dp tall), so it fits as it was laid out.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+    }
+
+    private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (touch) taps.feed(event)
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** A tap on nothing that takes the focus (the picture, the background). */
+    protected open fun onBareTap(event: android.view.MotionEvent) {}
+
+    /** A fling, in pixels a second; true when the screen used it. */
+    protected open fun onSwipe(velocityX: Float, velocityY: Float): Boolean = false
+
+    /** Whether a fling is clearly up or down (not a row's sideways scroll) and quick enough to mean it. */
+    protected fun vertical(velocityX: Float, velocityY: Float) =
+        kotlin.math.abs(velocityY) > 2 * kotlin.math.abs(velocityX) && kotlin.math.abs(velocityY) > dp(SWIPE_SPEED)
+
+    /** A dialog's taps move the focus too, as the screen's do. */
+    protected fun android.app.Dialog.touchable() = apply {
+        if (touch) window?.let { Taps(context, { it.decorView }).into(it) }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && touch) fullScreen() // the bars come back after the keyboard or a swipe from the edge
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         Theme.load(this)
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
+        if (touch) fullScreen()
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback
@@ -184,7 +221,7 @@ abstract class Screen : Activity() {
     private var pendingInstall: Updates.Release? = null
 
     /** False where the screensaver must never cover the screen: the player, and the profile picker (PINs). */
-    protected open val screensaver: Boolean get() = true
+    protected open val screensaver: Boolean get() = !touch // a phone sleeps by itself
 
     private val saverTimer = Runnable {
         startActivity(android.content.Intent(this, ScreensaverActivity::class.java))
@@ -407,7 +444,7 @@ abstract class Screen : Activity() {
 
     /** The warm-white primary action; focus lifts and grows it. */
     protected fun pill(label: String, icon: Int = 0): TextView = text(label, SMALL, bold = true).apply {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         gravity = Gravity.CENTER_VERTICAL
         minHeight = dp(BUTTON_H)
         setPadding(dp(if (icon != 0) 14 else 16), 0, dp(16), 0)
@@ -451,7 +488,7 @@ abstract class Screen : Activity() {
      * focused one is bright over a white line and glows softly; the rest are quiet, with a shadow to read over art.
      */
     protected fun tab(label: String, open: Boolean, sp: Float = BODY): TextView = text(label, sp).apply {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         gravity = Gravity.CENTER
         setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
         tag = open
@@ -498,7 +535,7 @@ abstract class Screen : Activity() {
     /** "[OK] Play / pause": the key in a small box, then what it does. */
     protected fun keyHint(key: String, does: String) = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(badge(key, TEXT_2))
+        addView(badge(if (touch && key == "Hold OK") "Press and hold" else key, TEXT_2))
         addView(text(does, SMALL, color = TEXT_2).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
     }
 
@@ -644,7 +681,7 @@ abstract class Screen : Activity() {
 
     /** One list-row focus treatment across settings, episodes, sources and menus. */
     protected fun View.rowFocus(radiusDp: Int = 8, rest: () -> android.graphics.drawable.Drawable? = { null }, also: (Boolean) -> Unit = {}) {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         background = rest()
         setOnFocusChangeListener { v, has ->
             v.background = if (has) lineFocus() else rest()
@@ -695,7 +732,7 @@ abstract class Screen : Activity() {
 
     /** One poster/portrait focus treatment; the poster itself supplies its glow colour. */
     protected fun View.cardFocus(radiusDp: Int = 6, also: (Boolean) -> Unit = {}) {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         setOnFocusChangeListener { v, has ->
             v.lift(has, radiusDp)
             also(has)
@@ -825,7 +862,7 @@ abstract class Screen : Activity() {
                          focus: Int = maxOf(checked, 0), dropDown: Boolean = false, dropFrom: Int = Gravity.END,
                          dropY: Int = 60, pick: (Int) -> Unit) {
         if (fullChoices && !dropDown) return chooseFull(title, items, message, checked, focus, pick)
-        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
+        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }.touchable()
         val list = column(Gravity.START).apply { setPadding(dp(12), dp(16), dp(12), dp(12)) }
         val words = column(Gravity.START, text(title, BODY, bold = true)).apply { setPadding(dp(16), 0, dp(16), dp(10)) }
         message?.let { words.addView(text(it, SMALL, color = TEXT_2).marginTop(6)) }
@@ -867,7 +904,7 @@ abstract class Screen : Activity() {
      * right, the remote's one lit with the glossy Light line.
      */
     private fun chooseFull(title: String, items: List<String>, message: String?, checked: Int, focus: Int, pick: (Int) -> Unit) {
-        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen).touchable()
         val words = column(Gravity.START, text(title, SERIF_HERO, serif = true).apply { maxWidth = dp(360) }).apply {
             message?.let { addView(text(it, BODY, color = TEXT_2).apply { maxWidth = dp(360) }.marginTop(12)) }
         }
@@ -879,7 +916,7 @@ abstract class Screen : Activity() {
                 if (i == checked) setCompoundDrawablesRelative(null, null, getDrawable(R.drawable.ic_check)?.mutate()?.apply {
                     setBounds(0, 0, dp(18), dp(18)); setTint(TUNGSTEN)
                 }, null)
-                isFocusable = true
+                isFocusable = true; isFocusableInTouchMode = true
                 val rest = { android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(0x12FFFFFF))).apply {
                     setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(1))
                 } }
@@ -920,7 +957,7 @@ abstract class Screen : Activity() {
             if (!quiet) choose("What's new", listOf("OK"), "There are no notes for version $version.") {}
             return
         }
-        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
+        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }.touchable()
         val list = column(Gravity.START).apply { setPadding(dp(22), dp(20), dp(22), dp(18)) }
         list.addView(caps("What's new", TUNGSTEN))
         list.addView(text("Canopy $version", SERIF_TITLE, serif = true).marginTop(4))
@@ -1001,6 +1038,7 @@ abstract class Screen : Activity() {
 
         private var loadedFonts: Fonts? = null // main thread only
         const val PAD = 48
+        const val SWIPE_SPEED = 600 // dp a second: slower is a drag, not a swipe
         const val TILE_RADIUS = 0
         const val GLASS_INSET = 28 // dp a glass panel sits in from the screen's edges
         const val FROST_W = 360 // px the art is shrunk to before the blur: wider is less blur (240 read as fog, 480 as smeared)

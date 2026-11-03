@@ -203,7 +203,7 @@ class DetailsActivity : Screen() {
         moreCaption = null
         if (words == null) return
         moreCaption = caps(words, TEXT_2).onArt().apply {
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
             rowFocus(rest = { null })
         }.also {
@@ -443,7 +443,7 @@ class DetailsActivity : Screen() {
             if (started) words.addView(progressBar(resumeAt.toFloat() / duration),
                 LinearLayout.LayoutParams(dp(300), dp(3)).apply { topMargin = dp(8) })
             row.addView(words, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(16) })
-            row.isFocusable = true
+            row.isFocusable = true; row.isFocusableInTouchMode = true
             row.setOnFocusChangeListener { v, has ->
                 v.background = if (!has) null else GradientDrawable().apply {
                     setColor(0x14FFFFFF); setStroke(dp(2), TUNGSTEN); cornerRadius = dp(CORNER).toFloat()
@@ -518,7 +518,7 @@ class DetailsActivity : Screen() {
         ).marginTop(20)
         val story = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
-            isFocusable = true // takes the remote, so Up and Down scroll a long story
+            isFocusable = true; isFocusableInTouchMode = true // takes the remote, so Up and Down scroll a long story
             addView(column(Gravity.START).apply {
                 m.description?.takeIf { it.isNotBlank() }?.let {
                     addView(text(it, BODY, color = TEXT).onArt())
@@ -706,6 +706,18 @@ class DetailsActivity : Screen() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /** On a phone, a swipe up opens the episodes (or More like this), as Down does on the remote; down closes More like this. */
+    override fun onSwipe(velocityX: Float, velocityY: Float): Boolean {
+        if (!vertical(velocityX, velocityY)) return false
+        if (velocityY < 0 && !infoOpen && !similarOpen && !guideOpen &&
+            (if (type == "series") ::guide.isInitialized else ::similarOverlay.isInitialized)) {
+            if (type == "series") showGuide() else showSimilar()
+            return true
+        }
+        if (velocityY > 0 && similarOpen) { hideSimilar(); return true }
+        return false
     }
 
     override fun onBackPressed() {

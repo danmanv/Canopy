@@ -15,6 +15,10 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Canopy on your phone.** Install the same APK on an Android phone. Hold the phone sideways. Tap a title to open it. Swipe a row to see more titles. Swipe up or down to go to the next row.
+- On a phone, tap the picture to show the controls. Tap two times on the left or right side to go back or forward 10 seconds. Move your finger along the bar to go to a different time.
+- On a phone, **Search** opens with the phone keyboard. The PIN screen shows number keys. **Sign in on this phone** opens the Stremio sign-in page on the phone.
+
 ## 1.3.2
 
 - **New search screen.** The text you type is large. The letters are on one line below it. Move left and right to select a letter. The results use the full width of the screen.
