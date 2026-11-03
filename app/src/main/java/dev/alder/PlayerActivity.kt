@@ -669,7 +669,7 @@ class PlayerActivity : Screen() {
     private fun lowerQuality() {
         val height = sources[at].height
         val lower = lowerSourceHeight(height) ?: return
-        startActivity(Intent(this, if (touch) PhoneStreamsActivity::class.java else StreamsActivity::class.java).putExtras(intent).apply {
+        startActivity(Intent(this, StreamsActivity::class.java).putExtras(intent).apply {
             removeExtra("picked"); removeExtra("pick")
         }.putExtra("maxHeight", lower).putExtra("resumeAt", player.currentPosition))
         finish()
