@@ -16,6 +16,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 ## Unreleased
 
 - **Canopy on your phone.** Install the same APK on an Android phone. Hold the phone sideways. Tap a title to open it. Swipe a row to see more titles. Swipe up or down to go to the next row.
+- On a phone, text and buttons are larger, and a tap near a button also selects it. When you swipe a row, it stops with a title at the start of the row, and that title is selected.
 - On a phone, the posters on **Home** are larger. The video uses the full screen, also the area around the camera. Tap the back arrow at the top left to go back.
 - On a phone, tap the picture to show the controls. Tap two times on the left or right side to go back or forward 10 seconds. Move your finger along the bar to go to a different time.
 - On a phone, **Search** opens with the phone keyboard. The PIN screen shows number keys. **Sign in on this phone** opens the Stremio sign-in page on the phone.

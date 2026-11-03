@@ -249,11 +249,11 @@ class MainActivity : Screen() {
     private var loadMoreSections: (() -> Unit)? = null
     private var revealRows: android.view.ViewTreeObserver.OnPreDrawListener? = null
     private var loadSection: ((String) -> Unit)? = null // builds the page down to a genre chip's row
-    // A phone is held closer than a TV but its screen is wider in dp: Home's posters are a quarter larger there.
-    private val posterW get() = if (touch) CARD_W * 5 / 4 else CARD_W
-    private val posterH get() = if (touch) CARD_H * 5 / 4 else CARD_H
-    private val wideW get() = if (touch) WIDE_W * 5 / 4 else WIDE_W
-    private val wideH get() = if (touch) WIDE_H * 5 / 4 else WIDE_H
+    // A phone is held closer than a TV but its screen is wider in dp: Home's posters are a tenth larger there.
+    private val posterW get() = if (touch) CARD_W * 11 / 10 else CARD_W
+    private val posterH get() = if (touch) CARD_H * 11 / 10 else CARD_H
+    private val wideW get() = if (touch) WIDE_W * 11 / 10 else WIDE_W
+    private val wideH get() = if (touch) WIDE_H * 11 / 10 else WIDE_H
     private var touched = false // a key was pressed since the page opened: fresh data then waits for the next visit
     private var cinemaReady = false // the cinema's title has its art and logo (or gave up waiting) and may show
     private var cinemaToken = Any()
@@ -279,7 +279,7 @@ class MainActivity : Screen() {
         // A row heading's real height: the TV's font size setting can make it taller than any fixed guess.
         val headingH = caps("").lineHeight
         val rowH = headingH + dp(ROW_TOP_ROOM + posterH + ROW_BOTTOM_ROOM)
-        val rowTop = screenH - rowH - dp(SAFE_BOTTOM) // one row on screen; the track in the left margin says where you are
+        val rowTop = screenH - rowH - dp(if (touch) SAFE_BOTTOM / 2 else SAFE_BOTTOM) // one row on screen; the track in the left margin says where you are
         browseRowTop = rowTop
         browseRowH = rowH
         content = column(Gravity.START)
@@ -971,7 +971,8 @@ class MainActivity : Screen() {
         (heroAdded.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.marginStart = if (lead.isEmpty()) 0 else dp(6)
         heroAdded.visibility = if (page == Page.LIBRARY && heroAdded.text.isNotEmpty()) View.VISIBLE else View.GONE
         heroAbout.maxLines = 2
-        heroAbout.visibility = if (page == Page.LIBRARY) View.GONE else View.VISIBLE
+        // A phone's screen is drawn larger, so the block is shorter there: the title page has the description.
+        heroAbout.visibility = if (page == Page.LIBRARY || touch) View.GONE else View.VISIBLE
         val description = episode(item)?.overview?.takeIf { it.isNotBlank() } ?: item.about
         heroAbout.text = description
         heroAbout.post {
@@ -1784,6 +1785,25 @@ class MainActivity : Screen() {
                 if (!hasFocus() && (direction == View.FOCUS_UP || direction == View.FOCUS_DOWN)) views.add(cards[selected])
                 else super.addFocusables(views, direction, focusableMode)
             }
+
+            // On a phone a swipe doesn't leave the row anywhere: it settles with a card on the row's start, the spot
+            // the remote's card stands in, and that card takes the focus (its hero, its art), as Left and Right do.
+            private var flung = false
+
+            override fun fling(velocityX: Int) {
+                if (!touch || grid) return super.fling(velocityX)
+                flung = true
+                snap(velocityX)
+            }
+
+            @android.annotation.SuppressLint("ClickableViewAccessibility")
+            override fun onTouchEvent(event: android.view.MotionEvent): Boolean {
+                if (event.actionMasked == android.view.MotionEvent.ACTION_DOWN) { flung = false; anim?.cancel() }
+                val used = super.onTouchEvent(event)
+                val end = event.actionMasked == android.view.MotionEvent.ACTION_UP || event.actionMasked == android.view.MotionEvent.ACTION_CANCEL
+                if (touch && !grid && end && !flung) snap(0)
+                return used
+            }
         }.apply {
             isHorizontalScrollBarEnabled = false
             addView(strip)
@@ -1850,6 +1870,21 @@ class MainActivity : Screen() {
         }
 
         fun focusFirst() = cards[selected].requestFocus()
+
+        /** A finger let the row go at [velocity] px/s (+: on along the row): the card to settle on, a few further for a quick swipe. */
+        fun snap(velocity: Int) {
+            if (cards.isEmpty()) return
+            val step = (dp(cardW) + dp(CARD_GAP)).toFloat()
+            val at = scroller.scrollX / step
+            val extra = (kotlin.math.abs(velocity) / (step * 3)).toInt()
+            val index = when {
+                velocity > 0 -> kotlin.math.ceil(at).toInt() + extra
+                velocity < 0 -> kotlin.math.floor(at).toInt() - extra
+                else -> kotlin.math.round(at).toInt()
+            }.coerceIn(0, cards.lastIndex)
+            val card = cards[index]
+            if (card.isFocused) focus(index) else card.requestFocus()
+        }
 
         private fun showVisibleCards() {
             val x = scroller.scrollX

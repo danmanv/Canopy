@@ -22,19 +22,20 @@ class Device private constructor(val hevc: Boolean, val av1: Boolean, val dolbyV
         }.also { touchKnown = it }
 
         /**
-         * On a phone, the density that makes its short side [TV_DP] dp, as a 1080p TV's is, so every screen fits as it
-         * was laid out for the TV; null on a TV, or where the phone's own density is already that small or smaller.
+         * On a phone, the density that makes its short side [PHONE_DP] dp: a little under a 1080p TV's 540, so the
+         * screens laid out for the TV still fit while their words and buttons are larger for a finger; null on a TV,
+         * or where the phone's own density is already that small or smaller.
          */
         fun tvDensity(context: Context): Int? {
             if (!touch(context)) return null
             val short = if (android.os.Build.VERSION.SDK_INT >= 30)
                 context.getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds.let { minOf(it.width(), it.height()) }
             else context.resources.displayMetrics.let { minOf(it.widthPixels, it.heightPixels) }
-            val dpi = short * android.util.DisplayMetrics.DENSITY_DEFAULT / TV_DP
+            val dpi = short * android.util.DisplayMetrics.DENSITY_DEFAULT / PHONE_DP
             return dpi.takeIf { it in 1 until context.resources.configuration.densityDpi }
         }
 
-        const val TV_DP = 540
+        const val PHONE_DP = 480
 
         fun of(context: Context): Device = known ?: run {
             val decoders = MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter { !it.isEncoder }

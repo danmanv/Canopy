@@ -126,7 +126,7 @@ abstract class Screen : Activity() {
     /** A phone or tablet ([Device.touch]): taps, swipes and the back gesture drive the screens made for the remote. */
     protected val touch: Boolean get() = Device.touch(this)
 
-    // On a phone every screen is drawn at a TV's size (540 dp tall), so it fits as it was laid out.
+    // On a phone every screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
         Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }

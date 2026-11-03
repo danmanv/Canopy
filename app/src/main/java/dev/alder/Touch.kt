@@ -30,13 +30,25 @@ internal class Taps(
         override fun onDown(e: MotionEvent) = true
 
         override fun onSingleTapUp(e: MotionEvent): Boolean {
-            val target = root()?.let { focusableAt(it, e.rawX.toInt(), e.rawY.toInt()) }
-            when {
-                target == null -> bare(e)
+            val view = root() ?: return false
+            val x = e.rawX.toInt()
+            val y = e.rawY.toInt()
+            val target = focusableAt(view, x, y)
+            if (target != null) {
                 // Focusable in touch mode, so the view's own release finds it focused and clicks, instead of taking
                 // the focus and stopping there (a second tap).
-                !target.isFocused -> { target.isFocusableInTouchMode = true; target.requestFocus() }
+                if (!target.isFocused) { target.isFocusableInTouchMode = true; target.requestFocus() }
+                return false
             }
+            // Just beside a small control (the TV's buttons are small for a finger): it counts as a tap on it.
+            val near = nearest(view, x, y, (NEAR_DP * view.resources.displayMetrics.density).toInt())
+            if (near != null) {
+                near.isFocusableInTouchMode = true
+                near.requestFocus()
+                near.performClick()
+                return true
+            }
+            bare(e)
             return false
         }
 
@@ -66,6 +78,31 @@ internal class Taps(
             if (x < at[0] || y < at[1] || x >= at[0] + view.width || y >= at[1] + view.height) return null
             if (view is ViewGroup) for (i in view.childCount - 1 downTo 0) focusableAt(view.getChildAt(i), x, y)?.let { return it }
             return view.takeIf { it.isFocusable && it.isEnabled }
+        }
+
+        const val NEAR_DP = 18 // how far outside a control a finger can land and still mean it
+
+        /** The focusable view whose edge is closest to the finger, within [reach] px, and nothing in between. */
+        fun nearest(root: View, x: Int, y: Int, reach: Int): View? {
+            var best: View? = null
+            var bestDistance = reach + 1
+            fun visit(view: View) {
+                if (view.visibility != View.VISIBLE || view.alpha <= 0.01f || !view.isAttachedToWindow) return
+                view.getLocationOnScreen(at)
+                val dx = maxOf(at[0] - x, 0, x - (at[0] + view.width - 1))
+                val dy = maxOf(at[1] - y, 0, y - (at[1] + view.height - 1))
+                if (view is ViewGroup) {
+                    // A group far from the finger holds nothing near it (its children sit inside it, give or take a
+                    // focused card's growth).
+                    if (maxOf(dx, dy) > reach * 3) return
+                    for (i in 0 until view.childCount) visit(view.getChildAt(i))
+                }
+                if (!view.isFocusable || !view.isEnabled) return
+                val d = maxOf(dx, dy)
+                if (d <= reach && d < bestDistance) { best = view; bestDistance = d }
+            }
+            visit(root)
+            return best
         }
     }
 }
