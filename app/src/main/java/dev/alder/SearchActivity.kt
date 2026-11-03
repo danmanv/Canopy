@@ -76,6 +76,13 @@ class SearchActivity : Screen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A phone has its own search, upright (PhoneSearchActivity).
+        if (touch) {
+            startActivity(Intent(intent).setClass(this, PhoneSearchActivity::class.java))
+            finish()
+            @Suppress("DEPRECATION") overridePendingTransition(0, 0)
+            return
+        }
         val key = authKey ?: return run {
             // Opened by the TV's own search before anyone has signed in: the profiles screen comes first.
             startActivity(Intent(this, ProfilesActivity::class.java))

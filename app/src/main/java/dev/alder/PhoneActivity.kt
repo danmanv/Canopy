@@ -129,7 +129,7 @@ class PhoneActivity : PhoneScreen() {
         addView(brand(), FrameLayout.LayoutParams(-2, -2, Gravity.START or Gravity.CENTER_VERTICAL).apply { leftMargin = dp(20) })
         val buttons = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
         buttons.addView(iconButton(R.drawable.ic_search, "Search") {
-            startActivity(Intent(this@PhoneActivity, SearchActivity::class.java))
+            startActivity(Intent(this@PhoneActivity, PhoneSearchActivity::class.java))
         }, LinearLayout.LayoutParams(dp(TOUCH), dp(TOUCH)))
         buttons.addView(FrameLayout(context).apply {
             contentDescription = "Profile ${profile.name}"

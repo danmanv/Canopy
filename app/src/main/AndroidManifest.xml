@@ -40,6 +40,7 @@
         <!-- Home on a phone, held upright -->
         <activity android:name=".PhoneActivity" android:screenOrientation="portrait" />
         <activity android:name=".PhoneDetailsActivity" android:screenOrientation="portrait" />
+        <activity android:name=".PhoneSearchActivity" android:screenOrientation="portrait" android:launchMode="singleTop" />
         <!-- The TV's own search hands a query here: the Assistant's "search for … on Canopy" and global search. -->
         <activity
             android:name=".SearchActivity"
