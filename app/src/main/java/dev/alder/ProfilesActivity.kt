@@ -510,7 +510,9 @@ class ProfilesActivity : Screen() {
             }
             override fun afterTextChanged(s: android.text.Editable?) = Unit
         })
-        return Triple(name, keyboard, keys.first())
+        // A phone has its own keyboard: the remote's letters stay hidden, and the name box takes the first focus.
+        if (touch) keyboard.visibility = View.GONE
+        return Triple(name, keyboard, if (touch) name else keys.first())
     }
 
     /** Sign-in with a code: for a new profile called [name], or for [again], a profile Stremio signed out. */
