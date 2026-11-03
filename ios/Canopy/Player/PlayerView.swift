@@ -360,7 +360,7 @@ struct PlayerView: View {
     }
 
     private func checkSegments() {
-        if let (i, s) = currentSegment {
+        if case let (i, s)? = currentSegment {
             if skipShownAt[i] == nil { skipShownAt[i] = Date() }
             if s.jump == 0, Date().timeIntervalSince(skipShownAt[i]!) > 10 { skipped.insert(i) }
         }
@@ -373,7 +373,7 @@ struct PlayerView: View {
     }
 
     @ViewBuilder private var skipPill: some View {
-        if let (i, s) = currentSegment {
+        if case let (i, s)? = currentSegment {
             VStack {
                 Spacer()
                 HStack {
@@ -671,6 +671,7 @@ struct TracksPanel: View {
 }
 
 /// iPhone pages stay upright; the player turns sideways (and back) by itself. An iPad turns freely.
+@MainActor
 enum Orientation {
     static var mask: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .pad ? .all : .portrait
 

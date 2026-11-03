@@ -19,6 +19,7 @@ final class AppModel {
 
     init() {
         Http.trim()
+        DeviceCaps.measure()
         if let id = Profiles.activeId, let p = profiles.first(where: { $0.id == id }), p.pin == nil, !Profiles.signedOut(p.id) {
             choose(p)
         } else if profiles.count == 1, let p = profiles.first, p.pin == nil, !Profiles.signedOut(p.id) {

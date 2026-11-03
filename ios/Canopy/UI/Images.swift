@@ -3,12 +3,17 @@ import UIKit
 import ImageIO
 
 /// Pictures from add-ons, decoded at the size they're shown and kept in memory (and in URLCache on disk).
+private final class Memory: @unchecked Sendable {
+    let cache = NSCache<NSString, UIImage>()
+}
+
 actor ImageStore {
     static let shared = ImageStore()
-    private let memory = NSCache<NSString, UIImage>()
+    private nonisolated let box = Memory()
+    private nonisolated var memory: NSCache<NSString, UIImage> { box.cache }
     private var running = [String: Task<UIImage?, Never>]()
 
-    init() { memory.totalCostLimit = 120 << 20 }
+    init() { box.cache.totalCostLimit = 120 << 20 }
 
     nonisolated func cached(_ url: String, width: CGFloat) -> UIImage? {
         memory.object(forKey: key(url, width) as NSString)
@@ -96,10 +101,14 @@ enum Art {
     static func tint(_ image: UIImage) -> Color? {
         guard let cg = image.cgImage else { return nil }
         var px = [UInt8](repeating: 0, count: 4)
-        guard let ctx = CGContext(data: &px, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
-                                  space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
-        ctx.interpolationQuality = .medium
-        ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let drawn: Bool = px.withUnsafeMutableBytes { buf in
+            guard let ctx = CGContext(data: buf.baseAddress, width: 1, height: 1, bitsPerComponent: 8, bytesPerRow: 4,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return false }
+            ctx.interpolationQuality = .medium
+            ctx.draw(cg, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+            return true
+        }
+        guard drawn else { return nil }
         return Color(red: Double(px[0]) / 255, green: Double(px[1]) / 255, blue: Double(px[2]) / 255)
     }
 }

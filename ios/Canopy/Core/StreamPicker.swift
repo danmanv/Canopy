@@ -8,10 +8,13 @@ struct DeviceCaps {
     let hdr = false
     let dolbyVision = false
 
-    static let current: DeviceCaps = {
+    /// Set at start from the screen (see [measure]).
+    nonisolated(unsafe) static var current = DeviceCaps(height: 1080)
+
+    @MainActor static func measure() {
         let short = min(UIScreen.main.nativeBounds.width, UIScreen.main.nativeBounds.height)
-        return DeviceCaps(height: short >= 2000 ? 2160 : 1080)
-    }()
+        current = DeviceCaps(height: short >= 2000 ? 2160 : 1080)
+    }
 
     /// How well a source suits this screen, higher first: nothing above the screen, HDR only on an HDR screen.
     func fit(_ s: Stream) -> Int {

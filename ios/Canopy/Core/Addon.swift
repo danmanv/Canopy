@@ -24,8 +24,9 @@ final class Addon: Identifiable, @unchecked Sendable {
         guard let manifest = descriptor.obj("manifest"), let transport = descriptor.text("transportUrl") else { return nil }
         self.descriptor = descriptor
         self.manifest = manifest
+        let name = manifest.string("name")
         id = manifest.string("id")
-        name = manifest.string("name")
+        self.name = name
         transportUrl = transport
         official = descriptor.obj("flags")?.bool("official") == true
         locked = descriptor.obj("flags")?.bool("protected") == true
