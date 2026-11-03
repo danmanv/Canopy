@@ -17,9 +17,21 @@ final class AppModel {
     /// Bumped when the library changes here, so pages redraw Continue Watching and My List.
     var libraryVersion = 0
 
+    /// Started with `-demo` (CI screenshots): a made-up profile on Cinemeta alone, no Stremio account.
+    static let demo = ProcessInfo.processInfo.arguments.contains("-demo")
+
     init() {
         Http.trim()
         DeviceCaps.measure()
+        if AppModel.demo {
+            let p = Profile(id: "demo", name: "Demo", color: Profiles.colors[1], authKey: "demo", pin: nil)
+            profiles = [p]
+            active = p
+            unlocked = true
+            Settings.profileId = p.id
+            Task { await loadDemo() }
+            return
+        }
         if let id = Profiles.activeId, let p = profiles.first(where: { $0.id == id }), p.pin == nil, !Profiles.signedOut(p.id) {
             choose(p)
         } else if profiles.count == 1, let p = profiles.first, p.pin == nil, !Profiles.signedOut(p.id) {
@@ -86,7 +98,24 @@ final class AppModel {
 
     // MARK: Data
 
+    private func loadDemo() async {
+        guard let text = try? await Http.get("https://v3-cinemeta.strem.io/manifest.json"),
+              let manifest = try? JSONText.parse(text),
+              let cinemeta = Addon(["transportUrl": "https://v3-cinemeta.strem.io/manifest.json", "manifest": manifest,
+                                    "flags": ["official": true, "protected": true]] as JSON) else { problem = "Demo: Cinemeta unreachable"; return }
+        addons = [cinemeta]
+        let cw = Library.newItem(id: "tt0903747", type: "series", name: "Breaking Bad", poster: Art.poster(for: "tt0903747"))
+        Library.record(cw, videoId: "tt0903747:2:3", positionMs: 1_260_000, durationMs: 2_820_000, playedMs: 600_000)
+        Library.setInList(cw, true)
+        let movie = Library.newItem(id: "tt1375666", type: "movie", name: "Inception", poster: Art.poster(for: "tt1375666"))
+        Library.record(movie, videoId: "tt1375666", positionMs: 3_000_000, durationMs: 8_880_000, playedMs: 600_000)
+        library = [cw, movie]
+        libraryLoaded = true
+        libraryVersion += 1
+    }
+
     func refresh() async {
+        if AppModel.demo { return }
         guard let p = active else { return }
         async let a = Stremio.addons(p.authKey, refresh: true)
         async let l = Stremio.library(p.authKey)
@@ -129,7 +158,7 @@ final class AppModel {
     func save(_ item: LibraryItem, upload: Bool = true) {
         if let i = library.firstIndex(where: { $0.id == item.id }) { library[i] = item.copy() } else { library.append(item.copy()) }
         libraryVersion += 1
-        guard upload, let key = authKey else { return }
+        guard upload, !AppModel.demo, let key = authKey else { return }
         let item = item.copy()
         Task { try? await Stremio.saveLibrary(key, [item]) }
     }

@@ -62,7 +62,10 @@ struct SearchView: View {
         .navigationTitle("Search")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
-        .onAppear { focused = true }
+        .onAppear {
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-query"), i + 1 < args.count { query = args[i + 1]; run(args[i + 1]) } else { focused = true }
+        }
         .onChange(of: query) { _, q in
             // Search as you type, after a short pause.
             let typed = q

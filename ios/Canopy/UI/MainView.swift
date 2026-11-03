@@ -47,6 +47,7 @@ struct MainView: View {
                 }
             }
         }
+        .onAppear(perform: openFromArguments)
         .environment(\.play, PlayAction { player = $0 })
         .environment(\.navigate, NavigateAction { path.append($0) })
         .fullScreenCover(item: $player) { req in
@@ -57,6 +58,30 @@ struct MainView: View {
                 }
             }
             .environment(model).environment(\.theme, theme)
+        }
+    }
+}
+
+extension MainView {
+    /// `-screen movies|shows|list|search|settings|title|sources` opens that screen at start (CI screenshots).
+    func openFromArguments() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-screen"), i + 1 < args.count else { return }
+        let bb = TitleRef(id: "tt0903747", type: "series", name: "Breaking Bad")
+        switch args[i + 1] {
+        case "movies": tab = .movies
+        case "shows": tab = .shows
+        case "list": tab = .list
+        case "search": path.append(Route.search)
+        case "settings": path.append(Route.settings)
+        case "title": path.append(Route.title(bb))
+        case "movie": path.append(Route.title(TitleRef(id: "tt1375666", type: "movie", name: "Inception")))
+        case "player":
+            let s = Stream(title: "Sample", description: "Big Buck Bunny 1080p", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+                           headers: [:], size: 0, filename: nil, bingeGroup: nil)
+            player = PlayRequest(title: TitleRef(id: "tt1254207", type: "movie", name: "Big Buck Bunny"), videoId: "tt1254207", sources: [s])
+        case "sources": path.append(Route.sources(PlayRequest(title: bb, videoId: "tt0903747:1:1", episode: "S1 E1 · Pilot")))
+        default: break
         }
     }
 }
