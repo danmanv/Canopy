@@ -884,7 +884,7 @@ class PlayerActivity : Screen() {
     override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
         if (shown && event.actionMasked == android.view.MotionEvent.ACTION_DOWN && player.playWhenReady) {
             main.removeCallbacks(hideTask)
-            main.postDelayed(hideTask, HIDE)
+            main.postDelayed(hideTask, hideAfter)
         }
         return super.dispatchTouchEvent(event)
     }
@@ -910,7 +910,7 @@ class PlayerActivity : Screen() {
         showScrub()
         if (done) {
             seekTask.run()
-            if (player.playWhenReady) main.postDelayed(hideTask, HIDE)
+            if (player.playWhenReady) main.postDelayed(hideTask, hideAfter)
         }
     }
 
@@ -1057,6 +1057,7 @@ class PlayerActivity : Screen() {
     /** On a phone (held at arm's length, tapped with a thumb) the controls' words and buttons are larger than the TV's. */
     private fun sized(tv: Float, phone: Float) = if (touch) phone else tv
     private fun sized(tv: Int, phone: Int) = if (touch) phone else tv
+    private val hideAfter get() = if (touch) HIDE_TOUCH else HIDE
     /** On a phone, a pill or chip a thumb can hit, with words read at arm's length. */
     private fun <T : TextView> T.thumb() = apply {
         if (!touch) return@apply
@@ -1135,7 +1136,7 @@ class PlayerActivity : Screen() {
             addView(pauseFacts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         }
 
-        endsAt = text("", sized(SMALL, 16f), color = TEXT).onArt().apply { maxLines = 1 }
+        endsAt = text("", sized(SMALL, 17f), color = TEXT).onArt().apply { maxLines = 1 }
         elapsed = text("", sized(SMALL, 16f), bold = touch).onArt()
         length = text("", sized(SMALL, 16f), bold = touch).onArt()
         bar = SeekBar(this).apply {
@@ -1201,6 +1202,7 @@ class PlayerActivity : Screen() {
         return FrameLayout(this).apply {
             visibility = View.GONE
             alpha = 0f
+            clipChildren = false // the scrub bubble rides above the dock's top
             addView(View(context).apply {
                 background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
                     intArrayOf(baseAt(0x99), baseAt(0x00)))
@@ -1216,8 +1218,8 @@ class PlayerActivity : Screen() {
                 foreground = centred(R.drawable.ic_back, 32, TEXT)
                 background = null
             }, FrameLayout.LayoutParams(dp(62), dp(62)).apply { leftMargin = dp(PAD - 10); topMargin = dp(16) })
-            addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 300)), dp(sized(50, 84))).apply {
-                leftMargin = dp(nameAt); topMargin = dp(sized(26, 10))
+            addView(playerLogo, FrameLayout.LayoutParams(dp(sized(150, 280)), dp(sized(50, 70))).apply {
+                leftMargin = dp(nameAt); topMargin = dp(sized(26, 18))
             })
             addView(topName, FrameLayout.LayoutParams(dp(250), -2).apply {
                 leftMargin = dp(nameAt); topMargin = dp(31)
@@ -1227,7 +1229,8 @@ class PlayerActivity : Screen() {
                 gravity = Gravity.CENTER_VERTICAL
                 addView(TextClock(this@PlayerActivity).apply {
                     format12Hour = "h:mm a"; format24Hour = "HH:mm"
-                    textSize = sized(SMALL, 16f); setTextColor(TEXT_2); typeface = text("", SMALL).typeface
+                    textSize = sized(SMALL, 17f); setTextColor(if (touch) TEXT else TEXT_2); typeface = text("", SMALL).typeface
+                    if (touch) setShadowLayer(dp(4).toFloat(), 0f, dp(1).toFloat(), 0xCC000000.toInt()) // reads over a bright sky
                 })
                 addView(endsAt)
             }, FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply {
@@ -1262,7 +1265,7 @@ class PlayerActivity : Screen() {
                     addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
                     addView(length)
                 }, LinearLayout.LayoutParams(-1, -2))
-                addView(buttons, LinearLayout.LayoutParams(-1, dp(sized(76, 98))).apply { topMargin = dp(sized(2, 4)) })
+                addView(buttons, LinearLayout.LayoutParams(-1, dp(sized(76, 84))).apply { topMargin = dp(sized(2, 4)) })
             }
             if (touch) addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
@@ -1271,7 +1274,7 @@ class PlayerActivity : Screen() {
                     foreground = centred(icon, iconSize, if (tint == BASE) TEXT else tint)
                     // Bare icons over the picture (Daniel's pick): Play on a faint dark disc that the picture shows through.
                     background = if (tint == BASE) GradientDrawable().apply {
-                        shape = GradientDrawable.OVAL; setColor(baseAt(0x47))
+                        shape = GradientDrawable.OVAL; setColor(baseAt(0x80)); setStroke(dp(1), withAlpha(TEXT, 0x59))
                     } else null
                     elevation = 0f
                     setOnFocusChangeListener(null) // no solid face on focus: a finger needs no focus mark
@@ -1299,7 +1302,7 @@ class PlayerActivity : Screen() {
     @android.annotation.SuppressLint("ClickableViewAccessibility") // the touch listener only dims; clicks go on as usual
     private fun button(label: String, res: Int, primary: Boolean = false, onClick: () -> Unit): TextView {
         // On a phone every button says its name: there's no focus to show it.
-        val words = text(label, sized(SMALL, 15f), color = TEXT_2).onArt().apply {
+        val words = text(label, sized(SMALL, 17f), color = TEXT).onArt().apply {
             gravity = Gravity.CENTER; visibility = if (touch) View.VISIBLE else View.INVISIBLE
             maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
@@ -1353,9 +1356,9 @@ class PlayerActivity : Screen() {
         val size = if (primary) 50 else sized(40, 62)
         addView(control, FrameLayout.LayoutParams(dp(size), dp(size),
             Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(if (primary) 0 else sized(5, 2)) })
-        addView(buttonLabels.getValue(control), FrameLayout.LayoutParams(dp(sized(160, 144)), dp(sized(18, 26)),
-            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(sized(53, 68)) })
-        layoutParams = LinearLayout.LayoutParams(dp(if (primary) 70 else sized(62, 144)), dp(sized(76, 96)))
+        addView(buttonLabels.getValue(control), FrameLayout.LayoutParams(dp(sized(160, 150)), dp(sized(18, 28)),
+            Gravity.TOP or Gravity.CENTER_HORIZONTAL).apply { topMargin = dp(sized(53, 52)) })
+        layoutParams = LinearLayout.LayoutParams(dp(if (primary) 70 else sized(62, 150)), dp(sized(76, 82)))
     }
 
     /** Brings the controls up with [focus] focused (null: leaves focus where it is) and restarts the time to hide. */
@@ -1372,7 +1375,7 @@ class PlayerActivity : Screen() {
             if (touch) loadingCenter.translationY = -dp(130).toFloat()
             (focus ?: bigPlay ?: playPause).requestFocus()
         } else focus?.requestFocus()
-        if (player.playWhenReady) main.postDelayed(hideTask, HIDE)
+        if (player.playWhenReady) main.postDelayed(hideTask, hideAfter)
     }
 
     private fun hideControls(force: Boolean = false) {
@@ -1544,12 +1547,14 @@ class PlayerActivity : Screen() {
 
         options.removeAllViews()
         options.addView(ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
+            // A phone: the rows below the edge fade out, so the list reads as one that scrolls.
+            isVerticalScrollBarEnabled = touch
+            if (touch) { isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(48)) }
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
             background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
-        }, FrameLayout.LayoutParams(dp(sized(310, 400)), resources.displayMetrics.heightPixels - dp(sized(54, 32))).apply {
+        }, FrameLayout.LayoutParams(dp(sized(310, 470)), resources.displayMetrics.heightPixels - dp(sized(54, 32))).apply {
             leftMargin = dp(sized(27, PAD)); topMargin = dp(sized(27, 16))
         })
         optionsBar = SeekBar(this).apply { isFocusable = false }
@@ -1573,18 +1578,18 @@ class PlayerActivity : Screen() {
     private fun section(list: LinearLayout, heading: String, labels: List<String>, chosen: Int, pick: (Int) -> Unit): View {
         // The heading names the choice in use ("SUBTITLES · SPANISH"), so it reads before any scrolling.
         fun headingFor(index: Int) = (listOf(heading) + listOfNotNull(labels.getOrNull(index)?.substringBefore("  ·  "))).joinToString(" · ")
-        val title = caps(headingFor(chosen), TUNGSTEN).apply { if (touch) textSize = 14f }
+        val title = caps(headingFor(chosen), TUNGSTEN).apply { if (touch) textSize = 16f }
         list.addView(title, wrap().apply {
             topMargin = dp(18); bottomMargin = dp(5)
         })
         val checks = mutableListOf<View>()
         val names = mutableListOf<TextView>()
         val rows = labels.mapIndexed { index, label ->
-            val name = text(label.substringBefore("  ·  "), sized(BODY, 17f), color = TEXT_2).apply {
+            val name = text(label.substringBefore("  ·  "), sized(BODY, 20f), color = TEXT_2).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             }
             names += name
-            val tag = text(label.substringAfter("  ·  ", ""), sized(SMALL, 14f), color = TEXT_3).apply {
+            val tag = text(label.substringAfter("  ·  ", ""), sized(SMALL, 16f), color = TEXT_3).apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             }
             // The choice in use: the tungsten dot before its name, as on chips and filters, and its name at full strength.
@@ -1611,7 +1616,7 @@ class PlayerActivity : Screen() {
                     title.text = headingFor(index).uppercase()
                     names.forEachIndexed { i, word -> word.setTextColor(if (i == index) TEXT else TEXT_2) }
                 }
-            }.also { list.addView(it, LinearLayout.LayoutParams(-1, dp(sized(32, 50)))) }
+            }.also { list.addView(it, LinearLayout.LayoutParams(-1, dp(sized(32, 62)))) }
         }
         return rows[chosen.coerceIn(0, rows.lastIndex)]
     }
@@ -1702,6 +1707,7 @@ class PlayerActivity : Screen() {
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing
+        const val HIDE_TOUCH = 8_000L // on a phone: long enough to reach for the bar
         const val DOUBLE_TAP = 300L // ms within which a second tap on the picture's side makes a double tap
         const val START_WAIT = 12_000L // ms for a source to show a picture before the next is tried (4K DV from debrid took 6 s)
         const val ADDON_SUB = "addon-subtitle" // the id an addon subtitle file is attached under

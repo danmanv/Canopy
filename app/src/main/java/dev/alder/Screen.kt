@@ -672,7 +672,7 @@ abstract class Screen : Activity() {
             logo, dp(320), urgent = true, failed = { logo.visibility = View.GONE }) { title.visibility = View.GONE }
         val episode = intent.getStringExtra("episode")?.takeIf { intent.getStringExtra("type") == "series" }
         val spinner = ring()
-        val status = text("Getting ready", if (touch) 17f else SMALL, color = TEXT_2).onArt() // a phone is further from the eye than its size says
+        val status = text("Getting ready", if (touch) 22f else SMALL, color = TEXT_2).onArt() // a phone is further from the eye than its size says
         val block = column(Gravity.START).apply {
             addView(FrameLayout(context).apply {
                 addView(title, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
@@ -683,7 +683,7 @@ abstract class Screen : Activity() {
             }, wrap().apply { topMargin = dp(10) })
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                addView(spinner, LinearLayout.LayoutParams(dp(if (touch) 32 else 18), dp(if (touch) 32 else 18)).apply { marginEnd = dp(if (touch) 14 else 10) })
+                addView(spinner, LinearLayout.LayoutParams(dp(if (touch) 44 else 18), dp(if (touch) 44 else 18)).apply { marginEnd = dp(if (touch) 14 else 10) })
                 addView(status, wrap())
             }, wrap().apply { topMargin = dp(18) })
         }
