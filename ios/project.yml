@@ -1,0 +1,52 @@
+# Canopy for iPhone and iPad. Generate the Xcode project with `xcodegen` (see ios/README.md); the .xcodeproj isn't kept.
+name: Canopy
+options:
+  bundleIdPrefix: dev.canopy
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    SWIFT_VERSION: "5.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGNING_ALLOWED: "NO"
+    CODE_SIGNING_REQUIRED: "NO"
+    CODE_SIGN_IDENTITY: ""
+    ENABLE_BITCODE: "NO"
+targets:
+  Canopy:
+    type: application
+    platform: iOS
+    sources:
+      - path: Canopy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: dev.canopy.ios
+        PRODUCT_NAME: Canopy
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: Canopy/Info.plist
+        GENERATE_INFOPLIST_FILE: "NO"
+        SWIFT_STRICT_CONCURRENCY: minimal
+  CanopyTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: CanopyTests
+    dependencies:
+      - target: Canopy
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: "YES"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Canopy.app/Canopy"
+schemes:
+  Canopy:
+    build:
+      targets:
+        Canopy: all
+    test:
+      targets:
+        - CanopyTests

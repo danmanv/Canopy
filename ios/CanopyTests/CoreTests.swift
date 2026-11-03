@@ -1,0 +1,73 @@
+import XCTest
+@testable import Canopy
+
+final class CoreTests: XCTestCase {
+    func testRuntime() {
+        XCTAssertEqual(formatRuntime("147 min"), "2h 27m")
+        XCTAssertEqual(formatRuntime("2h35min"), "2h 35m")
+        XCTAssertEqual(formatRuntime("45 min"), "45 min")
+        XCTAssertEqual(formatRuntime("N/A"), "N/A")
+    }
+
+    func testDebrid() {
+        XCTAssertEqual(debridOf("[RD+] Torrentio\n4k", "https://x")?.tag, "RD ⚡")
+        XCTAssertEqual(debridOf("[AD download] Torrentio", "https://x")?.cached, false)
+        XCTAssertEqual(debridOf("Comet ⚡TB", "https://x")?.name, "TorBox")
+        XCTAssertEqual(debridOf("Torrentio", "https://torrentio/resolve/realdebrid/abc")?.short, "RD")
+        XCTAssertNil(debridOf("HDR [RDX]", "https://example.com/a.mkv"))
+    }
+
+    func testStreamWords() {
+        let s = Stream.from(["name": "Torrentio\n2160p", "title": "Movie.2023.2160p.UHD.BluRay.REMUX.HDR.HEVC.Atmos-GRP\n👤 12 💾 58.3 GB ⚙️ x",
+                             "url": "https://a/b.mkv"])!
+        XCTAssertEqual(s.height, 2160)
+        XCTAssertTrue(s.remux)
+        XCTAssertTrue(s.hdr)
+        XCTAssertEqual(s.size, 58_300_000_000)
+        XCTAssertEqual(s.summary, "BluRay · HEVC · Atmos")
+        XCTAssertTrue(audioLanguagesIn("🇮🇹 🇬🇧 multi").isSuperset(of: ["it", "en"]))
+    }
+
+    func testWatchedRoundTrip() {
+        let videos = (1...12).map { Video(id: "tt1:1:\($0)", title: "", season: 1, episode: $0, thumbnail: nil, overview: nil, released: nil) }
+        let item = Library.newItem(id: "tt1", type: "series", name: "X", poster: nil)
+        Library.markWatched(item, videos: videos, videoId: "tt1:1:3")
+        Library.markWatched(item, videos: videos, videoId: "tt1:1:10")
+        XCTAssertEqual(Library.watched(item, videos: videos), ["tt1:1:3", "tt1:1:10"])
+        XCTAssertTrue(item.state.string("watched").hasPrefix("tt1:1:10:10:"))
+    }
+
+    func testZlibMatchesStremio() {
+        // zlib (as stremio-core and Java write it) of the single byte 1: "eJxjBAAAAgAC"
+        let data = Data(base64Encoded: "eJxjBAAAAgAC")!
+        XCTAssertEqual(Library.inflate(data), Data([1]))
+        XCTAssertEqual(Library.deflate(Data([1])).flatMap(Library.inflate), Data([1]))
+    }
+
+    func testHomeRowsArrange() {
+        let none = HomeRows.arrange(available: ["a", "b", "c"], defaults: ["b"], saved: nil)
+        XCTAssertEqual(none.map(\.0), ["b", "a", "c"])
+        XCTAssertEqual(none.map(\.1), [true, false, false])
+        let saved = HomeRows.arrange(available: ["a", "b", "c", "d"], defaults: [], saved: [("c", true), ("x", true), ("a", false)])
+        XCTAssertEqual(saved.map(\.0), ["c", "a", "b", "d"])
+    }
+
+    func testCatalogRequiredGenre() {
+        let addon = Addon(["transportUrl": "https://addon.example/manifest.json", "manifest": [
+            "id": "x", "name": "X", "resources": ["catalog", "meta"], "types": ["movie"],
+            "catalogs": [["type": "movie", "id": "top", "name": "Top", "extra": [["name": "genre", "isRequired": true, "options": ["None", "Drama"]], ["name": "skip"]]],
+                         ["type": "movie", "id": "search", "extra": [["name": "search", "isRequired": true]]]],
+        ] as JSON])!
+        XCTAssertEqual(addon.catalogs.count, 1)
+        XCTAssertEqual(addon.catalogs[0].genres, ["Drama"])
+        XCTAssertTrue(addon.catalogs[0].pages)
+        XCTAssertEqual(addon.catalogs[0].required.first?.1, "None")
+    }
+
+    func testLanguages() {
+        XCTAssertEqual(Languages.code("eng"), "en")
+        XCTAssertEqual(Languages.code("pt_BR"), Languages.brazil)
+        XCTAssertEqual(Languages.code("French"), "fr")
+        XCTAssertEqual(Languages.match("en", "eng"), 2)
+    }
+}
