@@ -44,13 +44,17 @@ class PhoneActivity : Screen() {
 
     private lateinit var profile: Profile
     private var page = Page.HOME
-    private var generation = 0 // which page answers belong to: late ones from an earlier page are dropped
+    // Each page stays made once it has been opened, so going back to a tab shows it at once, posters and all.
+    private val pages = mutableMapOf<Page, LinearLayout>()
+    private val builds = mutableMapOf<Page, Int>() // which build of a page an answer belongs to: older ones are dropped
+    private val scrolledTo = mutableMapOf<Page, Int>()
+    private val framed = mutableMapOf<Page, Item>() // the title in each page's frame, whose art is behind it
+    private val refreshLibrary = mutableMapOf<Page, () -> Unit>()
     private var library: List<JSONObject> = emptyList()
     private val metas = mutableMapOf<String, Meta>()
-    private var refreshLibrary: (() -> Unit)? = null
 
     private lateinit var scroll: ScrollView
-    private lateinit var content: LinearLayout
+    private lateinit var host: FrameLayout
     private lateinit var wash: ImageView
     private val tabs = mutableMapOf<Page, LinearLayout>()
 
@@ -61,14 +65,11 @@ class PhoneActivity : Screen() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         profile = Profiles.active(this) ?: return switchProfile()
-        content = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(0, dp(TOP_BAR), 0, dp(TAB_BAR + 24))
-        }
+        host = FrameLayout(this)
         scroll = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
             isFocusable = false
-            addView(content, FrameLayout.LayoutParams(-1, -2))
+            addView(host, FrameLayout.LayoutParams(-1, -2))
         }
         wash = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         val fade = View(this).apply {
@@ -96,7 +97,7 @@ class PhoneActivity : Screen() {
     // Back from a title or the player: Continue Watching and My List show where things stand now.
     override fun onRestart() {
         super.onRestart()
-        refreshLibrary?.invoke()
+        refreshLibrary.values.forEach { it() }
     }
 
     override fun onResume() {
@@ -155,8 +156,10 @@ class PhoneActivity : Screen() {
         setOnClickListener { click() }
     }
 
+    // Soft: the bar fades up out of the page instead of starting at a hard line, and the open tab glows.
     private fun tabBar(): View = LinearLayout(this).apply {
-        background = GradientDrawable().apply { setColor(baseAt(0xF0)); setStroke(dp(1), GLASS_EDGE) }
+        background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(baseAt(0xFA), baseAt(0xEB), baseAt(0x00)))
+        setPadding(dp(8), dp(14), dp(8), dp(4))
         Page.entries.forEach { p ->
             val icon = ImageView(context).apply { setImageResource(p.icon); scaleType = ImageView.ScaleType.FIT_CENTER }
             val tab = LinearLayout(context).apply {
@@ -165,7 +168,7 @@ class PhoneActivity : Screen() {
                 contentDescription = p.label
                 addView(icon, LinearLayout.LayoutParams(dp(24), dp(24)))
                 addView(text(p.label, 12f, bold = true), wrap().apply { topMargin = dp(4) })
-                setOnClickListener { if (p != page) showPage(p) else scroll.smoothScrollTo(0, 0) }
+                setOnClickListener { if (p != page || pages[p] == null) showPage(p) else scroll.smoothScrollTo(0, 0) }
             }
             tabs[p] = tab
             addView(tab, LinearLayout.LayoutParams(0, -1, 1f))
@@ -176,23 +179,51 @@ class PhoneActivity : Screen() {
         val color = if (p == page) TUNGSTEN else TEXT_2
         (tab.getChildAt(0) as ImageView).setColorFilter(color)
         (tab.getChildAt(1) as TextView).setTextColor(color)
-        tab.background = if (p == page) GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(withAlpha(TUNGSTEN, 0x33), 0)) else null
+        tab.background = if (p == page) GradientDrawable().apply {
+            gradientType = GradientDrawable.RADIAL_GRADIENT
+            gradientRadius = dp(44).toFloat()
+            setGradientCenter(0.5f, 0.4f)
+            colors = intArrayOf(withAlpha(TUNGSTEN, 0x38), withAlpha(TUNGSTEN, 0x00))
+        } else null
     }
 
     // ---------- pages ----------
 
-    private fun showPage(p: Page) {
-        android.util.Log.d("CanopyPhone", "showPage $p", Throwable("who"))
+    /** Opens [p] as it was left, or makes it the first time (and again with [remake]). */
+    private fun showPage(p: Page, remake: Boolean = false) {
+        if (pages[page]?.visibility == View.VISIBLE) scrolledTo[page] = scroll.scrollY
         page = p
-        val g = ++generation
         styleTabs()
-        content.removeAllViews()
+        pages.values.forEach { it.visibility = View.GONE }
+        val kept = pages[p]?.takeIf { !remake }
+        if (kept != null) {
+            kept.visibility = View.VISIBLE
+            val y = scrolledTo[p] ?: 0
+            scroll.scrollTo(0, y)
+            scroll.post { scroll.scrollTo(0, y) }
+            wash.translationY = -y.toFloat()
+            framed[p]?.let { showBackdrop(it, p) } ?: wash.animate().alpha(0f).setDuration(Motion.QUICK).start()
+            return
+        }
+        pages.remove(p)?.let { host.removeView(it) }
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(TOP_BAR), 0, dp(TAB_BAR + 24))
+        }
+        pages[p] = content
+        host.addView(content, FrameLayout.LayoutParams(-1, -2))
         scroll.scrollTo(0, 0)
+        scrolledTo[p] = 0
+        framed.remove(p)
         wash.translationY = 0f
         wash.animate().alpha(0f).setDuration(Motion.QUICK).start()
-        refreshLibrary = null
+        val g = (builds[p] ?: 0) + 1
+        builds[p] = g
+        fun current() = builds[p] == g
+        refreshLibrary.remove(p)
         val key = profile.authKey
+        fun slot() = FrameLayout(this).also { content.addView(it, LinearLayout.LayoutParams(-1, -2)) }
+        fun failed(error: Throwable) = failedToLoad(error, content)
         val carouselSlot = slot()
         val rowsSlot = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(rowsSlot, LinearLayout.LayoutParams(-1, -2))
@@ -201,7 +232,7 @@ class PhoneActivity : Screen() {
         if (p == Page.HOME || p == Page.LIST) {
             var shown: String? = null
             fun show(list: List<JSONObject>) {
-                if (g != generation) return
+                if (!current()) return
                 library = list
                 val items = if (p == Page.HOME) {
                     val cw = Library.continueWatching(list)
@@ -217,21 +248,21 @@ class PhoneActivity : Screen() {
                 } else if (items.isNotEmpty()) {
                     carouselFrom = "library"
                     carouselSlot.removeAllViews()
-                    carouselSlot.addView(carousel("Continue watching", items.map(::libraryItem)), FrameLayout.LayoutParams(-1, -2))
+                    carouselSlot.addView(carousel("Continue watching", items.map(::libraryItem), p), FrameLayout.LayoutParams(-1, -2))
                 }
             }
             background({ Stremio.savedLibrary(key) }) { r -> r.getOrNull()?.let(::show) }
             fun ask() = background({ Stremio.library(key) }) { r ->
-                r.fold(::show) { e -> if (shown == null && g == generation) failedToLoad(e) }
+                r.fold(::show) { e -> if (shown == null && current()) failed(e) }
             }
             ask()
-            refreshLibrary = ::ask
+            refreshLibrary[p] = ::ask
         }
         if (p == Page.LIST) return
 
         var built = false
         fun build(addons: List<Addon>) {
-            if (built || g != generation) return
+            if (built || !current()) return
             built = true
             val all = addons.flatMap { it.catalogs }
             // Home has the rows chosen in Settings; with none chosen, the add-ons' first film and show catalogs.
@@ -249,14 +280,14 @@ class PhoneActivity : Screen() {
                 val slot = FrameLayout(this).also { rowsSlot.addView(it, LinearLayout.LayoutParams(-1, -2)) }
                 val name = rowName(c, p)
                 fun place(metas: List<Meta>) {
-                    if (g != generation) return
+                    if (!current()) return
                     val items = metas.filterNot { isAddonMessage(it.name) }.distinctBy { it.id }.take(ROW_MAX).map(::metaItem)
                     if (items.isEmpty()) return
                     // Shows and Movies open on their first catalog; Home on it only while nothing is in progress.
                     if (i == 0 && (carouselFrom == null || carouselFrom == c.id)) {
                         carouselFrom = c.id
                         carouselSlot.removeAllViews()
-                        carouselSlot.addView(carousel(name, items), FrameLayout.LayoutParams(-1, -2))
+                        carouselSlot.addView(carousel(name, items, p), FrameLayout.LayoutParams(-1, -2))
                         if (p != Page.HOME) return
                     }
                     slot.removeAllViews()
@@ -272,7 +303,7 @@ class PhoneActivity : Screen() {
             }
         }
         background({ Stremio.savedAddons(key) }) { r -> r.getOrNull()?.let(::build) }
-        background({ Stremio.addons(key, refresh = true) }) { r -> r.fold(::build) { e -> if (!built && g == generation) failedToLoad(e) } }
+        background({ Stremio.addons(key, refresh = true) }) { r -> r.fold(::build) { e -> if (!built && current()) failed(e) } }
     }
 
     /** Shows' and Movies' first catalogs, fetched while Home shows: their tabs then open with posters, not grey boxes. */
@@ -286,9 +317,7 @@ class PhoneActivity : Screen() {
         }) {}
     }
 
-    private fun slot() = FrameLayout(this).also { content.addView(it, LinearLayout.LayoutParams(-1, -2)) }
-
-    private fun failedToLoad(error: Throwable) {
+    private fun failedToLoad(error: Throwable, content: LinearLayout) {
         if ((error as? Stremio.ApiException)?.code == Stremio.NO_SESSION) {
             Profiles.markSignedOut(this, profile.id)
             startActivity(Intent(this, ProfilesActivity::class.java).putExtra("signIn", profile.id)
@@ -298,7 +327,7 @@ class PhoneActivity : Screen() {
         if (content.findViewWithTag<View>("failed") != null) return
         content.addView(column(Gravity.START,
             text("Couldn't reach Stremio. Check the phone's connection.", BODY_SP, color = TEXT_2),
-            button("Try again", primary = false) { showPage(page) }.apply { layoutParams = LinearLayout.LayoutParams(dp(160), dp(TOUCH)).apply { topMargin = dp(14) } },
+            button("Try again", primary = false) { showPage(page, remake = true) }.apply { layoutParams = LinearLayout.LayoutParams(dp(160), dp(TOUCH)).apply { topMargin = dp(14) } },
         ).apply { tag = "failed"; setPadding(dp(20), dp(24), dp(20), 0) }, 0)
     }
 
@@ -316,7 +345,7 @@ class PhoneActivity : Screen() {
      * One big poster in a fixed frame in the middle; the posters either side slide through the frame as the finger
      * moves, and stop with one in it. The framed title's name, facts and Resume (or Play) sit under it.
      */
-    private fun carousel(title: String, items: List<Item>): View {
+    private fun carousel(title: String, items: List<Item>, p: Page): View {
         val cardW = dp(CAROUSEL_W)
         val cardH = cardW * 3 / 2
         val gap = dp(14)
@@ -351,8 +380,9 @@ class PhoneActivity : Screen() {
             go.setOnClickListener { if (item.resume || item.type != "series") play(item) else openDetails(item) }
             go.setOnLongClickListener { play(item, pick = true); true }
             info.setOnClickListener { openDetails(item) }
-            showBackdrop(item)
-            fill(item) { if (selected == i) { facts.text = item.facts; showBackdrop(item) } }
+            framed[p] = item
+            showBackdrop(item, p)
+            fill(item) { if (selected == i) { facts.text = item.facts; showBackdrop(item, p) } }
             items.getOrNull(i + 1)?.let { fill(it) {} }
         }
 
@@ -381,7 +411,6 @@ class PhoneActivity : Screen() {
             var flung = false
             override fun fling(velocityX: Int) { flung = true; settle(velocityX) }
             override fun onTouchEvent(ev: MotionEvent): Boolean {
-                if (ev.actionMasked != MotionEvent.ACTION_MOVE) android.util.Log.d("CanopyPhone", "strip ${ev.actionMasked} x=${ev.x} scroll=$scrollX")
                 if (ev.actionMasked == MotionEvent.ACTION_DOWN) flung = false
                 val used = super.onTouchEvent(ev)
                 if ((ev.actionMasked == MotionEvent.ACTION_UP || ev.actionMasked == MotionEvent.ACTION_CANCEL) && !flung) settle(0)
@@ -439,12 +468,13 @@ class PhoneActivity : Screen() {
         return block
     }
 
-    private fun showBackdrop(item: Item) {
+    private fun showBackdrop(item: Item, p: Page) {
+        if (p != page) return
         val url = item.art ?: Images.backgroundFor(item.id) ?: item.poster
-        if (wash.tag == url) return
+        if (wash.tag == url && wash.drawable != null) { wash.animate().alpha(WASH).setDuration(Motion.QUICK).start(); return }
         wash.animate().cancel()
         wash.alpha = 0f
-        Images.load(url, wash, screenW) { wash.animate().alpha(0.55f).setDuration(Motion.STANDARD).start() }
+        Images.load(url, wash, screenW) { wash.animate().alpha(WASH).setDuration(Motion.STANDARD).start() }
     }
 
     // ---------- rows and the grid ----------
@@ -551,7 +581,7 @@ class PhoneActivity : Screen() {
             result.fold({
                 Settings.setHidden(this, Settings.hidden(this).put(item.id, JSONObject().put("name", item.name).put("timeOffset", offset)))
                 HomeRows.pin(this, item.id, false)
-                if (page == Page.HOME) showPage(Page.HOME)
+                if (page == Page.HOME) showPage(Page.HOME, remake = true) else pages.remove(Page.HOME)?.let { host.removeView(it) }
             }) { if (!isFinishing) choose("Couldn't remove it", listOf("OK"), "Check the connection and try again.") { } }
         }
     }
@@ -607,6 +637,7 @@ class PhoneActivity : Screen() {
         const val BACKDROP_H = 560
         const val MAX_ROWS = 14
         const val HOME_FALLBACK = 6
+        const val WASH = 0.55f // the framed title's art behind the page
         const val ROW_MAX = 40
         const val BODY_SP = 15f
         const val SMALL_SP = 13f
