@@ -39,6 +39,10 @@ jobs:
           for t in movie/tt0111161 show/tt0903747; do
             curl -s "https://api.mdblist.com/imdb/$t?apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); print('$t', d.get('title'), {r['source']: r.get('value') for r in d.get('ratings', []) if r['source'] in ('imdb','tomatoes','popcorn')})"
           done
+          # Posters ask in batches of up to 100: check that answer's shape too.
+          curl -s -X POST -H 'Content-Type: application/json' -d '{"ids":["tt0111161","tt0068646"]}' \
+            "https://api.mdblist.com/imdb/movie/?apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(type(d).__name__, [(x.get('ids',{}).get('imdb'), {r['source']: r.get('value') for r in x.get('ratings', []) if r['source'] in ('imdb','tomatoes','popcorn')}) for x in (d if isinstance(d,list) else [d])][:3]); print(str(d)[:300] if not isinstance(d,list) else '')"
+          curl -s -D - -o /dev/null "https://api.mdblist.com/imdb/movie/tt0111161?apikey=$MDBLIST_API_KEY" | grep -i 'ratelimit\|x-rate' || true
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
       - name: Debug APK
