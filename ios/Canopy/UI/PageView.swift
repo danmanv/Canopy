@@ -55,7 +55,7 @@ struct PageView: View {
             .padding(.bottom, 110)
         }
         .coordinateSpace(name: "page")
-        .onPreferenceChange(OffsetKey.self) { scrolled = $0 }
+        .onPreferenceChange(OffsetKey.self) { y in if #unavailable(iOS 18.0) { scrolled = y + 58 } }
         .modifier(ScrollOffset(offset: $scrolled))
         .refreshable { await model.refresh(); rows = [:]; asked = []; load() }
         .background(alignment: .top) {
