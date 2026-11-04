@@ -31,6 +31,14 @@ jobs:
           echo "$CANOPY_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/canopy-release.jks"
           echo "CANOPY_KEYSTORE=$RUNNER_TEMP/canopy-release.jks" >> "$GITHUB_ENV"
           echo "KEY_FLAG=-PreleaseKey" >> "$GITHUB_ENV"
+      # Proves the MDBList key works: the Rotten Tomatoes and IMDb scores for one film and one show (never the key).
+      - name: Check Rotten Tomatoes scores
+        if: env.MDBLIST_API_KEY != ''
+        continue-on-error: true
+        run: |
+          for t in movie/tt0111161 show/tt0903747; do
+            curl -s "https://api.mdblist.com/imdb/$t?apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); print('$t', d.get('title'), {r['source']: r.get('value') for r in d.get('ratings', []) if r['source'] in ('imdb','tomatoes','popcorn')})"
+          done
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
       - name: Debug APK
