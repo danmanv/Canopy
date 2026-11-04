@@ -51,7 +51,14 @@ class Device private constructor(val hevc: Boolean, val av1: Boolean, val dolbyV
             @Suppress("DEPRECATION")
             val hdr = display.hdrCapabilities?.supportedHdrTypes?.isNotEmpty() == true
             // The biggest mode the TV offers, not the one in use: the launcher often runs at 1080p on a 4K panel.
-            val height = display.supportedModes.maxOf { minOf(it.physicalWidth, it.physicalHeight) }
+            // Some TVs list only the 1080p mode the launcher runs in, which put every 4K release under the 1080p ones. An
+            // HDR screen with a 4K decoder is taken as 4K. ponytail: guesses a 1080p HDR panel with a 4K decoder wrong.
+            val uhdDecoder = decoders.any { c ->
+                c.supportedTypes.any { it.equals("video/hevc", true) } &&
+                    c.getCapabilitiesForType("video/hevc").videoCapabilities?.isSizeSupported(3840, 2160) == true
+            }
+            val modes = display.supportedModes.maxOf { minOf(it.physicalWidth, it.physicalHeight) }
+            val height = if (modes < 2160 && hdr && uhdDecoder) 2160 else modes
             Device("video/hevc" in types, "video/av01" in types, dv5, hdr, height)
                 .also { known = it }
         }

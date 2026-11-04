@@ -1,6 +1,7 @@
 package dev.alder
 
 import android.content.Context
+import android.os.Handler
 import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Color
@@ -33,6 +34,10 @@ import androidx.media3.datasource.HttpDataSource
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlaybackException
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.Renderer
+import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
+import androidx.media3.exoplayer.video.MediaCodecVideoRenderer
+import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.exoplayer.audio.AudioSink
@@ -166,6 +171,21 @@ class PlayerActivity : Screen() {
         // (DTS-HD, TrueHD) they then can't open, and playback dies. A track that fails is swapped (onPlayerError).
         val passthrough = Settings.passthrough(this)
         val renderers = object : DefaultRenderersFactory(this) {
+            override fun buildVideoRenderers(context: Context, extensionRendererMode: Int, mediaCodecSelector: MediaCodecSelector,
+                enableDecoderFallback: Boolean, eventHandler: Handler, eventListener: VideoRendererEventListener,
+                allowedVideoJoiningTimeMs: Long, out: ArrayList<Renderer>) {
+                super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector, enableDecoderFallback, eventHandler,
+                    eventListener, allowedVideoJoiningTimeMs, out)
+                // Dolby Vision profile 7 the TV can't take plays as HDR10 (see BaseLayerVideoRenderer).
+                val i = out.indexOfFirst { it is MediaCodecVideoRenderer }
+                if (i >= 0) out[i] = baseLayerRenderer(context) {
+                    it.setCodecAdapterFactory(codecAdapterFactory).setMediaCodecSelector(mediaCodecSelector)
+                        .setAllowedJoiningTimeMs(allowedVideoJoiningTimeMs).setEnableDecoderFallback(enableDecoderFallback)
+                        .setEventHandler(eventHandler).setEventListener(eventListener)
+                        .setMaxDroppedFramesToNotify(DefaultRenderersFactory.MAX_DROPPED_VIDEO_FRAME_COUNT_TO_NOTIFY)
+                }
+            }
+
             override fun buildAudioSink(context: Context, enableFloatOutput: Boolean, enableAudioTrackPlaybackParams: Boolean): AudioSink =
                 if (passthrough) DefaultAudioSink.Builder(context).build() else
                 object : ForwardingAudioSink(DefaultAudioSink.Builder(context).build()) {

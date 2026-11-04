@@ -311,7 +311,7 @@ class SearchActivity : Screen() {
             setOnClickListener { input.requestFocus() }
         }
         nav.addView(searchTab, LinearLayout.LayoutParams(dp(44), dp(30)))
-        listOf("Home", "Shows", "Movies", "My List").forEach { page ->
+        listOf("Home", "Movies", "Shows", "My List").forEach { page ->
             nav.addView(tab(page, open = false).apply {
                 setOnClickListener {
                     startActivity(Intent(this@SearchActivity, MainActivity::class.java)

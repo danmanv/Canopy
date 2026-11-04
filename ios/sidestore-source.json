@@ -1,0 +1,32 @@
+{
+  "name": "Canopy",
+  "identifier": "dev.canopy.source",
+  "subtitle": "Canopy for iPhone and iPad",
+  "iconURL": "https://raw.githubusercontent.com/danmanv/Canopy/main/app/src/main/res/drawable-nodpi/logo_transparent.png",
+  "tintColor": "#FF8A1F",
+  "apps": [
+    {
+      "name": "Canopy",
+      "bundleIdentifier": "dev.canopy.ios",
+      "developerName": "danmanv",
+      "subtitle": "Your Stremio, on iPhone and iPad",
+      "localizedDescription": "Canopy for iPhone and iPad: your Stremio account, add-ons, Continue Watching and My List, with a player that plays MKV, HEVC and every audio and subtitle track.",
+      "iconURL": "https://raw.githubusercontent.com/danmanv/Canopy/main/app/src/main/res/drawable-nodpi/logo_transparent.png",
+      "tintColor": "#FF8A1F",
+      "category": "entertainment",
+      "versions": [
+        {
+          "version": "@VERSION@",
+          "buildVersion": "@BUILD@",
+          "date": "@DATE@",
+          "localizedDescription": "Test build from @BRANCH@.",
+          "downloadURL": "@URL@",
+          "size": @SIZE@,
+          "minOSVersion": "17.0"
+        }
+      ],
+      "appPermissions": { "entitlements": [], "privacy": {} }
+    }
+  ],
+  "news": []
+}

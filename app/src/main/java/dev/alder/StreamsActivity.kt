@@ -335,9 +335,9 @@ open class StreamsActivity : Screen() {
     /**
      * The order to try sources in: when the player asked for a lower quality, the tallest that's left first; then the
      * file played last time for this video (debrid links expire, so the link is fresh but the release is the same), then
-     * the release the previous episode used (AIOStreams' bingeGroup), then the addon's own order, with releases above the
-     * screen's resolution or HDR on a screen without it moved down, 3D and hard-coded subtitles last, and then Settings'
-     * stream preferences. The sort is stable, so ties keep the addon's order.
+     * the release the previous episode used (AIOStreams' bingeGroup), then the addon's own order, with 3D and hard-coded
+     * subtitles last, sources that name no file size after those that do, releases above the screen's resolution or HDR
+     * on a screen without it moved down, and then Settings' stream preferences. The sort is stable, so ties keep the addon's order.
      */
     private fun rank(streams: List<Stream>, videoId: String): List<Stream> {
         val prefs = getSharedPreferences("sources", MODE_PRIVATE)
@@ -355,6 +355,7 @@ open class StreamsActivity : Screen() {
             .thenByDescending { binge != null && it.bingeGroup == binge }
             .thenBy { it.awkward }
             .thenBy { it.dolbyVisionOnly && !tv.dolbyVision } // may show no picture (or purple and green) here: last
+            .thenBy { it.size <= 0L } // a source that names no size is often a stub or the wrong video: after those that do
             .thenByDescending { it.fit(tv) }
             .thenByDescending(prefer))
     }

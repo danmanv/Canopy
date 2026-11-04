@@ -243,8 +243,9 @@ class DetailsActivity : Screen() {
     private lateinit var whereLine: TextView
     private lateinit var progressSlot: FrameLayout
     private lateinit var startOverButton: TextView
+    private lateinit var chooseButton: TextView
 
-    /** Where you are, then the main action and three small glass controls. */
+    /** Where you are, then the main action and four small glass controls (Choose stream, Start over, My List, Info). */
     private fun addWatch(m: Meta, stack: LinearLayout) {
         whereLine = text("", SMALL, bold = true).onArt().apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
         stack.addView(whereLine.marginTop(16))
@@ -254,9 +255,11 @@ class DetailsActivity : Screen() {
         fun target() = playTarget(meta)?.first ?: metaId
         playButton = pill("Play", R.drawable.ic_play).apply {
             setOnClickListener { openSources(target(), startOver = false) }
-            // Held OK: every source, to choose one by hand.
+            // Held OK: every source, to choose one by hand (the same as Choose stream beside it).
             setOnLongClickListener { openSources(target(), startOver = false, pick = true); true }
         }
+        // Play picks the best source by itself; this lists them all for the episode or film Play would open.
+        chooseButton = iconButton(R.drawable.ic_sources, "Choose stream") { openSources(target(), startOver = false, pick = true) }
         startOverButton = iconButton(R.drawable.ic_restart, "Start over") { openSources(target(), startOver = true) }
         infoButton = iconButton(R.drawable.ic_info, "More info") { showInfo() }
         listButton = iconButton(R.drawable.ic_add, "Add to My List") { toggleList() }
@@ -264,6 +267,7 @@ class DetailsActivity : Screen() {
             clipChildren = false
             gravity = Gravity.CENTER_VERTICAL
             addView(playButton, wrap().apply { marginEnd = dp(14) })
+            addView(cell(chooseButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
             addView(cell(startOverButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
             addView(cell(listButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)).apply { marginEnd = dp(10) })
             addView(cell(infoButton), LinearLayout.LayoutParams(dp(ICON_BUTTON), dp(ICON_BUTTON)))
@@ -470,26 +474,48 @@ class DetailsActivity : Screen() {
             if (started) words.addView(progressBar(resumeAt.toFloat() / duration),
                 LinearLayout.LayoutParams(dp(300), dp(3)).apply { topMargin = dp(8) })
             row.addView(words, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(16) })
+            val next = videos.getOrNull(videos.indexOf(video) + 1)?.id
+            fun choose() = openSources(video.id, startOver = false, next = next,
+                label = "S${video.season} E${video.episode}", pick = true)
+            // Choose stream for this episode: shown on the lit row, one press Right away; OK on the row still plays.
+            val chip = chooseChip { choose() }
+            row.addView(chip, LinearLayout.LayoutParams(-2, dp(40)).apply { marginStart = dp(16) })
+            fun lit() { chip.alpha = if (row.hasFocus() || row.isFocused) 1f else 0f }
             row.isFocusable = true; row.isFocusableInTouchMode = true
             row.setOnFocusChangeListener { v, has ->
                 v.background = if (!has) null else GradientDrawable().apply {
                     setColor(0x14FFFFFF); setStroke(dp(2), TUNGSTEN); cornerRadius = dp(CORNER).toFloat()
                 }
+                lit()
             }
+            chip.setOnFocusChangeListener { _, _ -> chip.background = chipFace(chip.isFocused); row.post { lit() } }
             row.setOnClickListener {
-                val next = videos.getOrNull(videos.indexOf(video) + 1)?.id
                 openSources(video.id, startOver = false, next = next, label = "S${video.season} E${video.episode}")
             }
-            row.setOnLongClickListener {
-                val next = videos.getOrNull(videos.indexOf(video) + 1)?.id
-                openSources(video.id, startOver = false, next = next,
-                    label = "S${video.season} E${video.episode}", pick = true)
-                true
-            }
+            row.setOnLongClickListener { choose(); true }
             guideRows.addView(row, LinearLayout.LayoutParams(-1, -2))
             row
         }
     }
+
+    /** The episode row's Choose stream: soft glass, a Tangerine rim when lit; hidden until its row is. */
+    private fun chooseChip(action: () -> Unit) = text("Choose stream", SMALL, bold = true, color = TEXT).apply {
+        isFocusable = true
+        alpha = 0f
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), 0, dp(14), 0)
+        compoundDrawablePadding = dp(8)
+        setCompoundDrawablesRelative(getDrawable(R.drawable.ic_sources)?.mutate()?.apply {
+            setBounds(0, 0, dp(16), dp(16)); setTint(TEXT)
+        }, null, null, null)
+        background = chipFace(false)
+        setOnClickListener { action() }
+    }
+
+    private fun chipFace(focused: Boolean): android.graphics.drawable.Drawable =
+        if (!focused) glass(CORNER) else GradientDrawable().apply {
+            setColor(GLASS_FOCUSED); setStroke(dp(2), TUNGSTEN); cornerRadius = dp(CORNER).toFloat()
+        }
 
     private fun showGuide() {
         if (!::guide.isInitialized || guideOpen) return
@@ -717,9 +743,21 @@ class DetailsActivity : Screen() {
                     KeyEvent.KEYCODE_DPAD_DOWN -> { episodeRows.firstOrNull()?.requestFocus(); return true }
                     KeyEvent.KEYCODE_DPAD_UP -> return true
                 }
+                val chipAt = episodeRows.indexOfFirst { it.isFocused.not() && it.hasFocus() }
+                if (chipAt >= 0) when (event.keyCode) {
+                    // On a row's Choose stream: Left goes back to the row, Up and Down to the next rows' Choose stream.
+                    KeyEvent.KEYCODE_DPAD_LEFT -> { episodeRows[chipAt].requestFocus(); return true }
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> return true
+                    KeyEvent.KEYCODE_DPAD_UP -> {
+                        if (chipAt == 0) seasonButtons[selectedSeason]?.requestFocus() else chipOf(chipAt - 1)?.requestFocus()
+                        return true
+                    }
+                    KeyEvent.KEYCODE_DPAD_DOWN -> { chipOf(chipAt + 1)?.requestFocus(); return true }
+                }
                 val at = episodeRows.indexOf(focused)
                 if (at >= 0) when (event.keyCode) {
-                    KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT -> return true
+                    KeyEvent.KEYCODE_DPAD_RIGHT -> { chipOf(at)?.requestFocus(); return true }
+                    KeyEvent.KEYCODE_DPAD_LEFT -> return true
                     KeyEvent.KEYCODE_DPAD_UP -> if (at == 0) { seasonButtons[selectedSeason]?.requestFocus(); return true }
                     KeyEvent.KEYCODE_DPAD_DOWN -> if (at == episodeRows.lastIndex) return true
                 }
@@ -747,6 +785,8 @@ class DetailsActivity : Screen() {
         if (velocityY > 0 && similarOpen) { hideSimilar(); return true }
         return false
     }
+
+    private fun chipOf(row: Int) = (episodeRows.getOrNull(row) as? android.view.ViewGroup)?.let { it.getChildAt(it.childCount - 1) }
 
     override fun onBackPressed() {
         when {

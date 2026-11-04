@@ -1,0 +1,9 @@
+Canopy.xcodeproj/
+Canopy.xcworkspace/
+Pods/
+Podfile.lock
+build/
+build-tests/
+Payload/
+*.ipa
+source.json
