@@ -250,31 +250,31 @@ class ProfilesActivity : Screen() {
         val previewName = text(p.name, BODY, bold = true).apply { gravity = Gravity.CENTER }
         val avatar = onboardingAvatar(p.name.firstOrNull()?.uppercase().orEmpty(), 100, p.color)
         val error = text("", SMALL, color = TUNGSTEN)
-        val (name, keyboard, firstKey) = nameEntry(p.name) { typed ->
+        val entry = nameEntry(p.name) { typed ->
             previewName.text = typed
             avatar.text = typed.firstOrNull()?.uppercase().orEmpty()
             error.text = ""
         }
         val save = onboardingButton("Save")
         val go = {
-            name.text.toString().trim().takeIf { it.isNotEmpty() }
+            entry.input.text.toString().trim().takeIf { it.isNotEmpty() }
                 ?.let { Profiles.update(this, p.id, name = it); showPicker() }
                 ?: run { error.text = "Enter a name to save." }
         }
-        name.setOnEditorActionListener { _, _, _ -> go(); true }
+        entry.input.setOnEditorActionListener { _, _, _ -> go(); true }
         save.setOnClickListener { go() }
         val copy = column(Gravity.START,
             text("Rename ${p.name}", SERIF_TITLE, serif = true),
             text("History and add-ons stay as they are.", BODY, color = TEXT_2).marginTop(4),
-            name.apply { layoutParams = LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(16) } },
-            keyboard.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) } },
-            error.marginTop(5),
-            save.marginTop(7),
+            entry.field.apply { layoutParams = LinearLayout.LayoutParams(dp(FIELD_W), -2).apply { topMargin = dp(22) } },
+            entry.keyboard.apply { layoutParams = LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) } },
+            error.marginTop(6),
+            save.marginTop(10),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
         val preview = column(Gravity.CENTER, avatar, previewName.marginTop(16)).apply { gravity = Gravity.CENTER }
-        setWindowed(onboardingFrame("", copy, preview, dp(65), 1.05f, 0.95f), onboardingBackdrop())
+        setWindowed(onboardingFrame("", copy, preview, dp(40), 1.1f, 0.9f), onboardingBackdrop())
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        firstKey.requestFocus()
+        entry.firstKey.requestFocus()
     }
 
     /**
@@ -361,93 +361,152 @@ class ProfilesActivity : Screen() {
         signingIn = false
         waitingCode = null
         val first = Profiles.all(this).isEmpty()
-        val previewName = text(draftName, BODY, bold = true).apply { gravity = Gravity.CENTER }
-        val avatar = onboardingAvatar(draftName.firstOrNull()?.uppercase().orEmpty(), 100, draftColor)
+        val previewName = text(draftName, NAME_SP, serif = true).onArt().apply { gravity = Gravity.CENTER; maxLines = 1 }
+        val avatar = onboardingAvatar(draftName.firstOrNull()?.uppercase().orEmpty(), PREVIEW, draftColor)
         val error = text("", SMALL, color = TUNGSTEN)
-        val (name, keyboard, firstKey) = nameEntry(draftName) { typed ->
+        val entry = nameEntry(draftName) { typed ->
             previewName.text = typed
             avatar.text = typed.firstOrNull()?.uppercase().orEmpty()
             error.text = ""
         }
-        val next = onboardingButton("Continue    →")
+        val next = text("Continue    →", BODY, bold = true).onArt().apply {
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(6), dp(4), dp(8))
+            lineKey(this)
+        }
         val go = {
-            name.text.toString().trim().takeIf { it.isNotEmpty() }?.replaceFirstChar { it.titlecase() }
+            entry.input.text.toString().trim().takeIf { it.isNotEmpty() }?.replaceFirstChar { it.titlecase() }
                 ?.let { draftName = it; showSignIn(it) }
                 ?: run { error.text = "Enter a name to continue." }
         }
-        name.setOnEditorActionListener { _, _, _ -> go(); true }
+        entry.input.setOnEditorActionListener { _, _, _ -> go(); true }
         next.setOnClickListener { go() }
-        val swatches = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        val marks = mutableListOf<TextView>()
+
+        // Portrait colour: each colour by its name over a bar of it. The chosen one keeps the accent line under its
+        // name, as the open page does in the top menu; the remote's one gets the white line.
+        val swatches = LinearLayout(this).apply { gravity = Gravity.CENTER }
+        val words = mutableListOf<TextView>()
+        fun paint() = words.forEachIndexed { i, word ->
+            val chosen = Profiles.COLORS[i] == draftColor
+            word.setTextColor(if (word.hasFocus() || chosen) TEXT else TEXT_2)
+            word.background = when {
+                word.hasFocus() -> lineUnder(TEXT)
+                chosen -> lineUnder(TUNGSTEN)
+                else -> null
+            }
+        }
         Profiles.COLORS.forEachIndexed { index, color ->
-            val mark = text(if (draftColor == color) "✓" else "", SMALL, bold = true, color = BASE).apply {
+            val word = text(Profiles.COLOR_NAMES[index], SMALL, color = TEXT_2).onArt().apply {
                 gravity = Gravity.CENTER
                 isFocusable = true
-                fun face(focused: Boolean) = GradientDrawable().apply {
-                    cornerRadius = dp(CORNER).toFloat(); setColor(color)
-                    if (focused) setStroke(dp(2), TEXT)
-                }
-                background = face(false)
-                setOnFocusChangeListener { view, focused -> view.background = face(focused) }
+                setPadding(0, dp(2), 0, dp(7))
+                setOnFocusChangeListener { _, _ -> paint() }
                 setOnClickListener {
                     draftColor = color
-                    avatar.background = GradientDrawable().apply { cornerRadius = dp(minOf(PORTRAIT_R, CORNER)).toFloat(); setColor(color) }
-                    marks.forEachIndexed { i, view -> view.text = if (i == index) "✓" else "" }
+                    avatar.background = GradientDrawable().apply { cornerRadius = dp(CORNER).toFloat(); setColor(color) }
+                    paint()
                 }
             }
-            marks += mark
-            swatches.addView(mark, LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(8) })
+            words += word
+            swatches.addView(column(Gravity.CENTER,
+                word,
+                View(this).apply { background = rounded(color, 1) }.also {
+                    it.layoutParams = LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(6) }
+                },
+            ), LinearLayout.LayoutParams(-2, -2).apply { if (index > 0) marginStart = dp(16) })
         }
+        paint()
+
         val copy = column(Gravity.START,
-            text(if (first) "Welcome to Canopy" else "New profile", SERIF_TITLE, serif = true),
-            text("Give this profile a name and colour.", BODY, color = TEXT_2).marginTop(4),
-            name.apply { layoutParams = LinearLayout.LayoutParams(-1, dp(38)).apply { topMargin = dp(16) } },
-            keyboard.apply { layoutParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) } },
-            caps("Portrait colour", TUNGSTEN).marginTop(13),
-            swatches.marginTop(7),
-            error.marginTop(5),
-            next.marginTop(7),
+            text(if (first) "Welcome to Canopy" else "Who's this for?", SERIF_TITLE, serif = true).onArt(),
+            text("A name and a portrait colour. You can change both later.", BODY, color = TEXT_2).onArt().marginTop(4),
+            entry.field.apply { layoutParams = LinearLayout.LayoutParams(dp(FIELD_W), -2).apply { topMargin = dp(22) } },
+            entry.keyboard.apply { layoutParams = LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) } },
+            error.marginTop(6),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
         val preview = column(Gravity.CENTER,
             avatar,
-            previewName.marginTop(16),
+            previewName.marginTop(14),
+            caps("Portrait colour", Theme.now.second).marginTop(24),
+            swatches.marginTop(10),
+            next.marginTop(28),
         ).apply { gravity = Gravity.CENTER }
-        val content = onboardingFrame(if (first) "step 1 of 2" else "step 1 of 3", copy, preview, dp(65), 1.05f, 0.95f)
+        val content = onboardingFrame(if (first) "step 1 of 2" else "step 1 of 3", copy, preview, dp(40), 1.1f, 0.9f)
         setWindowed(content, onboardingBackdrop())
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        firstKey.requestFocus()
+        entry.firstKey.requestFocus()
     }
 
+    /** A line under a word, Light line: white under the remote's word, the accent under a chosen one. Square ends. */
+    private fun lineUnder(color: Int, inset: Int = 0) = android.graphics.drawable.LayerDrawable(arrayOf(
+        GradientDrawable().apply { setColor(color) })).apply {
+        setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL)
+        setLayerHeight(0, dp(2))
+        setLayerInsetLeft(0, dp(inset))
+        setLayerInsetRight(0, dp(inset))
+    }
+
+    /** A word or letter with no tile: bright and glowing over a white line while the remote is on it. */
+    private fun lineKey(view: TextView, inset: Int = 0, rest: Int = view.currentTextColor) {
+        view.isFocusable = true
+        view.setOnFocusChangeListener { _, has ->
+            view.setTextColor(if (has) TEXT else rest)
+            if (has) view.setShadowLayer(dp(10).toFloat(), 0f, 0f, 0x99FFFFFF.toInt()) else view.onArt()
+            view.background = if (has) lineUnder(TEXT, inset) else null
+        }
+    }
+
+    private class NameEntry(val input: EditText, val field: View, val keyboard: View, val firstKey: View)
+
     /**
-     * The name box and its remote keyboard: letters, a one-shot ⇧ (on while the box is empty, so names start with a
-     * capital), space, ⌫ and the system keyboard. [changed] gets the text after every edit.
+     * The name in large type over a glowing accent line (no box), and the remote's keyboard under it: the letters in a
+     * grid with no key tiles, then ⇧ (one-shot, on while the name is empty so it starts with a capital), Space and the
+     * phone's keyboard as words. [changed] gets the text after every edit.
      */
-    private fun nameEntry(initial: String, changed: (String) -> Unit): Triple<EditText, View, View> {
+    private fun nameEntry(initial: String, changed: (String) -> Unit): NameEntry {
         val name = EditText(this).apply {
-            hint = "Your name"
-            textSize = BODY
+            hint = "Name"
+            textSize = TYPED_SP
+            typeface = text("", TYPED_SP, serif = true).typeface
             setTextColor(TEXT)
             setHintTextColor(TEXT_3)
-            setPadding(dp(14), 0, dp(14), 0)
-            background = glass(8)
-            setOnFocusChangeListener { v, has -> v.background = glass(8, has) }
+            setPadding(0, 0, dp(5), 0)
+            background = null
             setSingleLine()
             showSoftInputOnFocus = false
             imeOptions = EditorInfo.IME_ACTION_DONE
             setText(initial)
             setSelection(initial.length)
+            onArt()
         }
         nameInput = name
-        val keyboard = column(Gravity.START).apply {
-            setPadding(dp(8), dp(8), dp(8), dp(8)); background = glass(10)
+        // The field's own caret shows only while it has focus, and focus lives on the letters: an accent bar after the
+        // last letter stands in for it.
+        val cursor = View(this).apply { setBackgroundColor(TUNGSTEN) }
+        fun placeCursor() {
+            cursor.visibility = if (name.hasFocus()) View.GONE else View.VISIBLE
+            cursor.translationX = name.paddingStart + name.paint.measureText(name.text.toString())
         }
+        val box = android.widget.FrameLayout(this).apply {
+            addView(name, android.widget.FrameLayout.LayoutParams(-1, dp(52)))
+            addView(cursor, android.widget.FrameLayout.LayoutParams(dp(2), dp(34), Gravity.CENTER_VERTICAL))
+            layoutParams = LinearLayout.LayoutParams(-1, -2)
+        }
+        val line = View(this).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(TUNGSTEN, TUNGSTEN and 0x00FFFFFF))
+        }
+        val field = column(Gravity.START, box,
+            line.also { it.layoutParams = LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(2) } })
+        name.setOnFocusChangeListener { _, _ -> placeCursor() }
+
+        val keyboard = column(Gravity.START)
         val keys = mutableListOf<TextView>()
-        fun key(label: String, row: LinearLayout, width: Int = 1, action: () -> Unit) = text(label, SMALL, color = TEXT_2).apply {
+        fun key(label: String, row: LinearLayout, sp: Float, width: Int) = text(label, sp, color = TEXT_2).onArt().apply {
             gravity = Gravity.CENTER
-            rowFocus(6)
-            setOnClickListener { action() }
-            row.addView(this, LinearLayout.LayoutParams(0, -1, width.toFloat()).apply {
-                if (row.childCount > 0) marginStart = dp(3)
+            lineKey(this, if (width == -2) 0 else KEY_INSET)
+            row.addView(this, LinearLayout.LayoutParams(if (width == -2) -2 else dp(width), dp(KEY_H)).apply {
+                if (width == -2 && row.childCount > 0) marginStart = dp(26)
             })
             keys += this
         }
@@ -457,28 +516,30 @@ class ProfilesActivity : Screen() {
             upper = on
             letterKeys.forEach { it.text = if (on) it.text.toString().uppercase() else it.text.toString().lowercase() }
         }
-        "abcdefghijklmnopqrstuvwxyz".chunked(6).forEach { letters ->
+        ("abcdefghijklmnopqrstuvwxyz").chunked(COLUMNS).forEach { letters ->
             keyboard.addView(LinearLayout(this).apply {
-                letters.forEach { letter -> letterKeys += key(letter.toString(), this) {
+                letters.forEach { letter -> letterKeys += key(letter.toString(), this, KEY_SP, KEY_W).apply { setOnClickListener {
                     val typed = if (upper) letter.uppercaseChar() else letter
                     if (upper) caps(false)
                     name.text.append(typed)
-                } }
-                // "yz" keeps the grid: empty cells fill the row instead of two keys stretched across it.
-                repeat(6 - letters.length) { addView(View(context), LinearLayout.LayoutParams(0, -1, 1f).apply { marginStart = dp(3) }) }
-            }, LinearLayout.LayoutParams(-1, dp(KEY_H)).apply { if (keyboard.childCount > 0) topMargin = dp(3) })
+                } } }
+                // ⌫ ends the last row of letters, where the grid has room for it.
+                if (letters.length < COLUMNS) key("⌫", this, KEY_SP, KEY_W).apply {
+                    contentDescription = "Delete"
+                    setOnClickListener { if (name.length() > 0) name.text.delete(name.length() - 1, name.length()) }
+                }
+            })
         }
         keyboard.addView(LinearLayout(this).apply {
-            key("⇧", this) { caps(!upper) }
-            key("SPACE", this, 3) { name.text.append(" ") }
-            key("⌫", this) { if (name.length() > 0) name.text.delete(name.length() - 1, name.length()) }
-            key("⌨", this) {
+            key("⇧  Shift", this, SMALL, -2).setOnClickListener { caps(!upper) }
+            key("Space", this, SMALL, -2).setOnClickListener { name.text.append(" ") }
+            key("⌨  Phone keyboard", this, SMALL, -2).setOnClickListener {
                 name.showSoftInputOnFocus = true
                 name.requestFocus()
                 name.post { (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager)
                     .showSoftInput(name, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT) }
             }
-        }, LinearLayout.LayoutParams(-1, dp(KEY_H)).apply { topMargin = dp(3) })
+        }, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(10) })
         caps(initial.isEmpty())
         name.addTextChangedListener(object : android.text.TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
@@ -486,9 +547,10 @@ class ProfilesActivity : Screen() {
                 if (s.isNullOrEmpty()) caps(true)
                 changed(s?.toString().orEmpty())
             }
-            override fun afterTextChanged(s: android.text.Editable?) = Unit
+            override fun afterTextChanged(s: android.text.Editable?) { placeCursor() }
         })
-        return Triple(name, keyboard, keys.first())
+        name.post { placeCursor() }
+        return NameEntry(name, field, keyboard, keys.first())
     }
 
     /** Sign-in with a code: for a new profile called [name], or for [again], a profile Stremio signed out. */
@@ -629,7 +691,7 @@ class ProfilesActivity : Screen() {
 
     private fun onboardingButton(label: String) = pill(label)
 
-    private fun onboardingAvatar(initial: String, size: Int, color: Int = draftColor) = text(initial, if (size > 50) 48f else 19f,
+    private fun onboardingAvatar(initial: String, size: Int, color: Int = draftColor) = text(initial, if (size > 50) size * 0.48f else 19f,
         serif = true, color = BASE).apply {
         gravity = Gravity.CENTER
         background = GradientDrawable().apply {
@@ -755,6 +817,14 @@ class ProfilesActivity : Screen() {
     private companion object {
         const val PORTRAIT_R = 6 // dp: portraits are soft squares
         const val LIFT_ROOM = 8 // dp above the portraits for the focused one's 10% lift and ring
-        const val KEY_H = 25 // dp a key row on the name step, so Continue fits under the colours
+        const val KEY_H = 34 // dp: a row of the name step's letters
+        const val KEY_W = 42 // dp: a letter's cell, nine to a row
+        const val KEY_INSET = 13 // dp: a letter's focus line, about as wide as the letter
+        const val KEY_SP = 17f // the letters, as large as Search's
+        const val COLUMNS = 9
+        const val FIELD_W = 400 // dp: the name's line, as wide as the letters
+        const val TYPED_SP = 34f // the name as it's typed
+        const val NAME_SP = 19f // the name under the portrait
+        const val PREVIEW = 150 // dp: the portrait on the name step
     }
 }
