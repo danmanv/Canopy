@@ -49,6 +49,17 @@ struct Stream: Hashable, Identifiable {
     var dubbed: Bool { Rx.has(#"\bdub(bed)?\b"#, words) }
     var audioLanguages: Set<String> { audioLanguagesIn(words) }
 
+    /// True when the file or source names a different episode ("S01E03" for S1 E1): a season pack's wrong file, or a
+    /// different show filed under this one. Names with no episode, or with this one among several, pass.
+    func namesOtherEpisode(than e: (season: Int, episode: Int)) -> Bool {
+        let named = Rx.all(#"s(\d{1,2})[ ._-]?e(\d{1,3})"#, "\(filename ?? "") \(title) \(description)".lowercased())
+        guard !named.isEmpty else { return false }
+        return !named.contains { m in
+            guard let g = Rx.groups(#"s(\d{1,2})[ ._-]?e(\d{1,3})"#, m), let s = Int(g[1]), let n = Int(g[2]) else { return false }
+            return s == e.season && n == e.episode
+        }
+    }
+
     func mentions(_ language: String) -> Bool {
         let name = (Locale(identifier: "en").localizedString(forLanguageCode: language) ?? "").lowercased()
         return name.count > 2 && words.contains(name)

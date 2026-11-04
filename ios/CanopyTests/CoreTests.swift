@@ -28,6 +28,20 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(audioLanguagesIn("🇮🇹 🇬🇧 multi").isSuperset(of: ["it", "en"]))
     }
 
+    func testWrongEpisodeDemoted() {
+        let right = Stream(title: "Torrentio", description: "Nocturne.S01E01.1080p.WEB", url: "https://a/1", headers: [:], size: 0,
+                           filename: "Nocturne.S01E01.1080p.mkv", bingeGroup: nil)
+        let wrong = Stream(title: "Torrentio", description: "Pack", url: "https://a/2", headers: [:], size: 0,
+                           filename: "Other.Show.S01E03.mkv", bingeGroup: nil)
+        let plain = Stream(title: "Torrentio", description: "Nocturne 1080p", url: "https://a/3", headers: [:], size: 0,
+                           filename: nil, bingeGroup: nil)
+        XCTAssertFalse(right.namesOtherEpisode(than: (1, 1)))
+        XCTAssertTrue(wrong.namesOtherEpisode(than: (1, 1)))
+        XCTAssertFalse(plain.namesOtherEpisode(than: (1, 1)))
+        XCTAssertEqual(StreamPicker.episode(of: "tt1:1:1")?.episode, 1)
+        XCTAssertNil(StreamPicker.episode(of: "tt1"))
+    }
+
     func testWatchedRoundTrip() {
         let videos = (1...12).map { Video(id: "tt1:1:\($0)", title: "", season: 1, episode: $0, thumbnail: nil, overview: nil, released: nil) }
         let item = Library.newItem(id: "tt1", type: "series", name: "X", poster: nil)

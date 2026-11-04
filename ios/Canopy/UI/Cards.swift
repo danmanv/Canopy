@@ -145,11 +145,14 @@ struct PosterRow: View {
                             PosterCard(card: c, width: width, showName: showNames)
                         }
                         .buttonStyle(.plain)
+                        .hoverEffect(.lift)
                         .contextMenu { if let menu { menu(c) } }
                     }
                 }
                 .padding(.horizontal, 20)
             }
+            // The posters past the screen's edge, ready before a swipe reaches them.
+            .task(id: cards.first?.id) { ImageStore.shared.prefetch(cards.prefix(16).compactMap(\.poster), width: width) }
         }
     }
 }

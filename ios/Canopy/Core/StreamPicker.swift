@@ -99,12 +99,15 @@ struct StreamPicker {
     /// moved down, then Settings' preferences. Stable, so ties keep the add-ons' order.
     func rank(_ streams: [Stream]) -> [Stream] {
         let file = Settings.lastFile(videoId)
+        let episode = Self.episode(of: videoId)
         let binge = Settings.binge(metaId)
         let caps = DeviceCaps.current
         let lower = maxHeight > 0
         func key(_ s: Stream) -> [Int] {
-            [lower ? -s.height : 0,
-             file != nil && s.filename == file ? 0 : 1,
+            let wrong = episode != nil && s.namesOtherEpisode(than: episode!)
+            return [lower ? -s.height : 0,
+             wrong ? 1 : 0,
+             !wrong && file != nil && s.filename == file ? 0 : 1,
              binge != nil && s.bingeGroup == binge ? 0 : 1,
              s.awkward ? 1 : 0,
              s.dolbyVisionOnly && !caps.dolbyVision ? 1 : 0,
@@ -114,6 +117,22 @@ struct StreamPicker {
         return streams.enumerated().map { ($0.offset, $0.element, key($0.element)) }
             .sorted { a, b in a.2 == b.2 ? a.0 < b.0 : a.2.lexicographicallyPrecedes(b.2) }
             .map(\.1)
+    }
+
+    /// The file that played last time for this video, or the release group the show has been playing from: safe to
+    /// start without waiting for the other add-ons.
+    func knownGood(_ s: Stream) -> Bool {
+        if let e = Self.episode(of: videoId), s.namesOtherEpisode(than: e) { return false }
+        if let f = Settings.lastFile(videoId), s.filename == f { return true }
+        if let b = Settings.binge(metaId), s.bingeGroup == b { return true }
+        return false
+    }
+
+    /// "tt123:2:5" → (2, 5); nil for a film.
+    static func episode(of videoId: String) -> (season: Int, episode: Int)? {
+        let p = videoId.components(separatedBy: ":")
+        guard p.count >= 3, let s = Int(p[p.count - 2]), let e = Int(p[p.count - 1]) else { return nil }
+        return (s, e)
     }
 
     /// Settings' stream preferences as a score, higher first.

@@ -18,8 +18,11 @@ struct TitleView: View {
     @State private var logoFailed = false
     /// The trailer playing silently behind the title, as on the TV: it fades in 3 s after the page opens.
     @State private var preview = false
+    /// The page's colour: the theme's base, warmed with the poster's own colour once it's known.
+    @State private var base: Color?
 
     private var wide: Bool { size == .regular }
+    private var page: Color { base ?? theme.baseColor }
     private var item: LibraryItem? { _ = model.libraryVersion; return model.item(ref.id) }
     private var videos: [Video] { meta?.videos ?? [] }
     private var watched: Set<String> { Library.watched(item, videos: videos) }
@@ -38,7 +41,8 @@ struct TitleView: View {
                 }
             }
         }
-        .background(theme.baseColor)
+        .background(page)
+        .animation(.easeOut(duration: 0.6), value: base)
         .ignoresSafeArea(edges: .top)
         .toolbar(.hidden, for: .navigationBar)
         .overlay(alignment: .topLeading) { backButton }
@@ -46,6 +50,7 @@ struct TitleView: View {
             TrailerSheet(youTubeId: t.id)
         }
         .task { await load() }
+        .task(id: meta?.poster ?? ref.poster) { await tintFromPoster() }
         .task(id: meta?.trailer) {
             guard meta?.trailer != nil, Settings.trailers, !AppModel.demo else { return }
             try? await Task.sleep(nanoseconds: 3_000_000_000)
@@ -75,9 +80,9 @@ struct TitleView: View {
             ZStack(alignment: .topLeading) {
                 backdrop(width: 1400)
                     .frame(width: g.size.width, height: g.size.height * 0.8)
-                    .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.3), .clear, theme.baseColor],
+                    .overlay(LinearGradient(colors: [page.opacity(0.3), .clear, page],
                                             startPoint: .top, endPoint: .bottom))
-                    .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.92), theme.baseColor.opacity(0.35), .clear],
+                    .overlay(LinearGradient(colors: [page.opacity(0.92), page.opacity(0.35), .clear],
                                             startPoint: .leading, endPoint: .trailing))
                 HStack(alignment: .top, spacing: 24) {
                     ScrollView {
@@ -94,7 +99,7 @@ struct TitleView: View {
                         ScrollView { below.padding(.top, g.safeAreaInsets.top + 70).padding(.bottom, 30) }
                             .scrollIndicators(.hidden)
                             .frame(maxWidth: .infinity)
-                            .background(theme.baseColor.opacity(0.55))
+                            .background(page.opacity(0.55))
                     } else {
                         Spacer(minLength: 0)
                     }
@@ -130,7 +135,7 @@ struct TitleView: View {
             ZStack(alignment: .bottomLeading) {
                 backdrop(width: 500)
                     .frame(height: 400)
-                    .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.25), .clear, theme.baseColor],
+                    .overlay(LinearGradient(colors: [page.opacity(0.25), .clear, page],
                                             startPoint: .top, endPoint: .bottom))
                 brand.padding(.horizontal, 20)
             }
@@ -341,6 +346,12 @@ struct TitleView: View {
     }
 
     // MARK: Loading
+
+    private func tintFromPoster() async {
+        guard let url = meta?.poster ?? ref.poster ?? Art.poster(for: ref.id),
+              let img = await ImageStore.shared.image(url, width: 120), let tint = Art.tint(img) else { return }
+        base = Art.blend(theme.baseColor, with: tint, amount: 0.3)
+    }
 
     private func load() async {
         failed = false

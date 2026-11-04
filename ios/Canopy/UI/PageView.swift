@@ -12,6 +12,7 @@ struct PageView: View {
     @Environment(AppModel.self) private var model
     @Environment(\.theme) private var theme
     @Environment(\.horizontalSizeClass) private var size
+    @Environment(\.play) private var play
     @State private var rows: [String: [Card]] = [:]
     @State private var asked = Set<String>()
     @State private var genre: String?
@@ -172,6 +173,16 @@ struct PageView: View {
     private func continueMenu(_ c: Card) -> AnyView {
         AnyView(Group {
             let pinned = HomeRows.tonight.contains(c.id)
+            if let v = c.type == "movie" ? c.id : c.videoId {
+                Button {
+                    play(PlayRequest(title: c.ref, videoId: v, episode: c.type == "movie" ? nil : Card.episodeLabel(v), startOver: true))
+                } label: {
+                    Label(c.type == "movie" ? "Start over" : "Start episode over", systemImage: "backward.end")
+                }
+            }
+            Button { markWatched(c) } label: {
+                Label(c.type == "movie" ? "Mark as watched" : "Mark episode as watched", systemImage: "checkmark.circle")
+            }
             Button { HomeRows.pin(c.id, !pinned); model.libraryVersion += 1 } label: {
                 Label(pinned ? "Unpin from the front" : "Pin to the front", systemImage: pinned ? "pin.slash" : "pin")
             }
@@ -179,6 +190,21 @@ struct PageView: View {
                 Label("Remove from Continue Watching", systemImage: "eye.slash")
             }
         })
+    }
+
+    /// A film: watched and off the row. A show: this episode ticked and on to the next (its details give the order).
+    private func markWatched(_ c: Card) {
+        guard let item = model.item(c.id)?.copy() else { return }
+        if c.type == "movie" {
+            Library.markTitleWatched(item)
+            model.save(item)
+            return
+        }
+        Task {
+            let videos = await model.addons.meta(type: c.type, id: c.id, together: true)?.videos ?? []
+            Library.finishEpisode(item, videos: videos)
+            model.save(item)
+        }
     }
 
     // MARK: Loading

@@ -174,6 +174,27 @@ enum Library {
         item.json["_mtime"] = now()
     }
 
+    /// "Mark as watched" on a show's Continue Watching poster: ticks the episode it's on and moves the show to the
+    /// next one, as finishing it would; after the last episode the show leaves Continue Watching.
+    static func finishEpisode(_ item: LibraryItem, videos: [Video]) {
+        guard let current = item.videoId else { markTitleWatched(item, videos: videos); return }
+        if !videos.isEmpty { markWatched(item, videos: videos, videoId: current) }
+        let list = ordered(videos).filter { $0.season > 0 }
+        var s = item.state
+        if let i = list.firstIndex(where: { $0.id == current }), i + 1 < list.count {
+            s["video_id"] = list[i + 1].id
+            s["overallTimeWatched"] = s.int64("overallTimeWatched") + s.int64("timeWatched")
+            s["timeWatched"] = 0
+            s["flaggedWatched"] = 0
+            s["timeOffset"] = 1 // stremio-core's marker for "start the next episode"
+        } else {
+            s["timeOffset"] = 0
+            s["flaggedWatched"] = 1
+        }
+        item.state = s
+        item.json["_mtime"] = now()
+    }
+
     static func now() -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")

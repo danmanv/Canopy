@@ -41,6 +41,9 @@ struct PlayerView: View {
     @State private var upNext = false
     @State private var upNextDismissed = false
     @State private var countdown = 0
+    /// The next episode's sources, found a few minutes before this one ends so Next up starts at once.
+    @State private var nextSources: (id: String, list: [Stream])?
+    @State private var nextAsked = false
 
     enum Panel { case tracks, picture }
     struct Segment { let label: String; let start: Int64; let end: Int64; var jump: Int64 = 0 }
@@ -70,6 +73,7 @@ struct PlayerView: View {
             .onAppear { screen = g.size }
             .onChange(of: g.size) { _, s in screen = s; vlc.setPictureSize(pictureSize, screen: s) }
         }
+        .background { keys }
         .statusBarHidden(true)
         .persistentSystemOverlays(.hidden)
         .onAppear(perform: begin)
@@ -154,6 +158,9 @@ struct PlayerView: View {
                         failure = r.reasons
                         showChoose = false
                     }
+                } else if let f = r.eligible.first, picker.knownGood(f) {
+                    // The file (or release group) that played last time answered: no need to wait for the rest.
+                    start(Array(r.eligible.prefix(3)))
                 } else if !r.eligible.isEmpty && !box.waiting {
                     // Keep the add-ons' order when the rest answer promptly; after a moment, start with what's here.
                     box.waiting = true
@@ -272,6 +279,7 @@ struct PlayerView: View {
             ticks += 1
             if ticks % 10 == 0 { record(upload: ticks % 30 == 0) }
             checkSegments()
+            prefetchNext()
         }
         if upNext && countdown > 0 && vlc.phase != .playing {
             countdown -= 1
@@ -303,6 +311,18 @@ struct PlayerView: View {
         dismiss()
     }
 
+    private func prefetchNext() {
+        guard !nextAsked, let next = request.next, Settings.nextEpisode, vlc.length > 0,
+              vlc.length - vlc.time < 4 * 60_000, let p = model.active else { return }
+        nextAsked = true
+        let picker = StreamPicker(profile: p, type: request.type, metaId: request.title.id, videoId: next.id, known: model.addons)
+        Task {
+            await picker.gather { r in
+                if r.done, !r.eligible.isEmpty { nextSources = (next.id, Array(r.eligible.prefix(3))) }
+            }
+        }
+    }
+
     private func playNext(_ next: Video) {
         record()
         if let item {
@@ -326,7 +346,10 @@ struct PlayerView: View {
         item = model.item(r.title.id)?.copy() ?? item
         fetchSubtitles()
         fetchSegments()
-        gather()
+        let ready = nextSources?.id == next.id ? nextSources?.list : nil
+        nextSources = nil
+        nextAsked = false
+        if let ready { start(ready) } else { gather() }
     }
 
     // MARK: Skip intro and Up next (IntroDB, as the TV)
@@ -434,6 +457,28 @@ struct PlayerView: View {
                 .onTapGesture { toggleControls() }
         }
         .ignoresSafeArea()
+    }
+
+    /// A keyboard on the iPad (or a Bluetooth remote that sends keys): space plays and pauses, the arrows skip 10 s
+    /// (with Shift, 30 s), N is the next episode, Escape closes.
+    private var keys: some View {
+        ZStack {
+            key(.space) { vlc.toggle(); touched() }
+            key(.leftArrow) { vlc.jump(-10); touched() }
+            key(.rightArrow) { vlc.jump(10); touched() }
+            key(.leftArrow, .shift) { vlc.jump(-30); touched() }
+            key(.rightArrow, .shift) { vlc.jump(30); touched() }
+            key(.upArrow) { touched() }
+            key("n") { if let next = request.next { playNext(next) } }
+            key(.escape) { if panel != nil { panel = nil } else { close() } }
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func key(_ k: KeyEquivalent, _ m: EventModifiers = [], _ run: @escaping () -> Void) -> some View {
+        Button("", action: run).keyboardShortcut(k, modifiers: m)
     }
 
     private func toggleControls() {

@@ -35,6 +35,7 @@ struct MainView: View {
                 }
                 TabBar(tab: $tab)
             }
+            .background { shortcuts }
             .ignoresSafeArea(.keyboard)
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(for: Route.self) { route in
@@ -63,6 +64,20 @@ struct MainView: View {
 }
 
 extension MainView {
+    /// iPad keyboard: ⌘F search, ⌘1–4 the tabs, ⌘, Settings (also listed when ⌘ is held down).
+    var shortcuts: some View {
+        ZStack {
+            Button("Search") { path.append(Route.search) }.keyboardShortcut("f", modifiers: .command)
+            Button("Settings") { path.append(Route.settings) }.keyboardShortcut(",", modifiers: .command)
+            ForEach(Array(Tab.allCases.enumerated()), id: \.element) { i, t in
+                Button(t.rawValue) { path = NavigationPath(); tab = t }.keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
+            }
+        }
+        .opacity(0)
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
     /// `-screen movies|shows|list|search|settings|title|sources` opens that screen at start (CI screenshots).
     func openFromArguments() {
         let args = ProcessInfo.processInfo.arguments

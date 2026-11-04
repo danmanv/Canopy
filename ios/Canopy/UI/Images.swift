@@ -7,6 +7,13 @@ private final class Memory: @unchecked Sendable {
     let cache = NSCache<NSString, UIImage>()
 }
 
+/// Poster trouble in the Xcode console; silent in Release builds.
+@inline(__always) private func posterLog(_ s: @autoclosure () -> String) {
+    #if DEBUG
+    print(s())
+    #endif
+}
+
 final class ImageStore: Sendable {
     static let shared = ImageStore()
     private let box = Memory()
@@ -39,7 +46,7 @@ final class ImageStore: Sendable {
         let k = key(url, width)
         if let img = memory.object(forKey: k as NSString) { return img }
         guard let u = URL(string: url) ?? URL(string: url.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? "") else {
-            print("[poster] bad url \(url)")
+            posterLog("[poster] bad url \(url)")
             return nil
         }
         var r = URLRequest(url: u)
@@ -50,24 +57,35 @@ final class ImageStore: Sendable {
                 let (data, resp) = try await session.data(for: r)
                 let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
                 guard code < 400 else {
-                    print("[poster] HTTP \(code) \(url)")
+                    posterLog("[poster] HTTP \(code) \(url)")
                     if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
                     continue
                 }
                 let img = await Task.detached(priority: .userInitiated) { Self.downsample(data, width: width, scale: scale) }.value
                 if img == nil {
-                    print("[poster] undecodable \(data.count) bytes \((resp as? HTTPURLResponse)?.mimeType ?? "?") \(url) head=\(String(decoding: data.prefix(40), as: UTF8.self))")
+                    posterLog("[poster] undecodable \(data.count) bytes \((resp as? HTTPURLResponse)?.mimeType ?? "?") \(url) head=\(String(decoding: data.prefix(40), as: UTF8.self))")
                 }
                 if let img {
                     memory.setObject(img, forKey: k as NSString, cost: Int(img.size.width * img.size.height * img.scale * img.scale * 4))
                 }
                 return img
             } catch {
-                if (error as? URLError)?.code != .cancelled { print("[poster] \(error.localizedDescription) \(url)") }
+                if (error as? URLError)?.code != .cancelled { posterLog("[poster] \(error.localizedDescription) \(url)") }
             }
             if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
         }
         return nil
+    }
+
+    /// Fetches and decodes pictures before they're shown, one after another at low priority so the ones on screen
+    /// keep the connections. Pictures already in memory are skipped.
+    @MainActor func prefetch(_ urls: [String], width: CGFloat) {
+        let scale = UIScreen.main.scale
+        let todo = urls.filter { cached($0, width: width) == nil }
+        guard !todo.isEmpty else { return }
+        Task.detached(priority: .low) {
+            for u in todo { _ = await self.image(u, width: width, scale: scale) }
+        }
     }
 
     private static func downsample(_ data: Data, width: CGFloat, scale: CGFloat) -> UIImage? {
@@ -130,6 +148,17 @@ enum Art {
 
     static func poster(for id: String) -> String? {
         id.hasPrefix("tt") ? "https://images.metahub.space/poster/medium/\(id.components(separatedBy: ":")[0])/img" : nil
+    }
+
+    /// [base] moved [amount] of the way to [tint]: a page colour that keeps the theme's darkness.
+    static func blend(_ base: Color, with tint: Color, amount: CGFloat) -> Color {
+        var r1: CGFloat = 0, g1: CGFloat = 0, b1: CGFloat = 0, a1: CGFloat = 0
+        var r2: CGFloat = 0, g2: CGFloat = 0, b2: CGFloat = 0, a2: CGFloat = 0
+        UIColor(base).getRed(&r1, green: &g1, blue: &b1, alpha: &a1)
+        UIColor(tint).getRed(&r2, green: &g2, blue: &b2, alpha: &a2)
+        // Darken the tint first so a pale poster can't wash the page out.
+        let k: CGFloat = 0.55
+        return Color(red: r1 + (r2 * k - r1) * amount, green: g1 + (g2 * k - g1) * amount, blue: b1 + (b2 * k - b1) * amount)
     }
 
     /// The average colour of an image's lower half, for the page's wash behind the carousel.
