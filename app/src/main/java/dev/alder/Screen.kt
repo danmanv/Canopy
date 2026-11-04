@@ -1056,7 +1056,11 @@ abstract class Screen : Activity() {
         const val ROW_FOCUSED = 0x1FFFFFFF // Light line: the faint wash a focused row starts with
         const val CORNER = 6 // dp: soft corners everywhere, capped here so nothing becomes a capsule or circle.
         const val PROGRESS_TRACK = 0x4DFFFFFF // light enough that a short fill still reads as a bar, not a dash
-        private val pool = Executors.newFixedThreadPool(6)
+        // Network and JSON work: background priority, like the picture threads, so parsing a catalog never takes a core
+        // from the main thread or RenderThread while the remote moves.
+        private val pool = Executors.newFixedThreadPool(6) { r ->
+            Thread { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND); r.run() }
+        }
     }
 }
 
