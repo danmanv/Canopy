@@ -96,7 +96,7 @@ internal fun catalogAnswerKey(page: String, title: String, genre: String?, sourc
 //    where you are and Resume, moving on to the next every ADVANCE. OK resumes; any other key returns to where you were.
 //    The TV's own screensaver takes over later (10 min on the test TV), so nothing stays still for hours.
 class MainActivity : Screen() {
-    private enum class Page(val label: String) { HOME("Home"), SHOWS("Shows"), MOVIES("Movies"), LIVE("Live"), LIBRARY("My List") }
+    private enum class Page(val label: String) { HOME("Home"), MOVIES("Movies"), SHOWS("Shows"), LIVE("Live"), LIBRARY("My List") }
     private enum class Mode { CINEMA, BROWSE }
     private enum class ListFilter { ALL, MOVIES, SHOWS }
     private enum class ListSort { RECENT, NAME, UNWATCHED }
@@ -419,7 +419,7 @@ class MainActivity : Screen() {
             .sortedByDescending { it.optString("_ctime") }.take(LIST_COLUMNS * 3)
             .forEach { libraryItem(it).poster?.let { url -> Images.prefetch(url, (dp(LIST_W) * CARD_GROW).toInt()) } }
         val catalogs = Stremio.savedAddons(profile.authKey).orEmpty().flatMap { it.catalogs }
-        for (p in listOf(Page.SHOWS, Page.MOVIES)) {
+        for (p in listOf(Page.MOVIES, Page.SHOWS)) {
             val shelves = catalogs.mapNotNull { c -> shelf(c)?.takeIf { it.page == p }?.let { c to it } }.sortedBy { it.second.rank }
             sections(p, shelves).forEachIndexed { i, (title, sources, picked) ->
                 val key = catalogAnswerKey(p.label, title, picked, sources.map { (c, _) ->
@@ -503,20 +503,21 @@ class MainActivity : Screen() {
             }
             if (!ok) return true
         }
-        // Back from the rows goes up, not out: to the chips on a page that has them (a genre jump left you deep in
-        // the page), else to the open page's name. Back from there leaves as usual.
+        // Back from the rows goes up, not out: to My List's chips, else to the open page's name (Shows and Movies keep
+        // their genre control off the Up/Down path; OK on the tab opens it). Back from there leaves as usual.
         if (event.keyCode == KeyEvent.KEYCODE_BACK && mode == Mode.BROWSE && scroller.hasFocus()) {
             if (event.action == KeyEvent.ACTION_UP) {
-                val chip = if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton
+                val chip = if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else null
                 if (chip?.isShown != true || !chip.requestFocus()) navItems[page]?.requestFocus()
             }
             return true
         }
         if (event.action == KeyEvent.ACTION_DOWN && (page.isCatalog || page == Page.LIBRARY) && mode == Mode.BROWSE) {
-            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && header.hasFocus()) {
-                (if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton)
-                    ?.requestFocus()?.let { if (it) return true }
-                if (page.isCatalog && genreStrip.visibility != View.VISIBLE && firstRow()?.focusFirst() == true) return true
+            // Down from the top bar on My List lands on its chips. On Shows and Movies it skips the genre control and
+            // goes straight to the titles (handled below), and Up from the first row goes straight back; OK on the tab
+            // opens the genres.
+            if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && header.hasFocus() && page == Page.LIBRARY) {
+                (lastListChip ?: listFilterChips[listFilter])?.requestFocus()?.let { if (it) return true }
             }
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_DOWN && genreStrip.hasFocus()) {
                 (last?.takeIf { it.isAttachedToWindow && it.isShown } ?: firstRow()?.cards?.firstOrNull())
@@ -525,9 +526,8 @@ class MainActivity : Screen() {
             if (event.keyCode == KeyEvent.KEYCODE_DPAD_UP && currentFocus?.let { focused ->
                     firstRow()?.view?.let { isInside(focused, it) }
                 } == true) {
-                (if (page == Page.LIBRARY) lastListChip ?: listFilterChips[listFilter] else genreButton)
-                    ?.requestFocus()?.let { if (it) return true }
-                if (page.isCatalog && genreStrip.visibility != View.VISIBLE && navItems[page]?.requestFocus() == true) return true
+                if (page == Page.LIBRARY) (lastListChip ?: listFilterChips[listFilter])?.requestFocus()?.let { if (it) return true }
+                if (page.isCatalog && navItems[page]?.requestFocus() == true) return true
             }
         }
         if (event.action == KeyEvent.ACTION_DOWN && scroller.hasFocus() && mode == Mode.BROWSE &&
@@ -610,9 +610,10 @@ class MainActivity : Screen() {
             isFocusable = true
             tabs.addView(this, LinearLayout.LayoutParams(-2, dp(TAB_H)).apply { if (tabs.childCount > 0) marginStart = dp(NAV_GAP) })
         }
-        // A page opens as soon as the remote rests on its name. OK on Shows or Movies goes to its genres.
+        // A page opens as soon as the remote rests on its name. OK on Shows or Movies opens its genre list.
         Page.entries.filter { it != Page.LIVE }.forEach { p ->
-            navItems[p] = text(p.label, BODY_LARGE).apply {
+            // Shows and Movies carry a small caret: like any drop-down, OK on them opens a list (their genres).
+            navItems[p] = text(if (p.isCatalog) "${p.label} \u25BE" else p.label, BODY_LARGE).apply {
                 gravity = Gravity.CENTER
                 setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
                 setOnFocusChangeListener { _, has ->
@@ -624,7 +625,7 @@ class MainActivity : Screen() {
                     main.removeCallbacks(switchPage)
                     when {
                         p != page -> { jump = true; showPage(p) }
-                        p.isCatalog -> genreButton?.requestFocus()
+                        p.isCatalog -> if (genreOptions.isNotEmpty()) pickGenre() else firstRow()?.focusFirst()
                         p == Page.LIBRARY -> (lastListChip ?: listFilterChips[listFilter])?.requestFocus()
                         else -> firstRow()?.focusFirst()
                     }
@@ -685,6 +686,7 @@ class MainActivity : Screen() {
             // The focused name glows softly, as if lit by its line.
             item.setShadowLayer(if (focused) dp(10).toFloat() else 0f, 0f, 0f, if (focused) 0x99FFFFFF.toInt() else 0)
         }
+        styleGenreLine()
         search?.let {
             it.background = tabFace(it.isFocused, open = false)
             it.setColorFilter(if (it.isFocused) TEXT else TEXT_2)
@@ -1467,25 +1469,28 @@ class MainActivity : Screen() {
             clipChildren = false
             setPadding(dp(PAD - TAB_PAD), dp(2), dp(PAD), dp(2))
         }
-        // Plain words, no box: lit like a top-bar tab (white, with its line underneath) only while the remote is on it.
+        // A label, not a stop on the way down: it names the genre in view, and while the remote rests on the open page's
+        // tab it says what OK does there, so a first-time viewer finds the genres without being told.
         val button = text(genreLabel(), SMALL, color = TEXT_2).apply {
-            isFocusable = true
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
-            setOnFocusChangeListener { _, has ->
-                background = tabFace(has, open = false)
-                setTextColor(if (has) TEXT else TEXT_2)
-                setShadowLayer(if (has) dp(10).toFloat() else 0f, 0f, 0f, if (has) 0x99FFFFFF.toInt() else 0)
-            }
-            setOnClickListener { pickGenre() }
         }
         genreButton = button
         line.addView(button, LinearLayout.LayoutParams(-2, dp(CHIP_H + 8)))
         genreStrip.addView(line)
-        if (hadFocus) button.requestFocus()
+        styleGenreLine()
+        if (hadFocus) navItems[page]?.requestFocus()
     }
 
-    private fun genreLabel() = "${genre ?: "All genres"}  \u25BE"
+    private fun genreLabel() = genre ?: "All genres"
+
+    /** The line under the menu: the genre in view, or "OK · Choose a genre" while the open page's tab is lit. */
+    private fun styleGenreLine() {
+        val label = genreButton ?: return
+        val hint = page.isCatalog && navItems[page]?.isFocused == true && genreOptions.isNotEmpty()
+        label.text = if (hint) "OK  \u00B7  Choose a genre" else genreLabel()
+        label.setTextColor(if (hint) TUNGSTEN else TEXT_2)
+    }
 
     private fun pickGenre() {
         val options = listOf<String?>(null) + genreOptions
@@ -1501,7 +1506,7 @@ class MainActivity : Screen() {
 
     private fun markChip(rowTitle: String) {
         genre = rowTitle.takeIf { it in genreOptions } // Back and Down from the top bar return to the control
-        genreButton?.text = genreLabel()
+        styleGenreLine()
     }
 
     /**
