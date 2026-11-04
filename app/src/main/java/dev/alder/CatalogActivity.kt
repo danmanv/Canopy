@@ -146,6 +146,7 @@ class CatalogActivity : Screen() {
         if (meta.poster == null) card.addView(text(meta.name, SMALL, bold = true).apply {
             maxLines = 3; ellipsize = TextUtils.TruncateAt.END; setPadding(dp(10), 0, dp(10), dp(10))
         }, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+        scoreStrip(meta.id, meta.type, meta.rating)?.let { card.addView(it, FrameLayout.LayoutParams(-1, dp(SCORE_H), Gravity.BOTTOM)) }
         Images.load(meta.poster, image, dp(posterW) * 2) {
             image.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
         }

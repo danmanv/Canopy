@@ -344,12 +344,13 @@ class PhoneDetailsActivity : PhoneScreen() {
             titles.chunked(3).forEach { three ->
                 val line = LinearLayout(this).apply { setPadding(dp(20), 0, dp(20), 0) }
                 three.forEachIndexed { i, t ->
-                    line.addView(ImageView(this).apply {
+                    line.addView(scored(ImageView(this).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
                         background = rounded(TILE, CORNER)
                         clipToOutline = true
                         contentDescription = t.name
                         Images.load(t.poster ?: t.background, this, w)
+                    }, t.id, t.type, t.rating).apply {
                         setOnClickListener {
                             startActivity(Intent(this@PhoneDetailsActivity, PhoneDetailsActivity::class.java)
                                 .putExtra("type", t.type).putExtra("id", t.id).putExtra("name", t.name)

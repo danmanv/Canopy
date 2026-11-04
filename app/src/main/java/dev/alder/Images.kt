@@ -44,6 +44,12 @@ object Images {
         { r -> Thread { Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); r.run() } })
     private val main = Handler(Looper.getMainLooper())
 
+    /**
+     * The poster to show for [id]: with MDBList scores on (Ratings), Cinemeta's plain picture for an IMDb title, since
+     * Canopy draws its own readable scores on it and add-ons' posters often print theirs too small to read. Else [url].
+     */
+    fun poster(id: String, url: String?): String? = (if (Ratings.enabled) posterFor(id) else null) ?: url
+
     /** The poster MetaHub keeps for an IMDb title, for pages opened without one. */
     fun posterFor(id: String) = id.takeIf { it.startsWith("tt") }?.let { "https://images.metahub.space/poster/medium/${it.substringBefore(':')}/img" }
 

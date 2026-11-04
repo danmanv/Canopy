@@ -98,11 +98,14 @@ struct Carousel: View {
         .onChange(of: cards.first?.id) { _, first in if !cards.contains(where: { $0.id == current }) { current = first } }
     }
 
-    /// Phone: just the framed title's name under it; Resume and the time left are on the glass strip.
+    /// Phone: the framed title's name under it, then its scores; Resume and the time left are on the glass strip.
     private func nameLine(_ c: Card) -> some View {
-        Text(c.name).font(Look.title(20)).foregroundStyle(theme.textColor).lineLimit(1)
-            .padding(.horizontal, 20)
-            .animation(.easeOut(duration: 0.2), value: c.id)
+        VStack(spacing: 4) {
+            Text(c.name).font(Look.title(20)).foregroundStyle(theme.textColor).lineLimit(1)
+            ScoreText(id: c.id, type: c.type, imdb: c.imdb).font(Look.bold(15)).foregroundStyle(theme.text2)
+        }
+        .padding(.horizontal, 20)
+        .animation(.easeOut(duration: 0.2), value: c.id)
     }
 
     /// Design 1, "Glass footer": play circle, "Resume" over the time left, on frosted glass with a hairline top.

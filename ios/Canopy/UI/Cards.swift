@@ -14,6 +14,8 @@ struct Card: Identifiable, Hashable {
     var progress: Double? = nil
     var videoId: String? = nil
     var description: String? = nil
+    /// The add-on's IMDb rating ("8.1"), for the poster's scores.
+    var imdb: String? = nil
 
     static func == (a: Card, b: Card) -> Bool { a.id == b.id && a.progress == b.progress && a.left == b.left }
     func hash(into h: inout Hasher) { h.combine(id) }
@@ -23,15 +25,16 @@ struct Card: Identifiable, Hashable {
     }
 
     init(_ m: Meta) {
-        self.init(id: m.id, type: m.type, name: m.name, poster: m.poster ?? Art.poster(for: m.id))
+        self.init(id: m.id, type: m.type, name: m.name, poster: Art.poster(m.id, m.poster))
         background = m.background
         logo = m.logo
         facts = [m.year, Ratings.line(imdb: m.rating, Ratings.cached(m.id)), m.genres.first].compactMap { $0 }.joined(separator: " · ")
         description = m.description
+        imdb = m.rating
     }
 
     init(_ item: LibraryItem) {
-        self.init(id: item.id, type: item.type, name: item.name, poster: item.poster ?? Art.poster(for: item.id))
+        self.init(id: item.id, type: item.type, name: item.name, poster: Art.poster(item.id, item.poster))
         background = Art.background(for: item.id)
         videoId = item.videoId
         if item.timeOffset > 0 {
@@ -85,6 +88,10 @@ struct PosterCard: View {
             ZStack(alignment: .bottom) {
                 RemoteImage(url: card.poster, width: width)
                     .frame(width: width, height: width * 1.5)
+                    .overlay(alignment: .bottom) {
+                        // Not on a title in progress: its bar sits there.
+                        if (card.progress ?? 0) <= 0 { ScoreStrip(id: card.id, type: card.type, imdb: card.imdb, width: width) }
+                    }
                     .clipShape(Soft())
                     .overlay(alignment: .center) {
                         if card.poster == nil {
@@ -112,6 +119,65 @@ struct PosterCard: View {
         }
         .frame(width: width, alignment: .leading)
         .contentShape(Rectangle())
+    }
+}
+
+/// A poster's IMDb and Rotten Tomatoes scores along its foot, in Canopy's own letters (MDBList), as on Android.
+/// Add-ons print theirs into the poster too small to read, so Art.poster swaps those pictures for plain ones.
+struct ScoreStrip: View {
+    let id: String
+    let type: String
+    let imdb: String?
+    var width: CGFloat
+    @State private var scores: Ratings.Scores?
+
+    private static let gold = Color(red: 0xF3 / 255, green: 0xC9 / 255, blue: 0x69 / 255)
+
+    var body: some View {
+        Group {
+            if let label {
+                label
+                    .font(Look.bold(width >= 130 ? 13 : 12))
+                    .foregroundStyle(.white)
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                    .padding(.horizontal, 4)
+                    .frame(width: width, height: 24)
+                    .background(LinearGradient(colors: [.black.opacity(0.8), .black.opacity(0.95)], startPoint: .top, endPoint: .bottom))
+            }
+        }
+        .task(id: id) {
+            guard Ratings.enabled else { return }
+            scores = Ratings.cached(id)
+            if scores == nil { scores = await Ratings.fetch(id, type: type) }
+        }
+    }
+
+    private var label: Text? {
+        let i = imdb ?? scores?.imdb
+        let t = Ratings.tomato(scores)
+        guard Ratings.enabled, i != nil || t != nil else { return nil }
+        var out = Text("")
+        if let i { out = out + Text("IMDb").foregroundColor(Self.gold) + Text(" \(i)") }
+        if let t { out = out + Text(i == nil ? t : "   \(t)") }
+        return out
+    }
+}
+
+/// "IMDb 8.1 · 🍅 94%" in a line of text, filled when MDBList answers (the phone's framed poster).
+struct ScoreText: View {
+    let id: String
+    let type: String
+    let imdb: String?
+    @State private var scores: Ratings.Scores?
+
+    var body: some View {
+        Group {
+            if let line = Ratings.line(imdb: imdb, scores) { Text(line).lineLimit(1) }
+        }
+        .task(id: id) {
+            scores = Ratings.cached(id)
+            if scores == nil { scores = await Ratings.fetch(id, type: type) }
+        }
     }
 }
 

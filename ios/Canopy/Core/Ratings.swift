@@ -37,18 +37,68 @@ enum Ratings {
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
-    /// Kept scores for an IMDb id, or MDBList's answer when nothing fresh is kept.
+    /// Kept scores for an IMDb id, or MDBList's answer when nothing fresh is kept. Asks made close together (a row of
+    /// posters) go as one batch of up to 100 titles, so a screenful costs one lookup, not one per poster.
+    @MainActor
     static func fetch(_ id: String, type: String) async -> Scores? {
         if let e = entry(id) { return e.scores }
+        if let m = failed[id], Date().timeIntervalSince(m) < day { return nil }
         guard enabled, id.hasPrefix("tt") else { return nil }
         let kind = type == "series" ? "show" : "movie"
-        var scores: Scores?
-        if let text = try? await Http.get("https://api.mdblist.com/imdb/\(kind)/\(id)?apikey=\(Http.encode(key))", timeout: 10),
-           let json = try? JSONText.parse(text) {
-            scores = parse(json)
+        return await withCheckedContinuation { c in
+            waiting[id, default: []].append(c)
+            if waiting[id]!.count == 1 { queued[kind, default: []].append(id) }
+            if !flushing {
+                flushing = true
+                Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    await flush()
+                }
+            }
         }
-        keep(id, scores)
-        return scores
+    }
+
+    @MainActor private static var waiting = [String: [CheckedContinuation<Scores?, Never>]]()
+    @MainActor private static var queued = [String: [String]]()
+    @MainActor private static var flushing = false
+    /// Lookups that failed (no network, the day's lookups used up), until the app restarts or a day passes.
+    @MainActor private static var failed = [String: Date]()
+
+    @MainActor
+    private static func flush() async {
+        flushing = false
+        let batches = queued.flatMap { kind, ids in stride(from: 0, to: ids.count, by: 100).map { (kind, Array(ids[$0..<min($0 + 100, ids.count)])) } }
+        queued = [:]
+        await withTaskGroup(of: Void.self) { group in
+            for (kind, ids) in batches {
+                group.addTask { @MainActor in
+                    let found = await lookup(kind, ids)
+                    for id in ids {
+                        let s = found?[id] ?? nil
+                        if found != nil { keep(id, s) } else { failed[id] = Date() }
+                        waiting.removeValue(forKey: id)?.forEach { $0.resume(returning: s) }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scores by IMDb id, nil when the lookup failed.
+    private static func lookup(_ kind: String, _ ids: [String]) async -> [String: Scores?]? {
+        let base = "https://api.mdblist.com/imdb/\(kind)/"
+        if ids.count == 1 {
+            guard let text = try? await Http.get(base + ids[0] + "?apikey=\(Http.encode(key))", timeout: 10),
+                  let json = try? JSONText.parse(text), json["error"] == nil else { return nil }
+            return [ids[0]: parse(json)]
+        }
+        guard let body = try? JSONSerialization.data(withJSONObject: ["ids": ids]), let bodyText = String(data: body, encoding: .utf8),
+              let text = try? await Http.post(base + "?apikey=\(Http.encode(key))", json: bodyText),
+              let data = text.data(using: .utf8), let list = (try? JSONSerialization.jsonObject(with: data)) as? [Any] else { return nil }
+        var out = [String: Scores?]()
+        for case let item as JSON in list {
+            if let imdb = item.obj("ids")?.text("imdb") { out[imdb] = parse(item) }
+        }
+        return out
     }
 
     static func parse(_ json: JSON) -> Scores? {

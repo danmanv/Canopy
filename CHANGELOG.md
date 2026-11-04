@@ -16,6 +16,7 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 ## Unreleased
 
 - **Rotten Tomatoes scores.** Next to the IMDb score, Canopy shows the Rotten Tomatoes critics score, for example "🍅 94%". When critics have no score, it shows the audience score, "🍿 88%". The scores come from MDBList.
+- **Scores on posters.** Each poster shows the IMDb and Rotten Tomatoes scores along its bottom edge, in large letters. Canopy shows plain posters, because the scores that add-ons print on posters are too small to read.
 
 ## 1.3.3
 

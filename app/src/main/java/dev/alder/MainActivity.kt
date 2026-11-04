@@ -2114,6 +2114,11 @@ class MainActivity : Screen() {
                     background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xE6000000.toInt(), 0x66000000, 0x00000000))
                 }, LayoutParams(-1, dp(cardH * 6 / 10), Gravity.BOTTOM))
                 if (wide) name.visibility = View.VISIBLE
+                // A poster's IMDb and Rotten Tomatoes scores along its foot. Not in Continue Watching: its focused
+                // poster wears the Resume strip there.
+                if (!wide && !item.resume) scoreStrip(item.id, item.type,
+                    metas[item.id]?.rating ?: item.facts.firstOrNull { it.startsWith("IMDb") }?.removePrefix("IMDb "))
+                    ?.let { face.addView(it, LayoutParams(-1, dp(SCORE_H), Gravity.BOTTOM)) }
                 // Time left as a quiet label in the corner, where the eye checks before choosing what to resume.
                 val timeLeft = item.left?.split(DOT)?.lastOrNull { it.endsWith("left") }
                 if (wide && timeLeft != null) face.addView(text(timeLeft, SMALL, bold = true).apply {
@@ -2291,7 +2296,7 @@ class MainActivity : Screen() {
         val left = if (duration > 0 && offset > 1) (if (mins >= 60) "${mins / 60}h ${mins % 60}m left" else "$mins min left") else null
         val progress = if (duration > 0) (offset.toFloat() / duration).coerceIn(0f, 1f) else 0f
         return Item(
-            item.getString("_id"), item.optString("type"), item.optString("name"), item.text("poster"),
+            item.getString("_id"), item.optString("type"), item.optString("name"), Images.poster(item.getString("_id"), item.text("poster")),
             null, Images.logoFor(item.getString("_id")), "", emptyList(), videoId, progress,
             resume = progress > 0, left = listOfNotNull(episode, left).joinToString(DOT).ifEmpty { null }, stoppedAt = offset,
             addedAt = item.text("_ctime"), finished = libraryFinished(item),

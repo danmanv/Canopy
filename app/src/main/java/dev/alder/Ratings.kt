@@ -23,7 +23,7 @@ object Ratings {
 
     private var prefs: SharedPreferences? = null
     private val memory = ConcurrentHashMap<String, Pair<Long, Scores?>>()
-    private val asking = ConcurrentHashMap.newKeySet<String>()
+    private val asking = HashSet<String>()
     private val pool = Executors.newFixedThreadPool(2)
     private val main = Handler(Looper.getMainLooper())
 
@@ -50,20 +50,49 @@ object Ratings {
 
     /**
      * Asks MDBList for [id] (an IMDb id) unless something fresh is kept, and calls [done] on the main thread once new
-     * scores have arrived. Nothing happens for other ids, without a key, or while the same title is already asked for.
+     * scores have arrived. Nothing happens for other ids or without a key. Asks made close together (a row of posters)
+     * go as one batch of up to 100 titles, so a screenful costs one lookup, not one per poster.
      */
     fun fetch(id: String, type: String, done: () -> Unit = {}) {
-        if (!enabled || !id.startsWith("tt") || entry(id) != null || !asking.add(id)) return
+        if (!enabled || !id.startsWith("tt") || entry(id) != null) return
         val kind = if (type == "series") "show" else "movie"
-        pool.execute {
-            val scores = runCatching {
-                parse(JSONObject(Http.get("https://api.mdblist.com/imdb/$kind/$id?apikey=${BuildConfig.MDBLIST_KEY}", timeoutMs = 10_000)))
-            }.getOrNull()
-            keep(id, scores)
-            asking.remove(id)
-            if (scores != null) main.post(done)
+        synchronized(this) {
+            waiting.getOrPut(id) { mutableListOf() } += done
+            if (!asking.add(id)) return
+            queued.getOrPut(kind) { linkedSetOf() } += id
+            if (!flushing) { flushing = true; main.postDelayed(::flush, 250) }
         }
     }
+
+    private val waiting = HashMap<String, MutableList<() -> Unit>>()
+    private val queued = HashMap<String, LinkedHashSet<String>>()
+    private var flushing = false
+
+    private fun flush() {
+        val batches = synchronized(this) {
+            flushing = false
+            queued.flatMap { (kind, ids) -> ids.chunked(100).map { kind to it } }.also { queued.clear() }
+        }
+        for ((kind, ids) in batches) pool.execute {
+            val found = runCatching {
+                if (ids.size == 1) mapOf(ids[0] to parse(JSONObject(Http.get(url(kind, ids[0]), timeoutMs = 10_000)).also { check(!it.has("error")) }))
+                else org.json.JSONArray(Http.post(url(kind, null), JSONObject().put("ids", org.json.JSONArray(ids)).toString()))
+                    .let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) } }
+                    .mapNotNull { o -> o.optJSONObject("ids")?.optString("imdb")?.takeIf { it.isNotEmpty() }?.let { it to parse(o) } }
+                    .toMap()
+            }.getOrNull()
+            // A title MDBList doesn't know is kept as "nothing" for a day. A failed batch (no network, the day's lookups
+            // used up) is remembered only until the app restarts, so it isn't asked again on every focus.
+            val calls = ids.map { id ->
+                if (found != null) keep(id, found[id]) else memory[id] = System.currentTimeMillis() to null
+                synchronized(this) { asking.remove(id); waiting.remove(id).orEmpty() }
+            }
+            main.post { calls.flatten().forEach { it() } }
+        }
+    }
+
+    private fun url(kind: String, id: String?) =
+        "https://api.mdblist.com/imdb/$kind/${id ?: ""}?apikey=${BuildConfig.MDBLIST_KEY}"
 
     internal fun parse(json: JSONObject): Scores? {
         val ratings = json.optJSONArray("ratings") ?: return null

@@ -665,6 +665,7 @@ class DetailsActivity : Screen() {
                     setPadding(dp(8), 0, dp(8), dp(8)); visibility = View.GONE
                 }
                 addView(fallback, FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM))
+                scoreStrip(title.id, title.type, title.rating)?.let { addView(it, FrameLayout.LayoutParams(-1, dp(SCORE_H), Gravity.BOTTOM)) }
                 cardFocus(6)
                 setOnClickListener {
                     startActivity(Intent(this@DetailsActivity, DetailsActivity::class.java)
