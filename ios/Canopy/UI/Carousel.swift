@@ -15,7 +15,11 @@ struct Carousel: View {
     @State private var current: String?
     @State private var width: CGFloat = UIScreen.main.bounds.width
 
-    private var cardW: CGFloat { min(width * (size == .regular ? 0.34 : 0.62), size == .regular ? 300 : 330) }
+    // On iPad the poster is kept to about a third of the screen's height, so the rows below show too (landscape most of all).
+    private var cardW: CGFloat {
+        if size == .regular { return min(width * 0.3, 260, UIScreen.main.bounds.height * 0.36 / 1.5) }
+        return min(width * 0.62, 330)
+    }
     private var framed: Card? { cards.first { $0.id == current } ?? cards.first }
 
     var body: some View {

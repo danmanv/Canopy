@@ -27,13 +27,7 @@ struct TitleView: View {
     var body: some View {
         Group {
             if wide {
-                HStack(alignment: .top, spacing: 0) {
-                    ScrollView { header.padding(.bottom, 40) }
-                        .frame(maxWidth: .infinity)
-                    ScrollView { below.padding(.vertical, 24) }
-                        .frame(width: 440)
-                        .background(theme.glass.opacity(0.5))
-                }
+                wideLayout
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -73,13 +67,47 @@ struct TitleView: View {
 
     // MARK: Header
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            ZStack(alignment: .bottomLeading) {
-                RemoteImage(url: meta?.background ?? ref.background ?? Art.background(for: ref.id), width: wide ? 900 : 500,
+    /// iPad: the backdrop fills the screen behind everything; the details sit on the left over a fade, and the
+    /// episodes (or More like this) take the right side.
+    private var wideLayout: some View {
+        GeometryReader { g in
+            let side = ref.type == "series" || videos.count > 1 || !similar.isEmpty
+            ZStack(alignment: .topLeading) {
+                backdrop(width: 1400)
+                    .frame(width: g.size.width, height: g.size.height * 0.8)
+                    .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.3), .clear, theme.baseColor],
+                                            startPoint: .top, endPoint: .bottom))
+                    .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.92), theme.baseColor.opacity(0.35), .clear],
+                                            startPoint: .leading, endPoint: .trailing))
+                HStack(alignment: .top, spacing: 24) {
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 14) {
+                            brand.padding(.horizontal, 20)
+                            details
+                        }
+                        .padding(.top, max(g.size.height * 0.3, 140))
+                        .padding(.bottom, 40)
+                    }
+                    .scrollIndicators(.hidden)
+                    .frame(width: min(side ? g.size.width * 0.42 : g.size.width * 0.5, 560))
+                    if side {
+                        ScrollView { below.padding(.top, g.safeAreaInsets.top + 70).padding(.bottom, 30) }
+                            .scrollIndicators(.hidden)
+                            .frame(maxWidth: .infinity)
+                            .background(theme.baseColor.opacity(0.55))
+                    } else {
+                        Spacer(minLength: 0)
+                    }
+                }
+                .padding(.leading, 16)
+            }
+        }
+    }
+
+    private func backdrop(width: CGFloat) -> some View {
+                RemoteImage(url: meta?.background ?? ref.background ?? Art.background(for: ref.id), width: width,
                             fallback: ref.poster)
-                    .frame(height: wide ? 460 : 400)
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .overlay {
                         if preview, let t = meta?.trailer {
                             GeometryReader { g in
@@ -95,10 +123,22 @@ struct TitleView: View {
                     }
                     .clipped()
                     .animation(.easeIn(duration: 1.2), value: preview)
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ZStack(alignment: .bottomLeading) {
+                backdrop(width: 500)
+                    .frame(height: 400)
                     .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.25), .clear, theme.baseColor],
                                             startPoint: .top, endPoint: .bottom))
                 brand.padding(.horizontal, 20)
             }
+            details
+        }
+    }
+
+    private var details: some View {
             VStack(alignment: .leading, spacing: 14) {
                 if let meta, !meta.info.isEmpty {
                     Text(meta.info + (meta.rating.map { "   ★ \($0)" } ?? "")).font(Look.body(14)).foregroundStyle(theme.text2)
@@ -132,7 +172,6 @@ struct TitleView: View {
                 }
             }
             .padding(.horizontal, 20)
-        }
     }
 
     @ViewBuilder private var brand: some View {
@@ -177,7 +216,19 @@ struct TitleView: View {
         if ref.type == "series" || !videos.isEmpty && videos.count > 1 {
             episodes
         } else if !similar.isEmpty {
-            PosterRow(title: "More like this", cards: similar, width: wide ? 130 : 112)
+            if wide {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("More like this").font(Look.title(18)).foregroundStyle(theme.textColor)
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 14)], spacing: 16) {
+                        ForEach(similar) { c in
+                            NavigationLink(value: Route.title(c.ref)) { PosterCard(card: c, width: 120) }.buttonStyle(.plain)
+                        }
+                    }
+                }
+                .padding(.horizontal, 20)
+            } else {
+                PosterRow(title: "More like this", cards: similar, width: 112)
+            }
         }
     }
 
