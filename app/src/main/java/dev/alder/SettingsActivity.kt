@@ -21,7 +21,16 @@ import java.util.Locale
 object Settings {
     private fun prefs(c: Context) = c.getSharedPreferences("settings", Context.MODE_PRIVATE)
     fun maxHeight(c: Context) = prefs(c).getInt("maxHeight", 0) // 0: no limit
-    fun maxSizeGb(c: Context) = prefs(c).getInt("maxSizeGb", 0) // 0: no limit
+    fun maxSizeGb(c: Context): Int { // 0: no limit
+        val p = prefs(c)
+        // 40 GB was the largest step and cut 4K REMUXes (50 to 80 GB): a TV left there moves up to the new 60 GB, once.
+        if (!p.getBoolean("maxSize60", false)) {
+            val e = p.edit().putBoolean("maxSize60", true)
+            if (p.getInt("maxSizeGb", 0) == 40) e.putInt("maxSizeGb", 60)
+            e.apply()
+        }
+        return p.getInt("maxSizeGb", 0)
+    }
     /** "": as the addon orders them, "dv" or "hdr10": that first, "off": plain releases only. */
     fun hdrPref(c: Context): String {
         val p = prefs(c)
@@ -157,7 +166,7 @@ class SettingsActivity : Screen() {
         Choice("maxHeight", "Highest quality", "Releases above this are skipped when picking a source.",
             listOf(0 to "No limit", 2160 to "4K", 1080 to "1080p", 720 to "720p")),
         Choice("maxSizeGb", "Largest file", "For slow connections: big files take longer to start.",
-            listOf(0 to "No limit", 40 to "40 GB", 20 to "20 GB", 10 to "10 GB", 5 to "5 GB")),
+            listOf(0 to "No limit", 60 to "60 GB", 40 to "40 GB", 20 to "20 GB", 10 to "10 GB", 5 to "5 GB")),
         Choice("release", "Release type", "Which kind of file is tried first for this profile. REMUX is the full Blu-ray.",
             listOf("" to "No preference", "remux" to "Full Blu-ray (REMUX)", "encode" to "Smaller encodes", "web" to "Web releases"), true),
     )
