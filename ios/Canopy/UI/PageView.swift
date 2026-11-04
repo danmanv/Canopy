@@ -269,7 +269,11 @@ private struct ScrollOffset: ViewModifier {
     @Binding var offset: CGFloat
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
-            content.onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in offset = y }
+            // Clamped and rounded, so the page only redraws while the top wash is still moving, not on every frame
+            // of every scroll.
+            content.onScrollGeometryChange(for: CGFloat.self) { g in
+                (min(max(g.contentOffset.y + g.contentInsets.top, 0), 640) / 8).rounded() * 8
+            } action: { _, y in offset = y }
         } else {
             content
         }

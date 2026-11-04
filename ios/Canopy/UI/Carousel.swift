@@ -19,13 +19,13 @@ struct Carousel: View {
     private var cardW: CGFloat {
         // What's left of the screen's height after the top bar, the name/Resume block, one full row of posters and
         // the tab bar, so the first row below always shows whole.
-        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 640) / 1.5)) }
+        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 560) / 1.5)) }
         return min(width * 0.62, 330)
     }
     private var framed: Card? { cards.first { $0.id == current } ?? cards.first }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: size == .regular ? 10 : 14) {
             Text(title.uppercased()).font(Look.bold(12)).tracking(1.6).foregroundStyle(theme.text2)
                 .frame(maxWidth: .infinity)
             ScrollView(.horizontal, showsIndicators: false) {
@@ -35,6 +35,11 @@ struct Carousel: View {
                             RemoteImage(url: c.poster, width: cardW)
                                 .frame(width: cardW, height: cardW * 1.5)
                                 .clipShape(Soft(radius: 8))
+                                .overlay(alignment: .bottom) {
+                                    if size == .regular, let p = c.progress, p > 0 {
+                                        ProgressLine(value: p).padding(.horizontal, 10).padding(.bottom, 8)
+                                    }
+                                }
                                 .overlay {
                                     if c.poster == nil {
                                         Text(c.name).font(Look.title(20)).multilineTextAlignment(.center).padding()
@@ -64,7 +69,7 @@ struct Carousel: View {
                     .shadow(color: theme.accentColor.opacity(0.45), radius: 12)
                     .allowsHitTesting(false)
             }
-            if let c = framed { below(c) }
+            if let c = framed { if size == .regular { compact(c) } else { below(c) } }
         }
         .background(GeometryReader { g in
             Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w }
@@ -94,6 +99,26 @@ struct Carousel: View {
             .frame(width: min(cardW + 10, 300))
         }
         .padding(.horizontal, 20)
+        .animation(.easeOut(duration: 0.2), value: c.id)
+    }
+
+    /// iPad: the poster already shows the title and its progress, so under it there's just one button that says
+    /// what it will do: "▶ Resume · 26 min left", "▶ S2 E3 · 26 min left" or "▶ Play".
+    private func compact(_ c: Card) -> some View {
+        Button {
+            start(c)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "play.fill")
+                Text(c.progress != nil ? "Resume" : "Play")
+                if let left = c.left {
+                    Text("·").opacity(0.6)
+                    Text(left).lineLimit(1).minimumScaleFactor(0.8)
+                }
+            }
+        }
+        .buttonStyle(PrimaryButton())
+        .frame(width: max(cardW + 10, 240))
         .animation(.easeOut(duration: 0.2), value: c.id)
     }
 
