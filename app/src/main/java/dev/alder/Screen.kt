@@ -107,6 +107,7 @@ internal fun prepareNetwork(c: Context) {
     // screen isn't held up by the disk. The first few pictures may miss the disk cache; they're fetched as usual.
     val dir = c.cacheDir
     Http.saved = java.io.File(dir, "answers")
+    Ratings.init(c)
     Thread {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
         runCatching { android.net.http.HttpResponseCache.install(java.io.File(dir, "http"), 250L * 1024 * 1024) }

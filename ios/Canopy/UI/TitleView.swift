@@ -11,6 +11,8 @@ struct TitleView: View {
     @Environment(\.horizontalSizeClass) private var size
     @Environment(\.dismiss) private var dismiss
     @State private var meta: Meta?
+    /// Rotten Tomatoes (and IMDb when the add-on has none) from MDBList.
+    @State private var scores: Ratings.Scores?
     @State private var failed = false
     @State private var season = -1
     @State private var similar: [Card] = []
@@ -50,6 +52,10 @@ struct TitleView: View {
             TrailerSheet(youTubeId: t.id)
         }
         .task { await load() }
+        .task(id: ref.id) {
+            scores = Ratings.cached(ref.id)
+            scores = await Ratings.fetch(ref.id, type: ref.type)
+        }
         .task(id: meta?.poster ?? ref.poster) { await tintFromPoster() }
         .task(id: meta?.trailer) {
             guard meta?.trailer != nil, Settings.trailers, !AppModel.demo else { return }
@@ -143,10 +149,17 @@ struct TitleView: View {
         }
     }
 
+    /// Year, runtime and genres, then "IMDb 8.1 · 🍅 94%".
+    private var infoLine: String? {
+        guard let meta else { return nil }
+        let line = [meta.info, Ratings.line(imdb: meta.rating, scores)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "   ")
+        return line.isEmpty ? nil : line
+    }
+
     private var details: some View {
             VStack(alignment: .leading, spacing: 14) {
-                if let meta, !meta.info.isEmpty {
-                    Text(meta.info + (meta.rating.map { "   ★ \($0)" } ?? "")).font(Look.body(14)).foregroundStyle(theme.text2)
+                if let line = infoLine {
+                    Text(line).font(Look.body(14)).foregroundStyle(theme.text2)
                 }
                 if let w = whereLine {
                     Text(w).font(Look.bold(14)).foregroundStyle(theme.accentColor).lineLimit(1)

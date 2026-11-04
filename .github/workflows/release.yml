@@ -18,6 +18,8 @@ env:
   CANOPY_KEYSTORE_BASE64: ${{ secrets.CANOPY_KEYSTORE_BASE64 }}
   CANOPY_KEYSTORE_PASSWORD: ${{ secrets.CANOPY_KEYSTORE_PASSWORD }}
   CANOPY_KEY_ALIAS: ${{ secrets.CANOPY_KEY_ALIAS }}
+  # Rotten Tomatoes scores (Ratings.kt); without it the apps show IMDb only.
+  MDBLIST_API_KEY: ${{ secrets.MDBLIST_API_KEY }}
 
 jobs:
   release:

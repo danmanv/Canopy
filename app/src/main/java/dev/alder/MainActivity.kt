@@ -216,6 +216,8 @@ class MainActivity : Screen() {
     private lateinit var heroRating: TextView
     private lateinit var heroRatingDot: TextView
     private lateinit var heroScore: TextView
+    /** Rotten Tomatoes beside the IMDb score: "· 🍅 94%". */
+    private lateinit var heroTomato: TextView
     private var heroBottom = 0 // px from the screen's foot to the hero block, for a poster row
     private var wideRow = false // the row the remote is in has wide cards (Continue Watching): the hero sits lower
     private lateinit var heroAbout: TextView
@@ -921,6 +923,7 @@ class MainActivity : Screen() {
         // The dot before the tag, as on the title page; only when there are facts before it.
         heroRatingDot = text("·", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroScore = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
+        heroTomato = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroAdded = text("", SMALL, color = TEXT_2).onArt().apply { visibility = View.GONE }
         heroAbout = text("", BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
         heroResume = pill("Resume", R.drawable.ic_play).apply {
@@ -942,6 +945,7 @@ class MainActivity : Screen() {
                 addView(heroRatingDot, wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
                 addView(heroRating)
                 addView(heroScore, wrap().apply { marginStart = dp(6) })
+                addView(heroTomato, wrap().apply { marginStart = dp(7) })
                 addView(heroAdded, wrap().apply { marginStart = dp(6) })
             }.marginTop(8),
             heroAbout.marginTop(8),
@@ -959,6 +963,21 @@ class MainActivity : Screen() {
             }
         }
         return browseInfo
+    }
+
+    /** The hero's IMDb tag and score, then Rotten Tomatoes once MDBList has answered. */
+    private fun heroScores(item: Item) {
+        val rating = metas[item.id]?.rating ?: item.facts.firstOrNull { it.startsWith("IMDb") }?.removePrefix("IMDb ")
+            ?: Ratings.cached(item.id)?.imdb
+        heroRating.visibility = if (rating.isNullOrBlank()) View.GONE else View.VISIBLE
+        heroScore.visibility = heroRating.visibility
+        heroRatingDot.visibility = if (heroFacts.text.isEmpty()) View.GONE else heroRating.visibility
+        heroScore.text = rating
+        val tomato = Ratings.tomato(item.id)
+        val dot = heroFacts.text.isNotEmpty() || heroRating.visibility == View.VISIBLE
+        heroTomato.text = tomato?.let { if (dot) "·  $it" else it } ?: ""
+        (heroTomato.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.marginStart = if (heroRating.visibility == View.VISIBLE) dp(7) else 0
+        heroTomato.visibility = if (tomato == null) View.GONE else View.VISIBLE
     }
 
     /** The focused title: its art across the screen, and logo, facts (and time left) and description top left. */
@@ -982,13 +1001,10 @@ class MainActivity : Screen() {
         val remaining = item.left?.split(DOT)?.lastOrNull { it.endsWith("left") }
         heroFacts.text = ((if (code != null) listOfNotNull(code, episode(item)?.title?.takeIf { it.isNotEmpty() })
             else listOfNotNull(year, genre, length)) + listOfNotNull(remaining)).joinToString(DOT)
-        val rating = meta?.rating ?: item.facts.firstOrNull { it.startsWith("IMDb") }?.removePrefix("IMDb ")
-        heroRating.visibility = if (rating.isNullOrBlank()) View.GONE else View.VISIBLE
-        heroScore.visibility = heroRating.visibility
-        heroRatingDot.visibility = if (heroFacts.text.isEmpty()) View.GONE else heroRating.visibility
-        heroScore.text = rating
+        heroScores(item)
+        Ratings.fetch(item.id, item.type) { if (heroItem === item) heroScores(item) }
         // Leads with a dot only when facts or a rating sit before it (a title with no details yet showed "· Added").
-        val lead = if (heroFacts.text.isEmpty() && heroRating.visibility == View.GONE) "" else "·  "
+        val lead = if (heroFacts.text.isEmpty() && heroRating.visibility == View.GONE && heroTomato.visibility == View.GONE) "" else "·  "
         heroAdded.text = item.addedAt?.let { "${lead}Added ${addedAgo(it)}" } ?: ""
         (heroAdded.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.marginStart = if (lead.isEmpty()) 0 else dp(6)
         heroAdded.visibility = if (page == Page.LIBRARY && heroAdded.text.isNotEmpty()) View.VISIBLE else View.GONE
@@ -1083,7 +1099,7 @@ class MainActivity : Screen() {
     private fun where(item: Item): String {
         val parts = item.left?.split(DOT).orEmpty()
         val code = parts.firstOrNull { it.startsWith("S") && " E" in it }
-        val about = if (code != null) listOfNotNull(code, episode(item)?.title?.takeIf { it.isNotEmpty() }) else item.facts
+        val about = if (code != null) listOfNotNull(code, episode(item)?.title?.takeIf { it.isNotEmpty() }) else item.facts + listOfNotNull(Ratings.tomato(item.id))
         return (about + listOfNotNull(parts.lastOrNull { it.endsWith("left") })).joinToString(DOT)
     }
 

@@ -153,7 +153,9 @@ class CatalogActivity : Screen() {
             card.grow(has).start()
             if (!has) return@cardFocus
             focusedName.text = meta.name
-            focusedFacts.text = listOfNotNull(meta.year, meta.genres.firstOrNull(), meta.rating?.let { "IMDb $it" }).joinToString(DOT)
+            fun fill() { focusedFacts.text = listOfNotNull(meta.year, meta.genres.firstOrNull(), Ratings.line(meta.id, meta.rating, DOT)).joinToString(DOT) }
+            fill()
+            Ratings.fetch(meta.id, meta.type) { if (focusedName.text == meta.name) fill() }
             // The focused row rides near the top, so the one below always shows what's next.
             val rowTop = (card.parent as View).top
             scroller.smoothScrollTo(0, (rowTop - dp(GAP)).coerceAtLeast(0))

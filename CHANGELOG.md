@@ -15,6 +15,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Rotten Tomatoes scores.** Next to the IMDb score, Canopy shows the Rotten Tomatoes critics score, for example "🍅 94%". When critics have no score, it shows the audience score, "🍿 88%". The scores come from MDBList.
+
 ## 1.3.3
 
 - **Canopy on your phone.** Install the same APK on an Android phone. Home, title pages, Search and the list of sources are upright. Tabs at the bottom open **Home**, **Movies**, **Shows** and **My List**. Tap a title to open it.

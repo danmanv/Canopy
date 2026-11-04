@@ -26,7 +26,7 @@ struct Card: Identifiable, Hashable {
         self.init(id: m.id, type: m.type, name: m.name, poster: m.poster ?? Art.poster(for: m.id))
         background = m.background
         logo = m.logo
-        facts = [m.year, m.rating.map { "★ \($0)" }, m.genres.first].compactMap { $0 }.joined(separator: " · ")
+        facts = [m.year, Ratings.line(imdb: m.rating, Ratings.cached(m.id)), m.genres.first].compactMap { $0 }.joined(separator: " · ")
         description = m.description
     }
 

@@ -157,7 +157,7 @@ class DetailsActivity : Screen() {
     // ---------- title and watch window ----------
 
     /** Everything the title block shows of [m] apart from the watch line: a change here redraws the block. */
-    private fun heroKey(m: Meta) = listOf(m.id, m.name, m.logo, m.year, m.genres.firstOrNull(), m.rating, m.runtime,
+    private fun heroKey(m: Meta) = listOf(m.id, m.name, m.logo, m.year, m.genres.firstOrNull(), m.rating, Ratings.tomato(m.id), m.runtime,
         m.description, m.videos.map { it.season }.filter { it > 0 }.distinct().size, m.videos.isNotEmpty()).joinToString("\u0000")
 
     private var heroKey: String? = null
@@ -201,11 +201,21 @@ class DetailsActivity : Screen() {
             factRow.addView(text(facts, SMALL, color = TEXT_2).onArt().apply {
                 maxLines = 1; ellipsize = TextUtils.TruncateAt.END
             })
-            m.rating?.let { rating ->
+            (m.rating ?: Ratings.cached(m.id)?.imdb)?.let { rating ->
                 factRow.addView(text("·", SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(7); marginEnd = dp(7) })
                 factRow.addView(imdbTag()) // the same size as the words beside it
                 factRow.addView(text(rating, SMALL, color = TEXT_2).onArt(), wrap().apply { marginStart = dp(6) })
             }
+            // Rotten Tomatoes after IMDb, filled in place when MDBList answers (kept for a week, so usually at once).
+            val tomato = text("", SMALL, color = TEXT_2).onArt()
+            factRow.addView(tomato, wrap().apply { marginStart = dp(7) })
+            fun fillTomato() {
+                val t = Ratings.tomato(m.id)
+                tomato.text = t?.let { "·  $it" } ?: ""
+                tomato.visibility = if (t == null) View.GONE else View.VISIBLE
+            }
+            fillTomato()
+            Ratings.fetch(m.id, type) { fillTomato() }
             stack.addView(factRow, wrap().apply { topMargin = dp(12) })
             m.description?.takeIf { it.isNotBlank() }?.let {
                 stack.addView(text(it, BODY, color = TEXT).onArt().apply {
@@ -564,7 +574,7 @@ class DetailsActivity : Screen() {
             background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xCC000808.toInt(), 0x00000000))
         }, FrameLayout.LayoutParams(-1, resources.displayMetrics.heightPixels / 2, Gravity.BOTTOM))
         val facts = listOfNotNull(m.year, m.runtime,
-            m.genres.take(3).joinToString(" / ").ifEmpty { null }, m.rating?.let { "IMDb $it" }).joinToString(DOT)
+            m.genres.take(3).joinToString(" / ").ifEmpty { null }, Ratings.line(m.id, m.rating, DOT)).joinToString(DOT)
         fun people(label: String, names: List<String>, max: Int) = column(Gravity.START,
             caps(label, TEXT_2).onArt(),
             text(names.take(max).joinToString(DOT), BODY, color = TEXT).onArt().apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }.marginTop(6),
