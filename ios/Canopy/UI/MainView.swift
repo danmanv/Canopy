@@ -77,7 +77,7 @@ extension MainView {
         case "title": path.append(Route.title(bb))
         case "movie": path.append(Route.title(TitleRef(id: "tt1375666", type: "movie", name: "Inception")))
         case "player":
-            let s = Stream(title: "Sample", description: "Big Buck Bunny 1080p", url: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+            let s = Stream(title: "Sample", description: "Big Buck Bunny 1080p", url: "https://test-videos.co.uk/vids/bigbuckbunny/mkv/1080/Big_Buck_Bunny_1080_10s_5MB.mkv",
                            headers: [:], size: 0, filename: nil, bingeGroup: nil)
             player = PlayRequest(title: TitleRef(id: "tt1254207", type: "movie", name: "Big Buck Bunny"), videoId: "tt1254207", sources: [s])
         case "sources": path.append(Route.sources(PlayRequest(title: bb, videoId: "tt0903747:1:1", episode: "S1 E1 · Pilot")))

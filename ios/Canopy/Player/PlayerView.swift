@@ -677,19 +677,20 @@ struct TracksPanel: View {
 enum Orientation {
     /// Why the last turn was refused, if it was.
     static var problem: String?
-    static var mask: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .pad ? .all : .portrait
+    // SwiftUI's presented screens keep the orientations they started with, so the app allows every way up all the time
+    // and turns the phone itself: sideways for the player, upright again after.
+    static var mask: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .pad ? .all : .allButUpsideDown
 
     static func player() {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        mask = .allButUpsideDown
+        problem = nil
         request(.landscapeRight)
         // Once more after the player's screen is up, so its controller is in the chain that turns.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if mask == .allButUpsideDown { request(.landscapeRight) } }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { problem = nil; request(.landscapeRight) }
     }
 
     static func app() {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
-        mask = .portrait
         request(.portrait)
     }
 
