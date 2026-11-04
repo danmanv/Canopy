@@ -50,6 +50,7 @@ struct TitleView: View {
             TrailerSheet(youTubeId: t.id)
         }
         .task { await load() }
+        .onChange(of: model.addons.count) { _, _ in if meta == nil { Task { await load() } } }
     }
 
     private var backButton: some View {

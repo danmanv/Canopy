@@ -74,6 +74,7 @@ struct SearchView: View {
                 if typed == query && typed.count >= 2 { run(typed, remember: false) }
             }
         }
+        .onChange(of: model.addons.count) { _, _ in if !searched.isEmpty && movies.isEmpty && shows.isEmpty { let q = searched; searched = ""; run(q, remember: false) } }
         .onChange(of: listener.text) { _, t in if !t.isEmpty { query = t } }
         .onChange(of: listener.listening) { _, on in if !on && !query.isEmpty { run(query) } }
     }

@@ -129,9 +129,13 @@ struct TabBar: View {
         .frame(maxWidth: 560)
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(colors: [theme.baseColor.opacity(0), theme.baseColor.opacity(0.92), theme.baseColor],
-                           startPoint: .top, endPoint: .bottom)
-                .ignoresSafeArea(edges: .bottom)
+            ZStack(alignment: .top) {
+                Rectangle().fill(.ultraThinMaterial).padding(.top, 14)
+                theme.baseColor.opacity(0.82).padding(.top, 14)
+                LinearGradient(colors: [theme.baseColor.opacity(0), theme.baseColor.opacity(0.82)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 14)
+            }
+            .ignoresSafeArea(edges: .bottom)
         )
     }
 }

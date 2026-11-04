@@ -21,6 +21,8 @@ concurrency:
 
 jobs:
   build:
+    # A branch in this repository already builds on push; a pull request's own run is only for forks.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-15
     timeout-minutes: 60
     defaults:

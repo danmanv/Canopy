@@ -97,7 +97,8 @@ struct SourcesView: View {
         .toolbar(.visible, for: .navigationBar)
         .task {
             guard let p = model.active else { return }
-            let picker = StreamPicker(profile: p, type: request.type, metaId: request.title.id, videoId: request.videoId)
+            let picker = StreamPicker(profile: p, type: request.type, metaId: request.title.id, videoId: request.videoId,
+                                     known: model.addons)
             await picker.gather { r in
                 result = r
                 if !audioOpened && r.done {

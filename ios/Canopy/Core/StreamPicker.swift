@@ -29,6 +29,8 @@ struct StreamPicker {
     let metaId: String
     let videoId: String
     var maxHeight = 0 // the player asked for less after a failure
+    /// The profile's add-ons when the caller already has them.
+    var known: [Addon] = []
 
     struct Result {
         var ordered: [Stream] = []   // best first; within Settings' limits first
@@ -39,7 +41,7 @@ struct StreamPicker {
 
     /// The add-ons asked: lenders' shareable stream add-ons first, then the profile's own.
     func addons() async throws -> [Addon] {
-        let own = try await Stremio.addons(profile.authKey).filter { $0.serves("stream", type: type, id: videoId) }
+        let own = (known.isEmpty ? try await Stremio.addons(profile.authKey) : known).filter { $0.serves("stream", type: type, id: videoId) }
         var household = [Addon]()
         for lender in Profiles.streamLenders(profile) {
             let list = (try? await Stremio.anyAddons(lender.authKey)) ?? []

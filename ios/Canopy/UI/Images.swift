@@ -62,13 +62,16 @@ struct RemoteImage: View {
     @State private var loadedFor: String?
 
     var body: some View {
-        ZStack {
-            if placeholder && image == nil { theme.tile }
-            if let image {
-                Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
-                    .transition(.opacity)
+        // The picture never sizes the view: it fills whatever space it's given and is clipped to it, so a wide
+        // backdrop can't push a page wider than the screen.
+        (placeholder && image == nil ? theme.tile : Color.clear)
+            .overlay {
+                if let image {
+                    Image(uiImage: image).resizable().aspectRatio(contentMode: contentMode)
+                        .transition(.opacity)
+                }
             }
-        }
+            .clipped()
         .task(id: url) {
             guard let url, !url.isEmpty else { image = nil; return }
             if loadedFor == url, image != nil { return }

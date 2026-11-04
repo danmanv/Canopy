@@ -137,7 +137,8 @@ struct PlayerView: View {
         guard let p = model.active else { return }
         status = "Finding the best source"
         failure = []
-        let picker = StreamPicker(profile: p, type: request.type, metaId: request.title.id, videoId: request.videoId, maxHeight: request.maxHeight)
+        let picker = StreamPicker(profile: p, type: request.type, metaId: request.title.id, videoId: request.videoId, maxHeight: request.maxHeight,
+                                   known: model.addons)
         let box = GatherBox()
         gatherTask?.cancel()
         gatherTask = Task {
@@ -679,6 +680,8 @@ enum Orientation {
         guard UIDevice.current.userInterfaceIdiom == .phone else { return }
         mask = .allButUpsideDown
         request(.landscapeRight)
+        // Once more after the player's screen is up, so its controller is in the chain that turns.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { if mask == .allButUpsideDown { request(.landscapeRight) } }
     }
 
     static func app() {
@@ -688,9 +691,14 @@ enum Orientation {
     }
 
     private static func request(_ m: UIInterfaceOrientationMask) {
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else { return }
+        // Every controller in the chain re-reads the allowed orientations first, then the scene turns.
+        var vc = scene.keyWindow?.rootViewController ?? scene.windows.first?.rootViewController
+        while let c = vc {
+            c.setNeedsUpdateOfSupportedInterfaceOrientations()
+            vc = c.presentedViewController
+        }
         scene.requestGeometryUpdate(.iOS(interfaceOrientations: m)) { _ in }
-        scene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
     }
 }
 
