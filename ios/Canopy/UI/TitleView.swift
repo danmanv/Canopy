@@ -16,6 +16,8 @@ struct TitleView: View {
     @State private var similar: [Card] = []
     @State private var trailer: String?
     @State private var logoFailed = false
+    /// The trailer playing silently behind the title, as on the TV: it fades in 3 s after the page opens.
+    @State private var preview = false
 
     private var wide: Bool { size == .regular }
     private var item: LibraryItem? { _ = model.libraryVersion; return model.item(ref.id) }
@@ -50,6 +52,12 @@ struct TitleView: View {
             TrailerSheet(youTubeId: t.id)
         }
         .task { await load() }
+        .task(id: meta?.trailer) {
+            guard meta?.trailer != nil, Settings.trailers, !AppModel.demo else { return }
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            if !Task.isCancelled { preview = true }
+        }
+        .onChange(of: trailer) { _, t in if t != nil { preview = false } }
         .onChange(of: model.addons.count) { _, _ in if meta == nil { Task { await load() } } }
     }
 
@@ -72,7 +80,21 @@ struct TitleView: View {
                             fallback: ref.poster)
                     .frame(height: wide ? 460 : 400)
                     .frame(maxWidth: .infinity)
+                    .overlay {
+                        if preview, let t = meta?.trailer {
+                            GeometryReader { g in
+                                // Wider than the space, so the video fills it with no bars; YouTube's chrome falls outside.
+                                let h = g.size.height * 1.3
+                                YouTubeView(id: t, muted: true)
+                                    .frame(width: max(g.size.width, h * 16 / 9), height: h)
+                                    .position(x: g.size.width / 2, y: g.size.height / 2)
+                                    .allowsHitTesting(false)
+                            }
+                            .transition(.opacity)
+                        }
+                    }
                     .clipped()
+                    .animation(.easeIn(duration: 1.2), value: preview)
                     .overlay(LinearGradient(colors: [theme.baseColor.opacity(0.25), .clear, theme.baseColor],
                                             startPoint: .top, endPoint: .bottom))
                 brand.padding(.horizontal, 20)
@@ -239,13 +261,18 @@ struct TitleView: View {
 
     private func start(startOver: Bool) {
         guard let t = target else { return }
+        preview = false
         play(request(t.0, label: t.1, startOver: startOver))
     }
 
-    private func playEpisode(_ v: Video) { play(request(v.id, label: episodeLabel(v), startOver: false)) }
+    private func playEpisode(_ v: Video) {
+        preview = false
+        play(request(v.id, label: episodeLabel(v), startOver: false))
+    }
 
     private func choose(_ videoId: String?, label: String?) {
         guard let videoId else { return }
+        preview = false
         navigate(.sources(request(videoId, label: label, startOver: false)))
     }
 
