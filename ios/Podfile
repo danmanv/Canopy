@@ -1,0 +1,20 @@
+platform :ios, '17.0'
+
+target 'Canopy' do
+  use_frameworks!
+  # VLC plays what AVPlayer can't: MKV, HEVC in any container, DTS/TrueHD audio, embedded and external subtitles.
+  pod 'MobileVLCKit', '~> 3.6.0'
+
+  target 'CanopyTests' do
+    inherit! :search_paths
+  end
+end
+
+post_install do |installer|
+  installer.pods_project.targets.each do |t|
+    t.build_configurations.each do |c|
+      c.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '17.0'
+      c.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+    end
+  end
+end

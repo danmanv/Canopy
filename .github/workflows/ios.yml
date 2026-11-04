@@ -1,0 +1,115 @@
+name: iOS
+
+# Builds Canopy for iPhone and iPad (ios/) as an unsigned IPA. SideStore signs it on the phone with a free Apple ID, so
+# no Apple Developer account is needed. A push (not a pull request) also publishes the IPA as the "ios-nightly"
+# pre-release with a SideStore source (source.json), so SideStore installs it and offers each new build. A pre-release is
+# never GitHub's "latest" release, so the Android app's updater and the Downloader code keep getting Canopy.apk.
+on:
+  push:
+    branches: [main, 'claude/**']
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  pull_request:
+    paths: ['ios/**', '.github/workflows/ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # A branch in this repository already builds on push; a pull request's own run is only for forks.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: ios
+    steps:
+      - uses: actions/checkout@v5
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - name: Tools
+        run: brew install xcodegen
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+          key: pods-${{ hashFiles('ios/Podfile') }}
+      - name: Project
+        run: |
+          xcodegen generate
+          pod install
+      - name: Version
+        run: |
+          echo "VERSION=0.1.${{ github.run_number }}" >> "$GITHUB_ENV"
+          echo "BUILD=${{ github.run_number }}" >> "$GITHUB_ENV"
+      - name: Simulators
+        run: |
+          pick() { xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for k,v in sorted(d.items(), reverse=True) if 'iOS' in k for x in v if '$1' in x['name']))"; }
+          echo "IPHONE=$(pick 'iPhone 1')" >> "$GITHUB_ENV"
+          echo "IPAD=$(pick 'iPad Pro')" >> "$GITHUB_ENV"
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test -workspace Canopy.xcworkspace -scheme Canopy -destination "id=$IPHONE" \
+            -derivedDataPath build-tests CODE_SIGNING_ALLOWED=NO | tail -n 120
+      # The app in a demo mode (Cinemeta alone, no account) on an iPhone and an iPad, each screen photographed. They go
+      # up with the pre-release, so the screens can be looked at without a device.
+      - name: Screenshots
+        if: github.event_name != 'pull_request'
+        continue-on-error: true
+        run: |
+          app=$(find build-tests/Build/Products -name Canopy.app -path '*iphonesimulator*' | head -1)
+          mkdir -p shots
+          for dev in "$IPHONE:iphone" "$IPAD:ipad"; do
+            id=${dev%%:*}; tag=${dev##*:}
+            xcrun simctl boot "$id" || true
+            xcrun simctl bootstatus "$id" -b
+            xcrun simctl status_bar "$id" override --time "9:41" --batteryState charged --batteryLevel 100 || true
+            xcrun simctl install "$id" "$app"
+            for screen in home movies shows list title movie sources search settings player; do
+              extra=""; [ "$screen" = search ] && extra="-query Dune"
+              xcrun simctl launch --terminate-running-process "$id" dev.canopy.ios -demo -screen "$screen" $extra
+              sleep 14
+              xcrun simctl io "$id" screenshot "shots/$tag-$screen.png"
+            done
+            xcrun simctl spawn "$id" log show --last 1m --style compact --predicate 'process == "Canopy"' > "shots/$tag-player-log.txt" 2>&1 || true
+            xcrun simctl shutdown "$id" || true
+          done
+          ls -la shots
+      - name: IPA
+        run: |
+          set -o pipefail
+          xcodebuild build -workspace Canopy.xcworkspace -scheme Canopy -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -n 120
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/Canopy.app Payload/
+          zip -qry Canopy.ipa Payload
+          ls -la Canopy.ipa
+      - uses: actions/upload-artifact@v5
+        with:
+          name: Canopy-ios
+          path: ios/Canopy.ipa
+      - name: Publish the ios-nightly pre-release
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          size=$(stat -f%z Canopy.ipa)
+          date=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          url="https://github.com/${{ github.repository }}/releases/download/ios-nightly/Canopy.ipa"
+          sed -e "s|@VERSION@|$VERSION|g" -e "s|@BUILD@|$BUILD|g" -e "s|@DATE@|$date|g" -e "s|@SIZE@|$size|g" \
+              -e "s|@URL@|$url|g" -e "s|@BRANCH@|${GITHUB_REF_NAME}|g" sidestore-source.json > source.json
+          cat source.json
+          gh release delete ios-nightly --cleanup-tag --yes || true
+          gh release create ios-nightly Canopy.ipa source.json $(ls shots/*.png shots/*.txt 2>/dev/null) --prerelease --latest=false --target "$GITHUB_SHA" \
+            --title "Canopy for iPhone and iPad (test build $VERSION)" \
+            --notes "Test build of Canopy for iPhone and iPad from ${GITHUB_REF_NAME} ($GITHUB_SHA). Install with SideStore: add the source https://github.com/${{ github.repository }}/releases/download/ios-nightly/source.json, or open Canopy.ipa in SideStore. Android TVs and phones keep updating from the latest release, not this one."
