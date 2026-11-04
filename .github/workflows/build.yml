@@ -42,11 +42,6 @@ jobs:
           # Posters ask in batches of up to 100: check that answer's shape too.
           curl -s -X POST -H 'Content-Type: application/json' -d '{"ids":["tt0111161","tt0068646"]}' \
             "https://api.mdblist.com/imdb/movie/?apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); print(type(d).__name__, [(x.get('ids',{}).get('imdb'), {r['source']: r.get('value') for r in x.get('ratings', []) if r['source'] in ('imdb','tomatoes','popcorn')}) for x in (d if isinstance(d,list) else [d])][:3]); print(str(d)[:300] if not isinstance(d,list) else '')"
-          # A new title (Tenzing, 2026): what MDBList holds for it.
-          curl -s "https://api.mdblist.com/search/movie?query=tenzing&apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); [print(x.get('title'), x.get('year'), x.get('ids')) for x in d.get('search', [])[:3]]" || true
-          for id in $(curl -s "https://api.mdblist.com/search/movie?query=tenzing&apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; print(' '.join(x['ids']['imdbid'] for x in json.load(sys.stdin).get('search', [])[:2] if x.get('ids',{}).get('imdbid')))"); do
-            curl -s "https://api.mdblist.com/imdb/movie/$id?apikey=$MDBLIST_API_KEY" | python3 -c "import json,sys; d=json.load(sys.stdin); print('$id', d.get('title'), d.get('released'), d.get('updated'), [(r['source'], r.get('value'), r.get('votes')) for r in d.get('ratings', []) if r['source'] in ('imdb','tomatoes','popcorn')])"
-          done
       - name: Unit tests
         run: ./gradlew testDebugUnitTest
       - name: Debug APK
