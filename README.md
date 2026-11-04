@@ -87,6 +87,8 @@ Canopy has no add-on store. Setting up add-ons means typing and web forms, which
 
 ## Install
 
+Step-by-step instructions for every device (TV, Android phone, iPhone and iPad) are in **[INSTALL.md](INSTALL.md)**. The short version for a TV:
+
 1. On your phone or computer, sign in to [Stremio](https://web.stremio.com) and install your add-ons.
 1. Download `Canopy.apk` from the [latest release](https://github.com/danmanv/Canopy/releases/latest).
 1. Install it on your TV. Easiest: install the free **Downloader** app by AFTVnews from the Google Play Store on your TV, open it, enter code **7470748** and press Go, then Install. The code always gets the latest release. Or use a USB drive and a file manager, or `adb install Canopy.apk`.
