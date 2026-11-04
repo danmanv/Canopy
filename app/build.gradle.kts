@@ -18,9 +18,10 @@ android {
         versionName = "1.3.4"
         // TVs are ARM; the x86 builds of ffmpeg's native code would only add size.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
-        // Rotten Tomatoes scores (Ratings.kt): the MDBLIST_API_KEY secret in CI, or mdblist.key in local.properties for
-        // a local build. Without one the apps show IMDb only.
+        // Rotten Tomatoes scores (Ratings.kt): the MDBLIST_API_KEY secret in CI. For a local build, mdblist.key in
+        // ~/.gradle/gradle.properties (every checkout) or local.properties. Without one the apps show IMDb only.
         val mdblist = System.getenv("MDBLIST_API_KEY")?.takeIf { it.isNotBlank() }
+            ?: (project.findProperty("mdblist.key") as? String)?.takeIf { it.isNotBlank() }
             ?: rootProject.file("local.properties").takeIf { it.exists() }
                 ?.let { f -> Properties().apply { f.inputStream().use { load(it) } }.getProperty("mdblist.key") }
             ?: ""
