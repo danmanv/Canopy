@@ -65,8 +65,9 @@
         <activity android:name=".StreamsActivity" android:screenOrientation="sensorLandscape" />
         <activity
             android:name=".PlayerActivity"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|screenLayout" />
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout" />
         <activity
             android:name=".ScreensaverActivity"
             android:screenOrientation="sensorLandscape"

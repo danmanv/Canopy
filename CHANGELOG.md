@@ -15,6 +15,10 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Watch in a window.** On a phone, tap **Window** in the player, or go to the home screen while a video plays. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**.
+- **Watch upright.** On a phone, the player turns with the phone. When you hold the phone upright, the video is at the top. The title, the time that is left, the episodes and the story are below it. Tap an episode to play it.
+- Tap **Full screen** to turn the video sideways. Tap **Keep sideways** in the player to keep the video sideways, for example when you lie down.
+
 ## 1.3.3
 
 - **Canopy on your phone.** Install the same APK on an Android phone. Home, title pages, Search and the list of sources are upright. Tabs at the bottom open **Home**, **Movies**, **Shows** and **My List**. Tap a title to open it.
