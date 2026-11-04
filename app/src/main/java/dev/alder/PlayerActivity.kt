@@ -137,6 +137,8 @@ class PlayerActivity : Screen() {
     private lateinit var uprightEpisode: TextView
     private lateinit var uprightAbout: TextView
     private lateinit var uprightNext: View
+    private lateinit var uprightEpisodes: LinearLayout // the season, the playing episode marked
+    private lateinit var lockButton: TextView // Keep sideways, for watching lying down
     // Full screen (or Back from it) turns the picture; the phone's own turning takes over again once it's held that way.
     private var orientationWatch: OrientationEventListener? = null
     private val windowActions = object : BroadcastReceiver() {
@@ -307,7 +309,8 @@ class PlayerActivity : Screen() {
         if (touch) {
             current?.get()?.takeIf { it !== this && it.inWindow }?.finish() // one video at a time: the small window closes
             current = java.lang.ref.WeakReference(this)
-            requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            requestedOrientation = if (keptSideways()) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
             upright = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
             val filter = IntentFilter(WINDOW_ACTION)
             if (Build.VERSION.SDK_INT >= 33) registerReceiver(windowActions, filter, RECEIVER_NOT_EXPORTED)
@@ -849,8 +852,10 @@ class PlayerActivity : Screen() {
     }
 
     /** Hands the next episode to the sources page, which starts it (preferring this release's group) and finishes here. */
-    private fun playNext() {
-        val next = nextVideo() ?: return finish()
+    private fun playNext() = nextVideo()?.let(::playEpisode) ?: finish()
+
+    /** Another episode: its sources are looked up, then it plays here instead. */
+    private fun playEpisode(next: Video) {
         val videos = meta!!.videos
         val after = videos.getOrNull(videos.indexOf(next) + 1)?.takeIf { it.season != 0 }
         val name = intent.getStringExtra("name") ?: ""
@@ -1104,6 +1109,8 @@ class PlayerActivity : Screen() {
                     addView(uprightTitle, LinearLayout.LayoutParams(-1, -2))
                     addView(uprightEpisode, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
                     addView(uprightAbout, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+                    uprightEpisodes = column(Gravity.START)
+                    addView(uprightEpisodes, LinearLayout.LayoutParams(-1, -2))
                 })
             }, LinearLayout.LayoutParams(-1, 0, 1f))
             addView(LinearLayout(context).apply {
@@ -1127,6 +1134,42 @@ class PlayerActivity : Screen() {
             ?: listOfNotNull(m.year, m.runtime).joinToString(DOT)
         uprightAbout.text = episode?.overview?.takeIf { it.isNotBlank() } ?: m.description.orEmpty()
         uprightNext.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
+        // The rest of the season, to jump to another episode.
+        uprightEpisodes.removeAllViews()
+        val season = episode?.season ?: return
+        val inSeason = m.videos.filter { it.season == season }
+        if (inSeason.size < 2) return
+        uprightEpisodes.addView(caps("Season $season", TUNGSTEN), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(22); bottomMargin = dp(6) })
+        for (v in inSeason) {
+            val playing = v.id == videoId
+            uprightEpisodes.addView(LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(12), dp(8), dp(12))
+                addView(text("${v.episode}", 16f, bold = true, color = if (playing) TUNGSTEN else TEXT_3), LinearLayout.LayoutParams(dp(36), -2))
+                addView(text(v.title.ifBlank { "Episode ${v.episode}" }, 16f, color = if (playing) TEXT else TEXT_2).apply {
+                    maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (playing) addView(text("Playing", 13f, bold = true, color = TUNGSTEN), wrap())
+                else {
+                    isFocusable = true; isClickable = true
+                    rowFocus(8)
+                    setOnClickListener { playEpisode(v) }
+                }
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+    }
+
+    private fun keptSideways() = getSharedPreferences("player", MODE_PRIVATE).getBoolean(Settings.profileKey(this, "sideways"), false)
+
+    /** Keep sideways: the player stays sideways however the phone is held, until it's turned off (or Upright). */
+    private fun keepSideways(on: Boolean, say: Boolean = true) {
+        getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean(Settings.profileKey(this, "sideways"), on).apply()
+        orientationWatch?.disable()
+        turned = false
+        requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        lockButton.foreground = centred(R.drawable.ic_lock_rotation, 30, if (on) TUNGSTEN else TEXT)
+        buttonLabels[lockButton]?.text = if (on) "Kept sideways" else "Keep sideways"
+        if (say) flash(if (on) "Kept sideways" else "Turns with the phone")
     }
 
     /** Lays the screen out for how the phone is held: the strip and panel upright, the whole screen sideways. */
@@ -1174,6 +1217,7 @@ class PlayerActivity : Screen() {
      * the phone's own turning takes over again once it is held that way, as YouTube does; with it off, it stays turned.
      */
     private fun turn(sideways: Boolean) {
+        if (!sideways && keptSideways()) keepSideways(false, say = false)
         requestedOrientation = if (sideways) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         orientationWatch?.disable()
         val autoRotate = android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION, 0) == 1
@@ -1186,7 +1230,7 @@ class PlayerActivity : Screen() {
                 if (!held) return
                 disable()
                 turned = false
-                requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+                if (!keptSideways()) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
             }
         }.apply { if (canDetectOrientation()) enable() }
     }
@@ -1539,6 +1583,11 @@ class PlayerActivity : Screen() {
             if (!touch) addView(buttonCell(infoButton))
             if (touch) addView(buttonCell(fitButton))
             if (windowable) addView(buttonCell(button("Window", R.drawable.ic_pip) { enterWindow() }))
+            if (touch) {
+                lockButton = button("Keep sideways", R.drawable.ic_lock_rotation) { keepSideways(!keptSideways()) }
+                addView(buttonCell(lockButton))
+                if (keptSideways()) lockButton.post { keepSideways(true, say = false) }
+            }
         }
         for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton, fitButton))
             button.nextFocusUpId = bar.id
