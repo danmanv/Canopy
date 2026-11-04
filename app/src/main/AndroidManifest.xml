@@ -28,8 +28,8 @@
 
         <activity
             android:name=".ProfilesActivity"
-            android:exported="true"
-            android:screenOrientation="sensorLandscape">
+            android:exported="true">
+            <!-- Sideways on a TV, upright on a phone: set on start (ProfilesActivity.onCreate). -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

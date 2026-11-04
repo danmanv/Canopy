@@ -15,6 +15,9 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.
+- On a phone, Android's status bar and navigation buttons stay on screen, except while a video plays. Back works as on any other app.
+- On a phone, a show in Continue Watching whose next episode you haven't started shows **Play** on the poster, and starts that episode.
 - **Resume on glass.** On a phone, the big poster on Home has a frosted strip along its foot: tap it to resume, and it shows the time left. It takes the poster's colour and fades while you swipe. On the TV, the Continue Watching poster you're on shows the same strip, and OK resumes it.
 - Hold a title in **Continue Watching** for **Start over** and **Mark as watched**. For a show, Mark as watched moves on to the next episode. On the TV, the same menu has **More info** for the title page.
 - A title page takes a soft tint from the poster's colour.

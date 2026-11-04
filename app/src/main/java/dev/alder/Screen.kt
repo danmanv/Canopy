@@ -129,10 +129,13 @@ abstract class Screen : Activity() {
     /** A screen made for a phone (PhoneActivity): drawn at the phone's own size, and its taps are plain taps. */
     protected open val phoneLayout: Boolean get() = false
 
+    /** [phoneLayout] while the screen is being attached, before it can read its own context. */
+    protected open fun phoneLayoutIn(base: Context): Boolean = phoneLayout
+
     // On a phone every TV screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        if (!phoneLayout) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+        if (!phoneLayoutIn(base)) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
     }
 
     private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
@@ -180,7 +183,8 @@ abstract class Screen : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && touch) fullScreen(clearOfCutout) // the bars come back after the keyboard or a swipe from the edge
+        // The bars come back after the keyboard or a swipe from the edge; a phone's own screens keep them.
+        if (hasFocus && touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -188,7 +192,7 @@ abstract class Screen : Activity() {
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
-        if (touch) fullScreen(clearOfCutout)
+        if (touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback

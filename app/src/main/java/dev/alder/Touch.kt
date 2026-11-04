@@ -133,6 +133,43 @@ internal fun Activity.fullScreen(clearOfCutout: Boolean = true) {
     }
 }
 
+/**
+ * A screen made for a phone (not the player, not a TV screen held sideways) keeps Android's status bar and navigation
+ * buttons, so Back and Home are where the phone's owner expects them. The app is drawn edge to edge (Android 15 and
+ * later always do), so the content keeps clear of the bars itself: the navigation bar below always, the status bar above
+ * unless [clearTop] is false (a title page's art runs up behind it).
+ */
+@Suppress("DEPRECATION")
+internal fun Activity.showBars(clearTop: Boolean = true) {
+    val decor = window.decorView
+    if (Build.VERSION.SDK_INT >= 30) {
+        window.setDecorFitsSystemWindows(false)
+        decor.windowInsetsController?.apply {
+            show(WindowInsets.Type.systemBars())
+            // Light icons on the dark app.
+            setSystemBarsAppearance(0, WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS)
+        }
+    } else decor.systemUiVisibility = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+    window.statusBarColor = android.graphics.Color.TRANSPARENT
+    window.navigationBarColor = android.graphics.Color.TRANSPARENT
+    findViewById<View>(android.R.id.content).setOnApplyWindowInsetsListener { v, insets ->
+        val top: Int; val left: Int; val right: Int; val bottom: Int
+        if (Build.VERSION.SDK_INT >= 30) {
+            val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
+            // The keyboard too: drawn edge to edge, a screen isn't resized for it, and a field or button would sit under it.
+            val ime = insets.getInsets(WindowInsets.Type.ime())
+            top = bars.top; left = bars.left; right = bars.right; bottom = maxOf(bars.bottom, ime.bottom)
+        } else {
+            top = insets.systemWindowInsetTop; left = insets.systemWindowInsetLeft
+            right = insets.systemWindowInsetRight; bottom = insets.systemWindowInsetBottom
+        }
+        v.setPadding(left, if (clearTop) top else 0, right, bottom)
+        insets
+    }
+    findViewById<View>(android.R.id.content).requestApplyInsets()
+}
+
 /** A remote's key, pressed and let go, through the window as a real one would come: focus moves, OK clicks. */
 internal fun Activity.press(keyCode: Int) {
     val now = SystemClock.uptimeMillis()
