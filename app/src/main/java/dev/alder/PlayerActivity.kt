@@ -419,6 +419,8 @@ class PlayerActivity : Screen() {
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
             }
 
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) { if (touch) windowReady() }
+
             override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) {
                     seekedAt = System.currentTimeMillis()
@@ -1957,8 +1959,10 @@ class PlayerActivity : Screen() {
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
-            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
-        }, FrameLayout.LayoutParams(fitWidth(sized(310, 470), sized(27, PAD)), resources.displayMetrics.heightPixels - dp(sized(54, 32))).apply {
+            // Upright it lies over the story under the picture: solid, so that text doesn't show through.
+            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(if (uprightNow) BASE else baseAt(0xF0), 14), glass(14)))
+        }, FrameLayout.LayoutParams(fitWidth(sized(310, 470), sized(27, PAD)), resources.displayMetrics.heightPixels - dp(sized(54, 32)) -
+            (if (uprightNow) dp(60) else 0)).apply {
             leftMargin = dp(sized(27, PAD)); topMargin = dp(sized(27, 16))
         })
         optionsBar = SeekBar(this).apply { isFocusable = false }
@@ -1973,6 +1977,8 @@ class PlayerActivity : Screen() {
         options.addView(optionsLeft, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(27)
         })
+        // Upright, the time is under the picture already: the small bar would sit on the list's last rows.
+        if (uprightNow) for (v in listOf(optionsBar, optionsElapsed, optionsLeft)) v.visibility = View.GONE
         options.visibility = View.VISIBLE
         updateProgress()
         subsFirst.requestFocus()

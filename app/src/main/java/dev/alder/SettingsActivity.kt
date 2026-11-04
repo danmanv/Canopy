@@ -701,7 +701,14 @@ class SettingsActivity : Screen() {
             store(c, c.values[next].first)
             refresh.forEach { it() }
         }
-        val row = settingRow(c.label, value, c.hint, c.perProfile, focus = { has -> focused = has; draw() }) { shift(1) }
+        val row = settingRow(c.label, value, c.hint, c.perProfile, focus = { has -> focused = has; draw() }) {
+            // A phone's tap opens the list of choices (an On/Off one just flips); the remote's OK steps through them.
+            if (!touch || isSwitch) shift(1)
+            else choose(c.label, c.values.map { it.second }, phoneText(c.hint), checked = current()) { i ->
+                store(c, c.values[i].first)
+                refresh.forEach { it() }
+            }
+        }
         choiceRows += row
         row.setOnKeyListener { _, code, event ->
             if (event.action == android.view.KeyEvent.ACTION_DOWN &&
@@ -747,7 +754,13 @@ class SettingsActivity : Screen() {
         }
         val row = settingRow("Source choice", value,
             "Best picture: full Blu-ray and Dolby Vision first. Balanced: smaller files. Fast start: web releases. Add-on's order: follow the add-on.",
-            focus = { has -> focused = has; draw() }) { shift(1) }
+            focus = { has -> focused = has; draw() }) {
+            if (!touch) shift(1)
+            else choose("Source choice", PRESETS.map { it.first }, checked = current().coerceAtLeast(0)) { i ->
+                PRESETS[i].second.forEach { (key, v) -> store(choice(key), v) }
+                refresh.forEach { it() }
+            }
+        }
         choiceRows += row
         row.setOnKeyListener { _, code, event ->
             if (event.action == android.view.KeyEvent.ACTION_DOWN &&
@@ -820,6 +833,7 @@ class SettingsActivity : Screen() {
 
     private fun openSection(group: Group) {
         showGroup(group)
+        hint.text = phoneText(hint.text.toString())
         detailTitle.text = group.label
         sectionList.visibility = View.GONE
         sectionPage.visibility = View.VISIBLE
@@ -834,6 +848,16 @@ class SettingsActivity : Screen() {
     }
 
     /** A setting upright: its name and value on one line, what it does under them, all one tap. */
+    /** Settings' words are written for the TV and its remote; on a phone they talk about the phone and taps. */
+    private fun phoneText(words: String) = if (!touch) words else words
+        .replace(" Holding OK always shows every source.", " Stream on a title page always shows every source.")
+        .replace("Hold OK on a title", "Hold a title")
+        .replace("OK to show or hide it", "Tap to show or hide it")
+        .replace("Any key ends it. OK opens the title on screen.", "A tap ends it.")
+        .replace("on this TV", "on this phone").replace("this TV", "this phone").replace("This TV", "This phone")
+        .replace("the TV's", "the phone's").replace("The TV", "The screen").replace("the TV itself", "the screen")
+        .replace("Canopy is a TV interface", "Canopy is an app")
+
     private fun uprightRow(label: String, value: View, help: String, perProfile: Boolean, click: () -> Unit): View {
         val row = column(Gravity.START).apply {
             setPadding(dp(16), dp(14), dp(16), dp(14))
@@ -846,7 +870,7 @@ class SettingsActivity : Screen() {
                 (value as? TextView)?.textSize = 16f
                 addView(value, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(12) })
             }, LinearLayout.LayoutParams(-1, -2))
-            addView(text(help, 14f, color = TEXT_3).apply { setLineSpacing(0f, 1.15f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            addView(text(phoneText(help), 14f, color = TEXT_3).apply { setLineSpacing(0f, 1.15f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
             setOnClickListener { click() }
         }
         detailRows.addView(row, LinearLayout.LayoutParams(-1, -2))
