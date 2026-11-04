@@ -216,7 +216,8 @@ class Meta(json: JSONObject) {
     val description = json.text("description")
     val year = json.text("releaseInfo")?.trimEnd('–', '-', ' ') // "2026–" (still running) reads as 2026 everywhere
     val runtime = json.text("runtime")?.let(::runtime)
-    val rating = json.text("imdbRating")
+    /** "7.5": one decimal always ("6" reads "6.0"), and none for "N/A" or 0, which some add-ons send. */
+    val rating = json.text("imdbRating")?.toDoubleOrNull()?.takeIf { it > 0 }?.let { "%.1f".format(java.util.Locale.US, it) }
     val genres = json.optJSONArray("genres").strings().take(3)
     // Newer Cinemeta answers drop "cast" and "director" and list people only as links ("Cast", "Directors").
     private val people = json.optJSONArray("links").objects()

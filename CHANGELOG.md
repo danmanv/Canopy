@@ -13,6 +13,10 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
+## Unreleased
+
+- An IMDb score always has one decimal, for example "6.0". A title without an IMDb score does not show "IMDb N/A".
+
 ## 1.3.5
 
 - **Rotten Tomatoes scores.** Next to the IMDb score, Canopy shows the Rotten Tomatoes critics score, for example "🍅 94%". When critics have no score, it shows the audience score, "🍿 88%". The scores come from MDBList.
