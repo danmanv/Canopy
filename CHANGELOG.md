@@ -15,6 +15,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **More like this** shows titles that MDBList recommends for each movie. Before, it showed the same titles of one genre for each movie. This is on the TV, the phone, the iPhone and the iPad.
+- When MDBList has no recommendations, **More like this** puts first the titles that have more genres in common with the movie.
 - An IMDb score always has one decimal, for example "6.0". A title without an IMDb score does not show "IMDb N/A".
 
 ## 1.3.5
