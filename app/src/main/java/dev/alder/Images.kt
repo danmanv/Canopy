@@ -44,6 +44,9 @@ object Images {
         { r -> Thread { Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND); r.run() } })
     private val main = Handler(Looper.getMainLooper())
 
+    /** The poster MetaHub keeps for an IMDb title, for pages opened without one. */
+    fun posterFor(id: String) = id.takeIf { it.startsWith("tt") }?.let { "https://images.metahub.space/poster/medium/${it.substringBefore(':')}/img" }
+
     // Logos straight from MetaHub (Stremio's image server) by IMDb id, so a card's logo doesn't wait for its details.
     fun logoFor(id: String) = id.takeIf { it.startsWith("tt") }?.let { "https://images.metahub.space/logo/medium/${it.substringBefore(':')}/img" }
 
@@ -169,6 +172,35 @@ object Images {
         out.setPixels(a, 0, w, 0, 0, w, h)
         return out
     }
+
+    /**
+     * The average colour of a picture's lower half, for glass and pages that take a poster's own colour (the Resume
+     * strip on the phone's carousel, the title pages). Null for a picture with no colour to give. Call off the main thread.
+     */
+    fun tint(src: Bitmap): Int? {
+        val soft = if (src.config == Bitmap.Config.HARDWARE) src.copy(Bitmap.Config.ARGB_8888, false) ?: return null else src
+        val small = Bitmap.createScaledBitmap(soft, 24, 36, true)
+        var r = 0L; var g = 0L; var b = 0L; var n = 0
+        for (y in 18 until 36) for (x in 0 until 24) {
+            val p = small.getPixel(x, y)
+            r += p shr 16 and 255; g += p shr 8 and 255; b += p and 255; n++
+        }
+        if (small !== soft) small.recycle()
+        if (soft !== src) soft.recycle()
+        return if (n == 0) null else (255 shl 24) or ((r / n).toInt() shl 16) or ((g / n).toInt() shl 8) or (b / n).toInt()
+    }
+
+    /** The colour of the poster at [url] ([tint]), fetched small. Off the main thread. */
+    fun tintOf(url: String?): Int? = url?.let { bitmap(it, TINT_W) }?.let(::tint)
+
+    /** [base] moved [amount] of the way to [tint], darkened first so a pale poster can't wash a dark page out. */
+    fun blend(base: Int, tint: Int, amount: Float): Int {
+        fun mix(a: Int, b: Int) = (a + ((b * 0.55f) - a) * amount).toInt().coerceIn(0, 255)
+        return (255 shl 24) or (mix(base shr 16 and 255, tint shr 16 and 255) shl 16) or
+            (mix(base shr 8 and 255, tint shr 8 and 255) shl 8) or mix(base and 255, tint and 255)
+    }
+
+    private const val TINT_W = 120
 
     /**
      * MetaHub (Stremio's image server) serves small, medium and large copies, and Stremio's catalogs and library point

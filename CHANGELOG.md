@@ -15,6 +15,27 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+- **Resume on glass.** On a phone, the big poster on Home has a frosted strip along its foot: tap it to resume, and it shows the time left. It takes the poster's colour and fades while you swipe. On the TV, the Continue Watching poster you're on shows the same strip, and OK resumes it.
+- Hold a title in **Continue Watching** for **Start over** and **Mark as watched**. For a show, Mark as watched moves on to the next episode. On the TV, the same menu has **More info** for the title page.
+- A title page takes a soft tint from the poster's colour.
+- **More like this** shows titles of the same genre when the add-ons suggest none.
+- Play starts faster: when the file that played last time is found, Canopy starts it at once, without waiting for the other add-ons.
+- The next episode's sources are found 4 minutes before the end, so **Next up** starts at once.
+- A source whose file names a different episode (for example S01E03 when you chose S1 E1) goes to the bottom of the list, and is never remembered as the right file.
+- **A phone Home.** On a phone, hold it upright. Tabs at the bottom open **Home**, **Shows**, **Movies** and **My List**. Slide the big posters through the frame, then tap **Resume** or **Play**.
+- On a phone, a title page is upright too. Tap **Resume**, **Restart**, **My List**, **Trailer** or **Stream**. Tap an episode to play it.
+- On a phone, **Search** is upright and uses the phone keyboard. Tap the microphone to search by voice. The results show as a grid of posters.
+- On a phone, the player has large **Back 10 seconds**, **Play** and **Ahead 10 seconds** buttons in the middle of the picture.
+- On a phone, the list of sources is upright, with tall rows that are easy to tap.
+- On a phone, the player's buttons, times, clock and panels are larger, and each button shows its name. The second time bar at the top while a seek loads is gone.
+- On a phone, the player's buttons are bare icons over the picture, with a see-through **Play**, a round knob on the time bar and a bigger title. **Starting playback** has larger text and a larger spinner.
+- On a phone, the player has no **Info** or **Start over** buttons. Tap Back to go to the title page.
+- **Picture size** in the player: **Fit**, **Fill screen** or **Stretch**. On a phone, tap the button at the bottom right, or choose it in **Audio & subtitles**. Canopy remembers your choice.
+- **Canopy on your phone.** Install the same APK on an Android phone. Hold the phone sideways. Tap a title to open it. Swipe a row to see more titles. Swipe up or down to go to the next row.
+- On a phone, text and buttons are larger, and a tap near a button also selects it. When you swipe a row, it stops with a title at the start of the row, and that title is selected.
+- On a phone, the posters on **Home** are larger. The video uses the full screen, also the area around the camera. Tap the back arrow at the top left to go back.
+- On a phone, tap the picture to show the controls. Tap two times on the left or right side to go back or forward 10 seconds. Move your finger along the bar to go to a different time.
+- On a phone, **Search** opens with the phone keyboard. The PIN screen shows number keys. **Sign in on this phone** opens the Stremio sign-in page on the phone.
 - **Faster after each update.** Canopy tells the TV to compile the app before you use it. Before, the app was slow for some time after each update.
 - Home does less work when you stop on a title. The art does not zoom slowly, and the trailer player stops between trailers.
 - A trailer stops at once when you push a button. Before, it continued for a short time and made the next move slow.

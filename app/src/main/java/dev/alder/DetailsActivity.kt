@@ -59,14 +59,39 @@ class DetailsActivity : Screen() {
     private var itemChangedHere = false
     private var similarRequested = false
 
+    // The page takes a soft tint from the poster, where the shade lies over the art: left and along the foot.
+    private val tintLayer by lazy { View(this).apply { alpha = 0f } }
+    private var tinted: String? = null
+
+    private fun tintFromPoster(url: String?) {
+        if (url == null || url == tinted) return
+        tinted = url
+        background({ Images.tintOf(url) }) { r ->
+            val c = Images.blend(BASE, r.getOrNull() ?: return@background, 0.3f)
+            tintLayer.background = android.graphics.drawable.LayerDrawable(arrayOf(
+                GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(withAlpha(c, 0x8C), withAlpha(c, 0x26), 0)),
+                GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(withAlpha(c, 0x99), withAlpha(c, 0x00), 0)),
+            ))
+            tintLayer.animate().alpha(1f).setDuration(600).start()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A phone has its own title page, upright (PhoneDetailsActivity).
+        if (touch) {
+            startActivity(Intent(intent).setClass(this, PhoneDetailsActivity::class.java))
+            finish()
+            @Suppress("DEPRECATION") overridePendingTransition(0, 0)
+            return
+        }
         key = authKey ?: return finish()
         val artWidth = resources.displayMetrics.widthPixels
         heroArt = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
         hero = FrameLayout(this).apply { clipChildren = false }
         root = FrameLayout(this).apply {
             clipChildren = false
+            addView(tintLayer, FrameLayout.LayoutParams(-1, -1))
             addView(hero, FrameLayout.LayoutParams(-1, -1))
             addView(TextClock(this@DetailsActivity).apply {
                 format12Hour = "h:mm a"
@@ -81,12 +106,14 @@ class DetailsActivity : Screen() {
         setWindowed(root, heroArt)
 
         (initialArt ?: poster)?.let { Images.load(it, heroArt, artWidth, urgent = true) { heroArt.alpha = 1f; refrost() } }
+        tintFromPoster(poster ?: Images.posterFor(metaId))
 
         // The title page is drawn once from last time's details and then hears from the meta add-on and the library.
         // Each answer used to rebuild the whole block: the logo went and came back and Play lost its light for a
         // frame, the flicker just after the page opened. Now only what changed is redrawn.
         fun show(m: Meta) {
             meta = m
+            if (tinted == null) tintFromPoster(m.poster)
             val art = m.background ?: initialArt ?: poster
             // The art the page opened on stays: swapping it for the add-on's own a moment later blanked the screen for
             // a frame (Images.load clears the picture first) and then cut to a different one. Only a stand-in (the
@@ -203,7 +230,7 @@ class DetailsActivity : Screen() {
         moreCaption = null
         if (words == null) return
         moreCaption = caps(words, TEXT_2).onArt().apply {
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setOnClickListener { if (hasEpisodes) showGuide() else showSimilar() }
             rowFocus(rest = { null })
         }.also {
@@ -454,7 +481,7 @@ class DetailsActivity : Screen() {
             val chip = chooseChip { choose() }
             row.addView(chip, LinearLayout.LayoutParams(-2, dp(40)).apply { marginStart = dp(16) })
             fun lit() { chip.alpha = if (row.hasFocus() || row.isFocused) 1f else 0f }
-            row.isFocusable = true
+            row.isFocusable = true; row.isFocusableInTouchMode = true
             row.setOnFocusChangeListener { v, has ->
                 v.background = if (!has) null else GradientDrawable().apply {
                     setColor(0x14FFFFFF); setStroke(dp(2), TUNGSTEN); cornerRadius = dp(CORNER).toFloat()
@@ -544,7 +571,7 @@ class DetailsActivity : Screen() {
         ).marginTop(20)
         val story = ScrollView(this).apply {
             isVerticalScrollBarEnabled = false
-            isFocusable = true // takes the remote, so Up and Down scroll a long story
+            isFocusable = true; isFocusableInTouchMode = true // takes the remote, so Up and Down scroll a long story
             addView(column(Gravity.START).apply {
                 m.description?.takeIf { it.isNotBlank() }?.let {
                     addView(text(it, BODY, color = TEXT).onArt())
@@ -586,9 +613,10 @@ class DetailsActivity : Screen() {
 
     private fun loadSimilar() {
         background({
-            Stremio.addons(key).firstNotNullOfOrNull { addon ->
+            val addons = Stremio.addons(key)
+            addons.firstNotNullOfOrNull { addon ->
                 runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() }
-            }.orEmpty()
+            } ?: addons.sameGenre(type, meta?.genres.orEmpty(), metaId) // few add-ons answer "similar"
         }) { result ->
             result.getOrNull()?.let { titles ->
                 titles.asSequence().filter { it.id != metaId && it.type == type }
@@ -744,6 +772,18 @@ class DetailsActivity : Screen() {
             }
         }
         return super.dispatchKeyEvent(event)
+    }
+
+    /** On a phone, a swipe up opens the episodes (or More like this), as Down does on the remote; down closes More like this. */
+    override fun onSwipe(velocityX: Float, velocityY: Float): Boolean {
+        if (!vertical(velocityX, velocityY)) return false
+        if (velocityY < 0 && !infoOpen && !similarOpen && !guideOpen &&
+            (if (type == "series") ::guide.isInitialized else ::similarOverlay.isInitialized)) {
+            if (type == "series") showGuide() else showSimilar()
+            return true
+        }
+        if (velocityY > 0 && similarOpen) { hideSimilar(); return true }
+        return false
     }
 
     private fun chipOf(row: Int) = (episodeRows.getOrNull(row) as? android.view.ViewGroup)?.let { it.getChildAt(it.childCount - 1) }

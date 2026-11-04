@@ -49,6 +49,28 @@ object Library {
     }
 
     /**
+     * "Mark as watched" on a show's Continue Watching card: ticks the episode it's on and moves the show to the next
+     * one, as finishing it would; after the last episode the show leaves Continue Watching. A film is simply watched.
+     */
+    fun finishEpisode(item: JSONObject, videos: List<Video>) {
+        val current = item.state.text("video_id") ?: return markTitleWatched(item, videos)
+        if (videos.isNotEmpty()) markWatched(item, videos, current)
+        val list = videos.filter { it.season > 0 }.sortedWith(compareBy({ it.season }, { it.episode }))
+        val s = item.state
+        val at = list.indexOfFirst { it.id == current }
+        if (at >= 0 && at + 1 < list.size) {
+            s.put("video_id", list[at + 1].id)
+            s.put("overallTimeWatched", s.optLong("overallTimeWatched") + s.optLong("timeWatched"))
+            s.put("timeWatched", 0).put("flaggedWatched", 0)
+            s.put("timeOffset", 1) // stremio-core's marker for "start the next episode"
+        } else {
+            s.put("timeOffset", 0).put("flaggedWatched", 1)
+            s.put("timesWatched", maxOf(1, s.optInt("timesWatched")))
+        }
+        item.put("_mtime", now())
+    }
+
+    /**
      * Off Continue Watching, as Stremio's own dismiss does (stremio-core's RewindLibraryItem): the resume point goes;
      * watch history, the episode reached and My List stay, and watching it again brings it back. It syncs, so the
      * phone and the web hide it too. Returns the resume point it had, so [unhide] can put it back.

@@ -573,7 +573,7 @@ class SettingsActivity : Screen() {
         // Light line, glossy: the focused row gets a bright top edge, the mint edge and a sheen fading to the right.
         val row = FrameLayout(this).apply {
             addView(line, FrameLayout.LayoutParams(-1, -1))
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             background = hairline()
             setOnFocusChangeListener { _, has ->
                 background = if (has) lineFocus(gloss = true) else hairline()

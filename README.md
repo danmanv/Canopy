@@ -119,6 +119,19 @@ If the install fails with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, the APK on the T
 
 Canopy has no analytics, no ads and no account of its own. It talks to Stremio, to the add-ons you installed, to image hosts for artwork, to [IntroDB](https://introdb.app) for intro times, and to GitHub to check for updates. Profiles and their PINs stay on the TV.
 
+## One Canopy, four apps
+
+Canopy comes as four apps that should always feel like the same app:
+
+| App | Where the code lives |
+|---|---|
+| **Android TV** | `app/` (Kotlin), driven by the remote |
+| **Android phone** | `app/` (Kotlin, same APK), its own upright screens (`Phone*Activity`) |
+| **iPhone** | `ios/` (SwiftUI) |
+| **iPad** | `ios/` (SwiftUI, same app as the iPhone) |
+
+**The rule: a change made in one Canopy app is made in all of them.** A new feature, a design change or a fix in the iPhone app goes into the iPad, Android TV and Android phone apps too, and the other way round, in the same piece of work where it can. It's shaped for each device (a remote has no long-press menu on a poster, a phone has no D-pad), but nothing is left in one app only. The rare exception is something a device can't do, such as a keyboard shortcut on an iPad or Picture in Picture on a TV; say so in the pull request.
+
 ## Building from source
 
 ```sh

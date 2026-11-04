@@ -123,11 +123,72 @@ abstract class Screen : Activity() {
     /** The colours this screen was drawn in; when Settings changes them, the screen draws itself again on return. */
     private var drawnIn: Theme? = null
 
+    /** A phone or tablet ([Device.touch]): taps, swipes and the back gesture drive the screens made for the remote. */
+    protected val touch: Boolean get() = Device.touch(this)
+
+    /** A screen made for a phone (PhoneActivity): drawn at the phone's own size, and its taps are plain taps. */
+    protected open val phoneLayout: Boolean get() = false
+
+    // On a phone every TV screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
+    override fun attachBaseContext(base: Context) {
+        super.attachBaseContext(base)
+        if (!phoneLayout) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+    }
+
+    private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        if (touch && !phoneLayout) taps.feed(event)
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** A tap on nothing that takes the focus (the picture, the background). */
+    protected open fun onBareTap(event: android.view.MotionEvent) {}
+
+    /** A fling, in pixels a second; true when the screen used it. */
+    protected open fun onSwipe(velocityX: Float, velocityY: Float): Boolean = false
+
+    /** Whether a fling is clearly up or down (not a row's sideways scroll) and quick enough to mean it. */
+    protected fun vertical(velocityX: Float, velocityY: Float) =
+        kotlin.math.abs(velocityY) > 2 * kotlin.math.abs(velocityX) && kotlin.math.abs(velocityY) > dp(SWIPE_SPEED)
+
+    /** On a phone, a Back arrow top left, for the remote's Back key a phone hasn't got (the gesture is hidden). */
+    protected open val backArrow: Boolean get() = true
+
+    override fun onPostCreate(savedInstanceState: android.os.Bundle?) {
+        super.onPostCreate(savedInstanceState)
+        if (!touch || !backArrow) return
+        val content = findViewById<FrameLayout>(android.R.id.content) ?: return
+        content.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(TEXT)
+            setPadding(dp(11), dp(11), dp(11), dp(11))
+            background = rounded(baseAt(0xB3), 4)
+            contentDescription = "Back"
+            elevation = dp(24).toFloat() // over the screen's own layers
+            setOnClickListener { press(KeyEvent.KEYCODE_BACK) }
+        }, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.TOP or Gravity.START).apply { leftMargin = dp(2); topMargin = dp(8) })
+    }
+
+    /** False where the picture runs under a phone's camera notch too (the player); elsewhere the screen keeps clear of it. */
+    protected open val clearOfCutout: Boolean get() = true
+
+    /** A dialog's taps move the focus too, as the screen's do. */
+    protected fun android.app.Dialog.touchable() = apply {
+        if (touch) window?.let { Taps(context, { it.decorView }).into(it) }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && touch) fullScreen(clearOfCutout) // the bars come back after the keyboard or a swipe from the edge
+    }
+
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
         Theme.load(this)
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
+        if (touch) fullScreen(clearOfCutout)
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback
@@ -184,7 +245,7 @@ abstract class Screen : Activity() {
     private var pendingInstall: Updates.Release? = null
 
     /** False where the screensaver must never cover the screen: the player, and the profile picker (PINs). */
-    protected open val screensaver: Boolean get() = true
+    protected open val screensaver: Boolean get() = !touch // a phone sleeps by itself
 
     private val saverTimer = Runnable {
         startActivity(android.content.Intent(this, ScreensaverActivity::class.java))
@@ -407,7 +468,7 @@ abstract class Screen : Activity() {
 
     /** The warm-white primary action; focus lifts and grows it. */
     protected fun pill(label: String, icon: Int = 0): TextView = text(label, SMALL, bold = true).apply {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         gravity = Gravity.CENTER_VERTICAL
         minHeight = dp(BUTTON_H)
         setPadding(dp(if (icon != 0) 14 else 16), 0, dp(16), 0)
@@ -451,7 +512,7 @@ abstract class Screen : Activity() {
      * focused one is bright over a white line and glows softly; the rest are quiet, with a shadow to read over art.
      */
     protected fun tab(label: String, open: Boolean, sp: Float = BODY): TextView = text(label, sp).apply {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         gravity = Gravity.CENTER
         setPadding(dp(TAB_PAD), 0, dp(TAB_PAD), 0)
         tag = open
@@ -498,7 +559,7 @@ abstract class Screen : Activity() {
     /** "[OK] Play / pause": the key in a small box, then what it does. */
     protected fun keyHint(key: String, does: String) = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(badge(key, TEXT_2))
+        addView(badge(if (touch && key == "Hold OK") "Press and hold" else key, TEXT_2))
         addView(text(does, SMALL, color = TEXT_2).onArt(), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(6) })
     }
 
@@ -611,7 +672,7 @@ abstract class Screen : Activity() {
             logo, dp(320), urgent = true, failed = { logo.visibility = View.GONE }) { title.visibility = View.GONE }
         val episode = intent.getStringExtra("episode")?.takeIf { intent.getStringExtra("type") == "series" }
         val spinner = ring()
-        val status = text("Getting ready", SMALL, color = TEXT_2).onArt()
+        val status = text("Getting ready", if (touch) 22f else SMALL, color = TEXT_2).onArt() // a phone is further from the eye than its size says
         val block = column(Gravity.START).apply {
             addView(FrameLayout(context).apply {
                 addView(title, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.START))
@@ -622,7 +683,7 @@ abstract class Screen : Activity() {
             }, wrap().apply { topMargin = dp(10) })
             addView(LinearLayout(context).apply {
                 gravity = Gravity.CENTER_VERTICAL
-                addView(spinner, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(10) })
+                addView(spinner, LinearLayout.LayoutParams(dp(if (touch) 44 else 18), dp(if (touch) 44 else 18)).apply { marginEnd = dp(if (touch) 14 else 10) })
                 addView(status, wrap())
             }, wrap().apply { topMargin = dp(18) })
         }
@@ -644,7 +705,7 @@ abstract class Screen : Activity() {
 
     /** One list-row focus treatment across settings, episodes, sources and menus. */
     protected fun View.rowFocus(radiusDp: Int = 8, rest: () -> android.graphics.drawable.Drawable? = { null }, also: (Boolean) -> Unit = {}) {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         background = rest()
         setOnFocusChangeListener { v, has ->
             v.background = if (has) lineFocus() else rest()
@@ -695,7 +756,7 @@ abstract class Screen : Activity() {
 
     /** One poster/portrait focus treatment; the poster itself supplies its glow colour. */
     protected fun View.cardFocus(radiusDp: Int = 6, also: (Boolean) -> Unit = {}) {
-        isFocusable = true
+        isFocusable = true; isFocusableInTouchMode = true
         setOnFocusChangeListener { v, has ->
             v.lift(has, radiusDp)
             also(has)
@@ -807,6 +868,88 @@ abstract class Screen : Activity() {
         @Deprecated("Drawable API") override fun getOpacity() = PixelFormat.TRANSLUCENT
     }
 
+    // ---------- the glass Resume strip (as on the iPhone and iPad) ----------
+
+    /** A poster's frosted copy and its own colour, worked out once per picture, off the main thread. */
+    private val posterGlass = java.util.WeakHashMap<Bitmap, Pair<Bitmap, Int?>?>()
+
+    /**
+     * The glass Resume strip across a poster's foot, as on the iPhone and iPad: the poster under it frosted and warmed
+     * with the poster's own colour, a hairline along the top; an accent disc with Play, then "Resume" over the time left.
+     * [height] in dp; the text sizes follow it. Call [bind] with the poster it sits on.
+     */
+    protected inner class ResumeStrip(private val heightDp: Int) : LinearLayout(this@Screen) {
+        private val label: TextView
+        private val leftLine: TextView
+        private val glass = PosterGlassDrawable()
+
+        init {
+            gravity = Gravity.CENTER_VERTICAL
+            val k = heightDp / 66f
+            setPadding(dp((14 * k).toInt().coerceAtLeast(8)), 0, dp(8), 0)
+            background = glass
+            val disc = dp((38 * k).toInt())
+            addView(FrameLayout(context).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TUNGSTEN) }
+                addView(ImageView(context).apply { setImageResource(R.drawable.ic_play); setColorFilter(BASE) },
+                    FrameLayout.LayoutParams(disc * 11 / 20, disc * 11 / 20, Gravity.CENTER).apply { leftMargin = disc / 20 })
+            }, LayoutParams(disc, disc))
+            label = text("Resume", 15f * k.coerceAtLeast(0.8f), bold = true, color = Color.WHITE).apply { maxLines = 1 }
+            leftLine = text("", 12f * k.coerceAtLeast(0.8f), color = 0xD9FFFFFF.toInt()).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(LinearLayout(context).apply {
+                orientation = VERTICAL
+                addView(label); addView(leftLine)
+            }, LayoutParams(0, -2, 1f).apply { marginStart = dp((12 * k).toInt().coerceAtLeast(6)) })
+        }
+
+        /** Shows [action] ("Resume", "Play") and [timeLeft] over [poster]'s foot, frosted from that poster. */
+        fun bind(poster: ImageView, action: String, timeLeft: String?) {
+            label.text = action
+            leftLine.text = timeLeft.orEmpty()
+            leftLine.visibility = if (timeLeft.isNullOrEmpty()) View.GONE else View.VISIBLE
+            glass.poster = poster
+            invalidate()
+        }
+    }
+
+    /** The strip's background: the poster under it, frosted, lined up with the sharp one, then the poster's colour. */
+    private inner class PosterGlassDrawable : Drawable() {
+        var poster: ImageView? = null
+        private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        private val dark = Paint().apply { color = 0x73000000 }
+        private val tint = Paint()
+        private val line = Paint().apply { color = 0x2EFFFFFF }
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            val src = (poster?.drawable as? BitmapDrawable)?.bitmap
+            val known = src?.let { posterGlass[it] }
+            if (src != null && known == null && !posterGlass.containsKey(src)) {
+                posterGlass[src] = null
+                background({ Images.frost(src, 60) to Images.tint(src) }) { r ->
+                    r.getOrNull()?.let { posterGlass[src] = it; invalidateSelf() }
+                }
+            }
+            if (known != null) {
+                // The whole poster's frosted copy, drawn at the poster's size with its foot at the strip's foot.
+                val h = poster?.height?.takeIf { it > 0 } ?: (b.width() * 3 / 2)
+                canvas.save()
+                canvas.clipRect(b)
+                canvas.drawBitmap(known.first, null, Rect(b.left, b.bottom - h, b.right, b.bottom), paint)
+                canvas.restore()
+            } else canvas.drawColor(0x40000000)
+            canvas.drawRect(b, dark)
+            known?.second?.let { tint.color = withAlpha(it, 0x52); canvas.drawRect(b, tint) }
+            canvas.drawRect(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.top + dp(1).toFloat(), line)
+        }
+
+        override fun setAlpha(alpha: Int) {}
+        override fun setColorFilter(colorFilter: ColorFilter?) {}
+        @Deprecated("Drawable API") override fun getOpacity() = PixelFormat.TRANSLUCENT
+    }
+
     /** A thin watched-so-far bar over a dark track. */
     protected fun progressBar(progress: Float, color: Int = TUNGSTEN) = LinearLayout(this).apply {
         val p = progress.coerceIn(0f, 1f)
@@ -825,7 +968,7 @@ abstract class Screen : Activity() {
                          focus: Int = maxOf(checked, 0), dropDown: Boolean = false, dropFrom: Int = Gravity.END,
                          dropY: Int = 60, pick: (Int) -> Unit) {
         if (fullChoices && !dropDown) return chooseFull(title, items, message, checked, focus, pick)
-        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
+        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }.touchable()
         val list = column(Gravity.START).apply { setPadding(dp(12), dp(16), dp(12), dp(12)) }
         val words = column(Gravity.START, text(title, BODY, bold = true)).apply { setPadding(dp(16), 0, dp(16), dp(10)) }
         message?.let { words.addView(text(it, SMALL, color = TEXT_2).marginTop(6)) }
@@ -867,7 +1010,7 @@ abstract class Screen : Activity() {
      * right, the remote's one lit with the glossy Light line.
      */
     private fun chooseFull(title: String, items: List<String>, message: String?, checked: Int, focus: Int, pick: (Int) -> Unit) {
-        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        val dialog = android.app.Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen).touchable()
         val words = column(Gravity.START, text(title, SERIF_HERO, serif = true).apply { maxWidth = dp(360) }).apply {
             message?.let { addView(text(it, BODY, color = TEXT_2).apply { maxWidth = dp(360) }.marginTop(12)) }
         }
@@ -879,7 +1022,7 @@ abstract class Screen : Activity() {
                 if (i == checked) setCompoundDrawablesRelative(null, null, getDrawable(R.drawable.ic_check)?.mutate()?.apply {
                     setBounds(0, 0, dp(18), dp(18)); setTint(TUNGSTEN)
                 }, null)
-                isFocusable = true
+                isFocusable = true; isFocusableInTouchMode = true
                 val rest = { android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(0x12FFFFFF))).apply {
                     setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(1))
                 } }
@@ -920,7 +1063,7 @@ abstract class Screen : Activity() {
             if (!quiet) choose("What's new", listOf("OK"), "There are no notes for version $version.") {}
             return
         }
-        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
+        val dialog = android.app.Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }.touchable()
         val list = column(Gravity.START).apply { setPadding(dp(22), dp(20), dp(22), dp(18)) }
         list.addView(caps("What's new", TUNGSTEN))
         list.addView(text("Canopy $version", SERIF_TITLE, serif = true).marginTop(4))
@@ -1001,6 +1144,7 @@ abstract class Screen : Activity() {
 
         private var loadedFonts: Fonts? = null // main thread only
         const val PAD = 48
+        const val SWIPE_SPEED = 600 // dp a second: slower is a drag, not a swipe
         const val TILE_RADIUS = 0
         const val GLASS_INSET = 28 // dp a glass panel sits in from the screen's edges
         const val FROST_W = 360 // px the art is shrunk to before the blur: wider is less blur (240 read as fog, 480 as smeared)

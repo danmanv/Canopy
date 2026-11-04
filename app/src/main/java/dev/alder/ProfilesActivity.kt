@@ -24,6 +24,7 @@ import android.widget.TextView
 // Profile picker, Stremio sign-in, and setting up Watchly.
 // The app starts here; with a single profile it goes straight on to Home.
 class ProfilesActivity : Screen() {
+    override val backArrow: Boolean get() = false // its screens have their own Back where there's somewhere to go
     override val screensaver: Boolean get() = false // it would show a profile's titles before its PIN
     // The sign-in code being waited on; anything else stops its polling loop.
     private var waitingCode: String? = null
@@ -195,7 +196,7 @@ class ProfilesActivity : Screen() {
             addView(name, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             if (last != null) addView(last, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(3) })
             addView(dot, LinearLayout.LayoutParams(dp(28), dp(3)).apply { topMargin = dp(8); gravity = Gravity.CENTER_HORIZONTAL })
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             clipChildren = false
             setOnFocusChangeListener { _, has ->
                 dot.visibility = if (has) View.VISIBLE else View.INVISIBLE
@@ -291,7 +292,7 @@ class ProfilesActivity : Screen() {
                 layoutParams = LinearLayout.LayoutParams(dp(64), dp(76)).apply { marginStart = dp(8); marginEnd = dp(8) }
             }
         }
-        val row = LinearLayout(this).apply { gravity = Gravity.CENTER; isFocusable = true; boxes.forEach { addView(it) } }
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER; isFocusable = true; isFocusableInTouchMode = true; boxes.forEach { addView(it) } }
         val error = text("", BODY, color = TEXT)
         fun draw() = boxes.forEachIndexed { i, b ->
             b.text = when {
@@ -331,11 +332,33 @@ class ProfilesActivity : Screen() {
             true
         }
         draw()
+        // A phone has no number keys or arrows: a row of digits to tap, and ⌫.
+        fun tapped(digit: Int) {
+            error.text = ""
+            if (digit < 0) {
+                if (digits[at] < 0 && at > 0) at--
+                digits[at] = -1
+            } else {
+                digits[at] = digit
+                if (at < 3) at++ else { draw(); submit(); return }
+            }
+            draw()
+        }
+        val keypad = LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            ((1..9) + 0 + -1).forEach { d ->
+                addView(chip(if (d < 0) "⌫" else "$d").apply {
+                    gravity = Gravity.CENTER
+                    setOnClickListener { tapped(d) }
+                }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4); marginEnd = dp(4) })
+            }
+        }
         val content = column(Gravity.CENTER_HORIZONTAL,
             text(title, SERIF_TITLE, bold = true, serif = true),
             row.marginTop(36),
             error.marginTop(12),
-            text("▲ ▼ change a digit    ◀ ▶ move    OK to confirm", SMALL, color = TEXT_2).marginTop(28),
+            if (touch) keypad.marginTop(24)
+            else text("▲ ▼ change a digit    ◀ ▶ move    OK to confirm", SMALL, color = TEXT_2).marginTop(28),
         ).apply { gravity = Gravity.CENTER }
         setWindowed(content, onboardingBackdrop())
         row.requestFocus()
@@ -398,7 +421,7 @@ class ProfilesActivity : Screen() {
         Profiles.COLORS.forEachIndexed { index, color ->
             val word = text(Profiles.COLOR_NAMES[index], SMALL, color = TEXT_2).onArt().apply {
                 gravity = Gravity.CENTER
-                isFocusable = true
+                isFocusable = true; isFocusableInTouchMode = true
                 setPadding(0, dp(2), 0, dp(7))
                 setOnFocusChangeListener { _, _ -> paint() }
                 setOnClickListener {
@@ -473,8 +496,8 @@ class ProfilesActivity : Screen() {
             setPadding(0, 0, dp(5), 0)
             background = null
             setSingleLine()
-            showSoftInputOnFocus = false
-            imeOptions = EditorInfo.IME_ACTION_DONE
+            showSoftInputOnFocus = touch // a phone types on its own keyboard; a TV uses the remote's below
+            imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
             setText(initial)
             setSelection(initial.length)
             onArt()
@@ -550,7 +573,9 @@ class ProfilesActivity : Screen() {
             override fun afterTextChanged(s: android.text.Editable?) { placeCursor() }
         })
         name.post { placeCursor() }
-        return NameEntry(name, field, keyboard, keys.first())
+        // A phone has its own keyboard: the remote's letters stay hidden, and the name box takes the first focus.
+        if (touch) keyboard.visibility = View.GONE
+        return NameEntry(name, field, keyboard, if (touch) name else keys.first())
     }
 
     /** Sign-in with a code: for a new profile called [name], or for [again], a profile Stremio signed out. */
@@ -576,6 +601,14 @@ class ProfilesActivity : Screen() {
         }
         val back = chip("← Back")
         back.setOnClickListener { waitingCode = null; if (again != null) showPicker() else showName() }
+        // On a phone the sign-in page opens right here, in Stremio or the browser; this screen waits for the approval.
+        var linkUrl: String? = null
+        val openLink = pill("Sign in on this phone").apply {
+            visibility = if (touch) View.VISIBLE else View.GONE
+            setOnClickListener {
+                linkUrl?.let { url -> runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
+            }
+        }
         val left = column(Gravity.CENTER,
             FrameLayout(this).apply {
                 setPadding(dp(18), dp(18), dp(18), dp(18))
@@ -596,6 +629,7 @@ class ProfilesActivity : Screen() {
             text(if (again != null) "Sign in again" else "Connect Stremio", 40f, serif = true).onArt(),
             text(if (again != null) "Stremio signed $name out of this TV. Scan with $name's phone to connect again. $name's settings and PIN stay."
                 else "Scan with $name's phone. Stremio opens and asks to sign in this TV.", BODY).onArt().marginTop(10),
+            openLink.marginTop(14),
             text("", BODY, color = TEXT_2).onArt().apply {
                 val line = "Or go to link.stremio.com and enter"
                 val at = line.indexOf("link.stremio.com")
@@ -628,6 +662,7 @@ class ProfilesActivity : Screen() {
         background({ Stremio.createLink() }) { result ->
             if (!signingIn || request != signInGeneration) return@background
             result.onSuccess { link ->
+                linkUrl = link.url
                 qr.setImageBitmap(qrBitmap(link.url, dp(200)))
                 codeTiles.forEachIndexed { i, tile -> tile.text = link.code.getOrNull(i)?.toString() ?: "" }
                 val started = SystemClock.elapsedRealtime()

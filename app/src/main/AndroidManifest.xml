@@ -19,27 +19,35 @@
         android:banner="@drawable/banner"
         android:icon="@drawable/logo"
         android:theme="@style/Canopy"
+        android:enableOnBackInvokedCallback="false"
         android:usesCleartextTraffic="true">
+        <!-- Back stays a key (KEYCODE_BACK): every screen's own Back handling works the same from a remote and from a
+             phone's back gesture. -->
         <!-- Plain http:// as Stremio allows it: self-hosted add-ons (http://192.168.…:7000), debrid proxies and IPTV
              links. Android 9+ blocks it otherwise, and every such add-on and stream failed. -->
 
         <activity
             android:name=".ProfilesActivity"
             android:exported="true"
-            android:screenOrientation="landscape">
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity" android:screenOrientation="landscape" />
+        <activity android:name=".MainActivity" android:screenOrientation="sensorLandscape" />
+        <!-- Home on a phone, held upright -->
+        <activity android:name=".PhoneActivity" android:screenOrientation="portrait" />
+        <activity android:name=".PhoneDetailsActivity" android:screenOrientation="portrait" />
+        <activity android:name=".PhoneStreamsActivity" android:screenOrientation="portrait" />
+        <activity android:name=".PhoneSearchActivity" android:screenOrientation="portrait" android:launchMode="singleTop" />
         <!-- The TV's own search hands a query here: the Assistant's "search for … on Canopy" and global search. -->
         <activity
             android:name=".SearchActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:screenOrientation="landscape">
+            android:screenOrientation="sensorLandscape">
             <intent-filter>
                 <action android:name="android.intent.action.SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -50,18 +58,18 @@
             </intent-filter>
             <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
         </activity>
-        <activity android:name=".SettingsActivity" android:screenOrientation="landscape" />
-        <activity android:name=".AddonsActivity" android:screenOrientation="landscape" />
-        <activity android:name=".DetailsActivity" android:screenOrientation="landscape" />
-        <activity android:name=".CatalogActivity" android:screenOrientation="landscape" />
-        <activity android:name=".StreamsActivity" android:screenOrientation="landscape" />
+        <activity android:name=".SettingsActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".AddonsActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".DetailsActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".CatalogActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".StreamsActivity" android:screenOrientation="sensorLandscape" />
         <activity
             android:name=".PlayerActivity"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:configChanges="keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|screenLayout" />
         <activity
             android:name=".ScreensaverActivity"
-            android:screenOrientation="landscape"
+            android:screenOrientation="sensorLandscape"
             android:excludeFromRecents="true"
             android:noHistory="true" />
         <!-- The same slideshow as the TV's own screensaver (Settings › Screensaver on the TV) -->

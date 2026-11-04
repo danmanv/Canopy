@@ -76,6 +76,13 @@ class SearchActivity : Screen() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // A phone has its own search, upright (PhoneSearchActivity).
+        if (touch) {
+            startActivity(Intent(intent).setClass(this, PhoneSearchActivity::class.java))
+            finish()
+            @Suppress("DEPRECATION") overridePendingTransition(0, 0)
+            return
+        }
         val key = authKey ?: return run {
             // Opened by the TV's own search before anyone has signed in: the profiles screen comes first.
             startActivity(Intent(this, ProfilesActivity::class.java))
@@ -133,7 +140,7 @@ class SearchActivity : Screen() {
             setPadding(dp(5), dp(5), dp(5), dp(5))
             contentDescription = "Clear search"
             visibility = View.GONE
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setOnFocusChangeListener { v, has -> imageTintList = ColorStateList.valueOf(if (has) TEXT else TEXT_2); v.background = if (has) underline(TEXT, 4) else null }
             setOnClickListener {
                 input.setText("")
@@ -197,9 +204,22 @@ class SearchActivity : Screen() {
             search(true)
             true
         }
-        // Our keyboard first: the field never takes focus on opening, so the Android keyboard stays shut until the keyboard key.
-        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
-        firstKey?.post { firstKey?.requestFocus() }
+        if (touch) {
+            // A phone types on its own keyboard: open with it up, under the field, the results above it still showing
+            // (not the sideways phone's full-screen typing box).
+            input.showSoftInputOnFocus = true
+            input.imeOptions = input.imeOptions or EditorInfo.IME_FLAG_NO_EXTRACT_UI or EditorInfo.IME_FLAG_NO_FULLSCREEN
+            window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+            if (!intent.getBooleanExtra(LISTEN, false)) {
+                input.requestFocus()
+                input.post { (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).showSoftInput(input, InputMethodManager.SHOW_IMPLICIT) }
+            }
+        } else {
+            // Our keyboard first: the field never takes focus on opening, so the Android keyboard stays shut until the keyboard key.
+            window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
+            firstKey?.post { firstKey?.requestFocus() }
+        }
         // Only on first opening: a screen recreated by Android keeps to itself rather than listening again.
         if (savedInstanceState != null || !take(intent)) search(false)
     }
@@ -263,7 +283,7 @@ class SearchActivity : Screen() {
         val avatar = text(profile?.name?.take(1)?.uppercase() ?: "A", BODY, bold = true, color = BASE).apply {
             gravity = Gravity.CENTER
             background = rounded(profile?.color ?: TEXT_2, CORNER)
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setOnFocusChangeListener { v, has -> v.grow(has).start() }
             setOnClickListener {
                 choose(profile?.name ?: "Profile", listOf("Switch profile", "Settings")) { picked ->
@@ -279,7 +299,7 @@ class SearchActivity : Screen() {
         bar.addView(avatar, FrameLayout.LayoutParams(dp(30), dp(30), Gravity.START or Gravity.CENTER_VERTICAL))
         val nav = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val searchTab = FrameLayout(this).apply {
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             contentDescription = "Search"
             addView(ImageView(this@SearchActivity).apply {
                 setImageResource(R.drawable.ic_search)
@@ -348,7 +368,7 @@ class SearchActivity : Screen() {
     private fun key(label: String, click: () -> Unit): TextView {
         val view = text(label, if (label.length > 1) SMALL else KEY_SP, color = TEXT_2).onArt().apply {
             gravity = Gravity.CENTER
-            isFocusable = true
+            isFocusable = true; isFocusableInTouchMode = true
             setPadding(dp(KEY_PAD), 0, dp(KEY_PAD), 0)
         }
         view.setOnFocusChangeListener { _, has ->

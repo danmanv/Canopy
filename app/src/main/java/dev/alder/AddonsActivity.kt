@@ -186,7 +186,7 @@ class AddonsActivity : Screen() {
     }
 
     private fun askUrl() {
-        val dialog = Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }
+        val dialog = Dialog(this).apply { requestWindowFeature(android.view.Window.FEATURE_NO_TITLE) }.touchable()
         val field = EditText(this).apply {
             hint = "https://…/manifest.json"
             setHintTextColor(TEXT_3)
