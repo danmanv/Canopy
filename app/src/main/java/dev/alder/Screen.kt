@@ -1040,16 +1040,26 @@ abstract class Screen : Activity() {
                 list.addView(this, LinearLayout.LayoutParams(-1, -2))
             }
         }
+        // A phone's own upright screens (Settings) stack the question over the answers; a TV has them side by side.
+        val stacked = phoneLayout && resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
         dialog.setContentView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = LayerDrawable(arrayOf(sky(), android.graphics.drawable.ColorDrawable(0x99040812.toInt())))
-            setPadding(dp(64), dp(40), dp(64), dp(40))
-            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            if (stacked) {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(48), dp(16), dp(32))
+                words.setPadding(dp(20), 0, dp(20), 0)
+                addView(words, LinearLayout.LayoutParams(-1, -2))
+            } else {
+                setPadding(dp(64), dp(40), dp(64), dp(40))
+                addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            }
             addView(android.widget.ScrollView(context).apply {
                 isVerticalScrollBarEnabled = false
                 isFillViewport = false
                 addView(list)
-            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
+            }, if (stacked) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(24) }
+                else LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
         })
         dialog.show()
         rows.getOrNull(focus)?.requestFocus()
