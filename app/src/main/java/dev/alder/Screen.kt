@@ -130,10 +130,13 @@ abstract class Screen : Activity() {
     /** A screen made for a phone (PhoneActivity): drawn at the phone's own size, and its taps are plain taps. */
     protected open val phoneLayout: Boolean get() = false
 
+    /** [phoneLayout] while the screen is being attached, before it can read its own context. */
+    protected open fun phoneLayoutIn(base: Context): Boolean = phoneLayout
+
     // On a phone every TV screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        if (!phoneLayout) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+        if (!phoneLayoutIn(base)) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
     }
 
     private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
@@ -181,7 +184,8 @@ abstract class Screen : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && touch) fullScreen(clearOfCutout) // the bars come back after the keyboard or a swipe from the edge
+        // The bars come back after the keyboard or a swipe from the edge; a phone's own screens keep them.
+        if (hasFocus && touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -189,7 +193,7 @@ abstract class Screen : Activity() {
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
-        if (touch) fullScreen(clearOfCutout)
+        if (touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback
@@ -1073,16 +1077,26 @@ abstract class Screen : Activity() {
                 list.addView(this, LinearLayout.LayoutParams(-1, -2))
             }
         }
+        // A phone's own upright screens (Settings) stack the question over the answers; a TV has them side by side.
+        val stacked = phoneLayout && resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
         dialog.setContentView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = LayerDrawable(arrayOf(sky(), android.graphics.drawable.ColorDrawable(0x99040812.toInt())))
-            setPadding(dp(64), dp(40), dp(64), dp(40))
-            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            if (stacked) {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(48), dp(16), dp(32))
+                words.setPadding(dp(20), 0, dp(20), 0)
+                addView(words, LinearLayout.LayoutParams(-1, -2))
+            } else {
+                setPadding(dp(64), dp(40), dp(64), dp(40))
+                addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            }
             addView(android.widget.ScrollView(context).apply {
                 isVerticalScrollBarEnabled = false
                 isFillViewport = false
                 addView(list)
-            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
+            }, if (stacked) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(24) }
+                else LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
         })
         dialog.show()
         rows.getOrNull(focus)?.requestFocus()

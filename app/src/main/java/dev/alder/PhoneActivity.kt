@@ -391,8 +391,10 @@ class PhoneActivity : PhoneScreen() {
             val timeLeft = item.left?.split(DOT_SHORT)?.let { parts ->
                 if (item.type == "series") parts.joinToString(DOT_SHORT) else parts.lastOrNull { it.endsWith("left") }
             }
-            strip.bind(cards[i], if (item.resume) "Resume" else if (item.type == "series") "Episodes" else "Play", timeLeft)
-            strip.setOnClickListener { if (item.resume || item.type != "series") play(item) else openDetails(item) }
+            // A film, or a show Continue Watching has an episode for (the next one, not started yet): Play starts it.
+            val playable = item.resume || item.type != "series" || item.videoId != null
+            strip.bind(cards[i], if (item.resume) "Resume" else if (playable) "Play" else "Episodes", timeLeft)
+            strip.setOnClickListener { if (playable) play(item) else openDetails(item) }
             strip.setOnLongClickListener { titleMenu(item); true }
             framed[p] = item
             showBackdrop(item, p)

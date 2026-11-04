@@ -1,6 +1,17 @@
 package dev.alder
 
+import android.app.PendingIntent
+import android.app.PictureInPictureParams
+import android.app.RemoteAction
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.IntentFilter
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
+import android.graphics.drawable.Icon
+import android.os.Build
+import android.util.Rational
+import android.view.OrientationEventListener
 import android.os.Handler
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -108,6 +119,37 @@ class PlayerActivity : Screen() {
     private lateinit var loadingLeft: TextView
     private lateinit var stallPanel: FrameLayout
     private lateinit var screen: FrameLayout
+
+    // ---------- a phone held upright, and the small window ----------
+    // Upright (once the picture shows), the video is a 16:9 strip at the top with its controls, name and story below,
+    // as YouTube does; sideways it fills the screen with the usual controls over it. Swiping home while it plays (or
+    // the Window button) shrinks it into a small window over other apps (picture in picture). A TV stays sideways.
+    private var upright = false // the phone is held upright
+    private var inWindow = false // picture in picture
+    private val uprightNow get() = upright && started && !inWindow
+    private var visible = false // between onStart and onStop
+    private lateinit var below: LinearLayout
+    private lateinit var uprightBar: SeekBar
+    private lateinit var uprightElapsed: TextView
+    private lateinit var uprightLength: TextView
+    private lateinit var uprightPlay: TextView
+    private lateinit var uprightTitle: TextView
+    private lateinit var uprightEpisode: TextView
+    private lateinit var uprightAbout: TextView
+    private lateinit var uprightNext: View
+    private lateinit var uprightEpisodes: LinearLayout // the season, the playing episode marked
+    private lateinit var lockButton: TextView // Keep sideways, for watching lying down
+    // Full screen (or Back from it) turns the picture; the phone's own turning takes over again once it's held that way.
+    private var orientationWatch: OrientationEventListener? = null
+    private val windowActions = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            when (intent.getIntExtra("do", 0)) {
+                WINDOW_BACK -> if (canSeek()) player.seekTo((player.currentPosition - SKIP).coerceAtLeast(0))
+                WINDOW_PLAY -> if (player.playWhenReady) player.pause() else player.play()
+                WINDOW_AHEAD -> if (canSeek()) player.seekTo(player.currentPosition + SKIP)
+            }
+        }
+    }
     private lateinit var pausedShade: View
     // Subtitles from addons (OpenSubtitles): offered in Playback options after the file's own. Picking one reloads the
     // source from the same second with that file attached, then selects it once its track shows up.
@@ -235,19 +277,45 @@ class PlayerActivity : Screen() {
         }
         fetchSegments()
         options = FrameLayout(this).apply { visibility = View.GONE }
-        screen = FrameLayout(this).apply {
+        screen = object : FrameLayout(this) {
+            // Upright, the picture is a 16:9 strip as wide as the phone; otherwise the whole screen.
+            override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                if (!uprightNow) return super.onMeasure(widthSpec, heightSpec)
+                val width = MeasureSpec.getSize(widthSpec)
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(width * 9 / 16, MeasureSpec.EXACTLY))
+            }
+        }.apply {
             addView(view, FrameLayout.LayoutParams(-1, -1))
             addView(pausedShade, FrameLayout.LayoutParams(-1, -1))
             addView(controls, FrameLayout.LayoutParams(-1, -1))
             addView(buildAmbient(), FrameLayout.LayoutParams(-1, -1))
-            addView(options, FrameLayout.LayoutParams(-1, -1))
             addView(loading, FrameLayout.LayoutParams(-1, -1))
             addView(starting.view, FrameLayout.LayoutParams(-1, -1))
-            addView(stallPanel, FrameLayout.LayoutParams(-1, -1))
-            addView(upNextPanel, FrameLayout.LayoutParams(-1, -1))
             addView(skip, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(PAD), dp(PAD + 40)) })
         }
-        setContentView(screen)
+        below = buildBelow()
+        // The panels that need room (Audio & subtitles, Up next, Keeps buffering) lie over the whole screen, not the strip.
+        setContentView(FrameLayout(this).apply {
+            setBackgroundColor(BASE)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                addView(screen, LinearLayout.LayoutParams(-1, 0, 1f))
+                addView(below, LinearLayout.LayoutParams(-1, 0, 0f))
+            }, FrameLayout.LayoutParams(-1, -1))
+            addView(options, FrameLayout.LayoutParams(-1, -1))
+            addView(stallPanel, FrameLayout.LayoutParams(-1, -1))
+            addView(upNextPanel, FrameLayout.LayoutParams(-1, -1))
+        })
+        if (touch) {
+            current?.get()?.takeIf { it !== this && it.inWindow }?.finish() // one video at a time: the small window closes
+            current = java.lang.ref.WeakReference(this)
+            requestedOrientation = if (keptSideways()) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+                else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            upright = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+            val filter = IntentFilter(WINDOW_ACTION)
+            if (Build.VERSION.SDK_INT >= 33) registerReceiver(windowActions, filter, RECEIVER_NOT_EXPORTED)
+            else @Suppress("UnspecifiedRegisterReceiverFlag") registerReceiver(windowActions, filter)
+        } else requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         background({
             Stremio.addons(key).let { it.savedMeta(type, metaId) ?: it.meta(type, metaId) }
         }) { r ->
@@ -262,6 +330,7 @@ class PlayerActivity : Screen() {
                 playerLogo.visibility = View.VISIBLE; topName.visibility = View.GONE
             }
             nextCell.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
+            fillBelow()
             startOverCell.visibility = if (nextVideo() == null && !touch) View.VISIBLE else View.GONE // a phone: Daniel left Start over out
         }
 
@@ -306,6 +375,7 @@ class PlayerActivity : Screen() {
                 hideLoading()
                 main.removeCallbacks(startTimeout)
                 player.videoFormat?.frameRate?.let(::matchFrameRate)
+                if (touch) { if (upright) arrange(); windowReady() } // upright: the strip and panel from the first picture
                 // Next time: the same release for this video, and the same group (release and quality) for the next episode.
                 val s = sources[at]
                 // A file naming another episode (the Nocturne bug) is never remembered as this one's known-good file.
@@ -321,7 +391,7 @@ class PlayerActivity : Screen() {
                     if (type == "series" && !plausibleEpisode(player.duration)) {
                         started = false // retry from the original resume point, not the placeholder's short ending
                         next("source ended as a short placeholder")
-                    } else if (nextVideo() != null && !upNextDismissed) playNext() else finish()
+                    } else if (nextVideo() != null && !upNextDismissed && !inWindow) playNext() else finish()
                 }
                 if (state == Player.STATE_BUFFERING) showLoading(if (started) "Loading" else startMessage ?: "Starting · ${sources[at].label}")
                 if (state == Player.STATE_READY && started) hideLoading()
@@ -335,6 +405,10 @@ class PlayerActivity : Screen() {
                 playPause.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 25, BASE)
                 buttonLabels[playPause]?.text = if (playWhenReady) "Pause" else "Play"
                 bigPlay?.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 46, TEXT)
+                if (touch) {
+                    uprightPlay.foreground = centred(if (playWhenReady) R.drawable.ic_pause else R.drawable.ic_play, 38, TEXT)
+                    windowReady()
+                }
                 pausedShade.visibility = if (playWhenReady) View.GONE else View.VISIBLE
                 pauseInfo.visibility = if (playWhenReady || touch) View.GONE else View.VISIBLE // a phone has the name at the top and Play in the middle
                 // Paused, the controls stay up until a key or Play: no calm pause screen takes over on its own.
@@ -344,6 +418,8 @@ class PlayerActivity : Screen() {
                 else if (!stopping && options.visibility != View.VISIBLE && upNextPanel.visibility != View.VISIBLE &&
                     stallPanel.visibility != View.VISIBLE) showControls(playPause)
             }
+
+            override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) { if (touch) windowReady() }
 
             override fun onPositionDiscontinuity(old: Player.PositionInfo, new: Player.PositionInfo, reason: Int) {
                 if (reason == Player.DISCONTINUITY_REASON_SEEK) {
@@ -604,6 +680,7 @@ class PlayerActivity : Screen() {
 
     override fun onStart() {
         super.onStart()
+        visible = true
         if (prepared) {
             lastPosition = player.currentPosition
             main.postDelayed(tickTask, TICK)
@@ -694,7 +771,7 @@ class PlayerActivity : Screen() {
             addView(actions, wrap().apply { topMargin = dp(12) })
             lowerButton.post { lowerButton.requestFocus() }
         }
-        stallPanel.addView(card, FrameLayout.LayoutParams(dp(sized(460, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
+        stallPanel.addView(card, FrameLayout.LayoutParams(fitWidth(sized(460, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(48)
         })
         stallPanel.visibility = View.VISIBLE
@@ -760,7 +837,7 @@ class PlayerActivity : Screen() {
             addView(countdownBar, LinearLayout.LayoutParams(-1, dp(12)).apply { topMargin = dp(4) })
             addView(actions, wrap().apply { topMargin = dp(12) })
         }
-        upNextPanel.addView(content, FrameLayout.LayoutParams(dp(sized(500, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
+        upNextPanel.addView(content, FrameLayout.LayoutParams(fitWidth(sized(500, 560)), -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(68)
         })
         upNextPanel.visibility = View.VISIBLE
@@ -777,8 +854,10 @@ class PlayerActivity : Screen() {
     }
 
     /** Hands the next episode to the sources page, which starts it (preferring this release's group) and finishes here. */
-    private fun playNext() {
-        val next = nextVideo() ?: return finish()
+    private fun playNext() = nextVideo()?.let(::playEpisode) ?: finish()
+
+    /** Another episode: its sources are looked up, then it plays here instead. */
+    private fun playEpisode(next: Video) {
         val videos = meta!!.videos
         val after = videos.getOrNull(videos.indexOf(next) + 1)?.takeIf { it.season != 0 }
         val name = intent.getStringExtra("name") ?: ""
@@ -858,6 +937,11 @@ class PlayerActivity : Screen() {
             if (!down) closeOptions()
             return true
         }
+        // Back from Full screen turns the phone's picture upright again, as YouTube does, before a second Back closes it.
+        if (event.keyCode == KeyEvent.KEYCODE_BACK && touch && turned && !upright) {
+            if (!down) turn(sideways = false)
+            return true
+        }
         // The OK that woke the controls: its repeats and release would otherwise press the button it focused.
         // Skip intro: OK jumps past it while the pill shows over the picture (the controls down).
         if (skip.visibility == View.VISIBLE && !shown && down && event.keyCode in listOf(KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER)) {
@@ -898,13 +982,20 @@ class PlayerActivity : Screen() {
 
     private var lastTap = 0L
     private var lastTapSide = 0
-    private val singleTap = Runnable { if (shown) hideControls(force = true) else showControls(null) }
+    private val singleTap = Runnable {
+        when {
+            uprightNow -> if (player.playWhenReady) player.pause() else player.play() // upright, the controls are below
+            shown -> hideControls(force = true)
+            else -> showControls(null)
+        }
+    }
 
     override fun onBareTap(event: android.view.MotionEvent) {
         if (::ambient.isInitialized && ambient.visibility == View.VISIBLE) { hideAmbient(); showControls(playPause); return }
         if (options.visibility == View.VISIBLE) { closeOptions(); return }
         if (upNextPanel.visibility == View.VISIBLE || stallPanel.visibility == View.VISIBLE) return
-        if (skip.visibility == View.VISIBLE && !shown && under(skip, event)) { skipSegment(); return }
+        if (skip.visibility == View.VISIBLE && (!shown || uprightNow) && under(skip, event)) { skipSegment(); return }
+        if (inWindow || (uprightNow && !under(screen, event))) return // the panel under the picture has its own buttons
         val side = when {
             event.rawX < screen.width / 3f -> -1
             event.rawX > screen.width * 2 / 3f -> 1
@@ -956,6 +1047,259 @@ class PlayerActivity : Screen() {
             seekTask.run()
             if (player.playWhenReady) main.postDelayed(hideTask, hideAfter)
         }
+    }
+
+    // ---------- upright, sideways and the small window (a phone) ----------
+
+    /** Under the upright picture: the time bar, back 10 s, Play and ahead 10 s, the name and story, then the buttons. */
+    private fun buildBelow(): LinearLayout {
+        fun icon(res: Int, size: Int, label: String, disc: Boolean = false, onClick: () -> Unit) = TextView(this).apply {
+            contentDescription = label
+            isFocusable = true; isClickable = true
+            foreground = centred(res, size, TEXT)
+            if (disc) background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL; setColor(withAlpha(TEXT, 0x1A)); setStroke(dp(1), withAlpha(TEXT, 0x59))
+            }
+            setOnClickListener { onClick() }
+        }
+        fun action(label: String, res: Int, onClick: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            isFocusable = true; isClickable = true
+            contentDescription = label
+            setPadding(0, dp(8), 0, dp(6))
+            addView(ImageView(context).apply { setImageResource(res); setColorFilter(TEXT) }, LinearLayout.LayoutParams(dp(30), dp(30)))
+            addView(text(label, 13.5f, color = TEXT_2).apply {
+                gravity = Gravity.CENTER; maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+            setOnClickListener { onClick() }
+        }
+        uprightBar = SeekBar(this).apply { isFocusable = true; contentDescription = "Seek"; onDrag = ::dragTo }
+        uprightElapsed = text("", 15f, bold = true, color = TEXT_2)
+        uprightLength = text("", 15f, bold = true, color = TEXT_2)
+        uprightPlay = icon(R.drawable.ic_pause, 38, "Play", disc = true) { if (player.playWhenReady) player.pause() else player.play() }
+        uprightTitle = text(intent.getStringExtra("name").orEmpty(), 25f, serif = true).apply { maxLines = 2; ellipsize = TextUtils.TruncateAt.END }
+        uprightEpisode = text(intent.getStringExtra("episode").orEmpty(), 15.5f, bold = true, color = TUNGSTEN).apply {
+            maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+        }
+        uprightAbout = text("", 15.5f, color = TEXT_2).apply { setLineSpacing(0f, 1.25f) }
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+            setBackgroundColor(BASE)
+            setPadding(dp(22), dp(6), dp(22), 0)
+            addView(uprightBar, LinearLayout.LayoutParams(-1, dp(44)))
+            addView(LinearLayout(context).apply {
+                addView(uprightElapsed)
+                addView(View(context), LinearLayout.LayoutParams(0, 1, 1f))
+                addView(uprightLength)
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER
+                addView(icon(R.drawable.ic_replay10, 40, "Back 10 seconds") { if (canSeek()) scrub(-SKIP) },
+                    LinearLayout.LayoutParams(dp(64), dp(64)))
+                addView(uprightPlay, LinearLayout.LayoutParams(dp(80), dp(80)).apply { marginStart = dp(36); marginEnd = dp(36) })
+                addView(icon(R.drawable.ic_forward10, 40, "Ahead 10 seconds") { if (canSeek()) scrub(SKIP) },
+                    LinearLayout.LayoutParams(dp(64), dp(64)))
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            addView(View(context).apply { setBackgroundColor(GLASS_EDGE) }, LinearLayout.LayoutParams(-1, dp(1)).apply { topMargin = dp(16) })
+            addView(ScrollView(context).apply {
+                isVerticalScrollBarEnabled = false
+                isVerticalFadingEdgeEnabled = true; setFadingEdgeLength(dp(32))
+                addView(column(Gravity.START).apply {
+                    setPadding(0, dp(18), 0, dp(18))
+                    addView(uprightTitle, LinearLayout.LayoutParams(-1, -2))
+                    addView(uprightEpisode, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+                    addView(uprightAbout, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
+                    uprightEpisodes = column(Gravity.START)
+                    addView(uprightEpisodes, LinearLayout.LayoutParams(-1, -2))
+                })
+            }, LinearLayout.LayoutParams(-1, 0, 1f))
+            addView(LinearLayout(context).apply {
+                addView(action("Audio & subtitles", R.drawable.ic_subtitles) { openOptions() }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(action("Change stream", R.drawable.ic_layers) { changeStream() }, LinearLayout.LayoutParams(0, -2, 1f))
+                uprightNext = action("Next episode", R.drawable.ic_next_episode) { playNext() }.apply { visibility = View.GONE }
+                addView(uprightNext, LinearLayout.LayoutParams(0, -2, 1f))
+                if (windowable) addView(action("Window", R.drawable.ic_pip) { enterWindow() }, LinearLayout.LayoutParams(0, -2, 1f))
+                addView(action("Full screen", R.drawable.ic_fullscreen) { turn(sideways = true) }, LinearLayout.LayoutParams(0, -2, 1f))
+            }, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(10) })
+        }
+    }
+
+    /** The name, episode and story under the upright picture, once the title's details are in. */
+    private fun fillBelow() {
+        if (!touch) return
+        val m = meta ?: return
+        val episode = m.videos.firstOrNull { it.id == videoId }
+        uprightTitle.text = m.name.ifBlank { uprightTitle.text }
+        uprightEpisode.text = episode?.let { e -> listOf("S${e.season} E${e.episode}", e.title).filter { it.isNotBlank() }.joinToString(DOT) }
+            ?: listOfNotNull(m.year, m.runtime).joinToString(DOT)
+        uprightAbout.text = episode?.overview?.takeIf { it.isNotBlank() } ?: m.description.orEmpty()
+        uprightNext.visibility = if (nextVideo() == null) View.GONE else View.VISIBLE
+        // The rest of the season, to jump to another episode.
+        uprightEpisodes.removeAllViews()
+        val season = episode?.season ?: return
+        val inSeason = m.videos.filter { it.season == season }
+        if (inSeason.size < 2) return
+        uprightEpisodes.addView(caps("Season $season", TUNGSTEN), LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(22); bottomMargin = dp(6) })
+        for (v in inSeason) {
+            val playing = v.id == videoId
+            uprightEpisodes.addView(LinearLayout(this).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(8), dp(12), dp(8), dp(12))
+                addView(text("${v.episode}", 16f, bold = true, color = if (playing) TUNGSTEN else TEXT_3), LinearLayout.LayoutParams(dp(36), -2))
+                addView(text(v.title.ifBlank { "Episode ${v.episode}" }, 16f, color = if (playing) TEXT else TEXT_2).apply {
+                    maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (playing) addView(text("Playing", 13f, bold = true, color = TUNGSTEN), wrap())
+                else {
+                    isFocusable = true; isClickable = true
+                    rowFocus(8)
+                    setOnClickListener { playEpisode(v) }
+                }
+            }, LinearLayout.LayoutParams(-1, -2))
+        }
+    }
+
+    private fun keptSideways() = getSharedPreferences("player", MODE_PRIVATE).getBoolean(Settings.profileKey(this, "sideways"), false)
+
+    /** Keep sideways: the player stays sideways however the phone is held, until it's turned off (or Upright). */
+    private fun keepSideways(on: Boolean, say: Boolean = true) {
+        getSharedPreferences("player", MODE_PRIVATE).edit().putBoolean(Settings.profileKey(this, "sideways"), on).apply()
+        orientationWatch?.disable()
+        turned = false
+        requestedOrientation = if (on) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+        lockButton.foreground = centred(R.drawable.ic_lock_rotation, 30, if (on) TUNGSTEN else TEXT)
+        buttonLabels[lockButton]?.text = if (on) "Kept sideways" else "Keep sideways"
+        if (say) flash(if (on) "Kept sideways" else "Turns with the phone")
+    }
+
+    /** Lays the screen out for how the phone is held: the strip and panel upright, the whole screen sideways. */
+    private fun arrange() {
+        if (!touch) return
+        val up = uprightNow
+        below.visibility = if (up) View.VISIBLE else View.GONE
+        (screen.layoutParams as LinearLayout.LayoutParams).apply { height = if (up) -2 else 0; weight = if (up) 0f else 1f }
+        (below.layoutParams as LinearLayout.LayoutParams).apply { height = 0; weight = if (up) 1f else 0f }
+        screen.requestLayout()
+        if (up) {
+            // The controls on the picture give way to the panel; the status and navigation bars come back.
+            controls.animate().cancel()
+            controls.alpha = 0f
+            controls.visibility = View.GONE
+            view.subtitleView?.setBottomPaddingFraction(0.08f)
+            loadingCenter.translationY = 0f
+            shown = false
+            showControls(null)
+            showBars(true)
+        } else {
+            if (shown && controls.visibility != View.VISIBLE) shown = false
+            fullScreen(clearOfCutout)
+            if (!inWindow && started) showControls(null)
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        if (!touch || !::below.isInitialized) return
+        val nowUpright = newConfig.orientation == Configuration.ORIENTATION_PORTRAIT
+        if (nowUpright == upright) return
+        upright = nowUpright
+        arrange()
+    }
+
+    // The bars come back after the keyboard or a swipe from the edge: upright, they stay.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && uprightNow) showBars(true)
+    }
+
+    /**
+     * Full screen (or Back from it): turns the picture whichever way the phone is held. With the phone's auto-rotate on,
+     * the phone's own turning takes over again once it is held that way, as YouTube does; with it off, it stays turned.
+     */
+    private fun turn(sideways: Boolean) {
+        if (!sideways && keptSideways()) keepSideways(false, say = false)
+        requestedOrientation = if (sideways) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        orientationWatch?.disable()
+        val autoRotate = android.provider.Settings.System.getInt(contentResolver, android.provider.Settings.System.ACCELEROMETER_ROTATION, 0) == 1
+        if (!autoRotate) { turned = true; return }
+        turned = true
+        orientationWatch = object : OrientationEventListener(this) {
+            override fun onOrientationChanged(degrees: Int) {
+                if (degrees == ORIENTATION_UNKNOWN) return
+                val held = if (sideways) degrees in 60..120 || degrees in 240..300 else degrees < 30 || degrees > 330
+                if (!held) return
+                disable()
+                turned = false
+                if (!keptSideways()) requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_FULL_USER
+            }
+        }.apply { if (canDetectOrientation()) enable() }
+    }
+    private var turned = false // Full screen turned it; Back turns it upright again before it closes the player
+
+    private val windowable by lazy {
+        touch && packageManager.hasSystemFeature(android.content.pm.PackageManager.FEATURE_PICTURE_IN_PICTURE)
+    }
+
+    private fun windowAction(what: Int, icon: Int, label: String) = RemoteAction(Icon.createWithResource(this, icon), label, label,
+        PendingIntent.getBroadcast(this, what, Intent(WINDOW_ACTION).setPackage(packageName).putExtra("do", what),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT))
+
+    /** The small window's shape (the film's, within what Android allows), its buttons, and whether leaving opens it. */
+    private fun windowParams(): PictureInPictureParams {
+        val size = player.videoSize
+        val ratio = if (size.width > 0 && size.height > 0) size.width * size.pixelWidthHeightRatio / size.height else 16f / 9
+        val shape = when {
+            ratio > 2.39f -> Rational(239, 100)
+            ratio < 1 / 2.39f -> Rational(100, 239)
+            else -> Rational((ratio * 1000).roundToInt(), 1000)
+        }
+        val playing = player.playWhenReady
+        return PictureInPictureParams.Builder().setAspectRatio(shape).setActions(listOf(
+            windowAction(WINDOW_BACK, R.drawable.ic_replay10, "Back 10 seconds"),
+            windowAction(WINDOW_PLAY, if (playing) R.drawable.ic_pause else R.drawable.ic_play, if (playing) "Pause" else "Play"),
+            windowAction(WINDOW_AHEAD, R.drawable.ic_forward10, "Ahead 10 seconds"),
+        )).apply {
+            // Android 12 and later: a swipe home while it plays opens the window smoothly, without waiting for the app.
+            if (Build.VERSION.SDK_INT >= 31) { setAutoEnterEnabled(playing && started); setSeamlessResizeEnabled(true) }
+        }.build()
+    }
+
+    /** Keeps the window's shape, buttons and swipe-home behaviour in step with what plays. */
+    private fun windowReady() {
+        if (!windowable || isFinishing) return
+        runCatching { setPictureInPictureParams(windowParams()) }
+    }
+
+    private fun enterWindow() {
+        if (!windowable || !started) return
+        runCatching { enterPictureInPictureMode(windowParams()) }
+    }
+
+    // Android 11 and older have no swipe-home window: leaving the app while it plays opens it here.
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (Build.VERSION.SDK_INT < 31 && player.playWhenReady && options.visibility != View.VISIBLE) enterWindow()
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean, newConfig: Configuration) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
+        inWindow = isInPictureInPictureMode
+        if (inWindow) {
+            // Only the picture in the window: no controls, panels or Skip.
+            if (shown) hideControls(force = true)
+            if (options.visibility == View.VISIBLE) closeOptions()
+            if (upNextPanel.visibility == View.VISIBLE) dismissUpNext()
+            skip.visibility = View.GONE
+            view.subtitleView?.setBottomPaddingFraction(0.08f)
+            arrange()
+            return
+        }
+        // The window was closed (its X, or swiped away): the player closes with it, as it was stopped already.
+        if (!visible) { finish(); return }
+        upright = resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT
+        arrange()
     }
 
     // ---------- skip intro, as NuvioTV does it ----------
@@ -1071,7 +1415,7 @@ class PlayerActivity : Screen() {
     }
 
     private fun showAmbient() {
-        if (isFinishing || player.playWhenReady || !started) return
+        if (isFinishing || player.playWhenReady || !started || uprightNow || inWindow) return
         if (options.visibility == View.VISIBLE || upNextPanel.visibility == View.VISIBLE || stallPanel.visibility == View.VISIBLE) return
         val episode = meta?.videos?.firstOrNull { it.id == videoId }
         ambientKicker.text = listOfNotNull("PAUSED", subtitle.text.toString().takeIf { it.isNotBlank() }?.uppercase()).joinToString(DOT)
@@ -1100,6 +1444,8 @@ class PlayerActivity : Screen() {
     // ---------- player controls ----------
     /** On a phone (held at arm's length, tapped with a thumb) the controls' words and buttons are larger than the TV's. */
     private fun sized(tv: Float, phone: Float) = if (touch) phone else tv
+    /** [width] dp, or less on a phone held upright, so a panel keeps [margin] dp clear of each side. */
+    private fun fitWidth(width: Int, margin: Int = PAD) = minOf(dp(width), resources.displayMetrics.widthPixels - 2 * dp(margin))
     private fun sized(tv: Int, phone: Int) = if (touch) phone else tv
     private val hideAfter get() = if (touch) HIDE_TOUCH else HIDE
     /** On a phone, a pill or chip a thumb can hit, with words read at arm's length. */
@@ -1238,6 +1584,12 @@ class PlayerActivity : Screen() {
             // A phone leaves Info out: its Back arrow goes to the same title page.
             if (!touch) addView(buttonCell(infoButton))
             if (touch) addView(buttonCell(fitButton))
+            if (windowable) addView(buttonCell(button("Window", R.drawable.ic_pip) { enterWindow() }))
+            if (touch) {
+                lockButton = button("Keep sideways", R.drawable.ic_lock_rotation) { keepSideways(!keptSideways()) }
+                addView(buttonCell(lockButton))
+                if (keptSideways()) lockButton.post { keepSideways(true, say = false) }
+            }
         }
         for (button in listOf(audioButton, streamButton, playPause, nextButton, startOverButton, infoButton, fitButton))
             button.nextFocusUpId = bar.id
@@ -1409,6 +1761,9 @@ class PlayerActivity : Screen() {
     /** Brings the controls up with [focus] focused (null: leaves focus where it is) and restarts the time to hide. */
     private fun showControls(focus: View? = playPause) {
         main.removeCallbacks(hideTask)
+        if (inWindow) return
+        // Upright, the controls are always there, under the picture.
+        if (uprightNow) { if (!shown) { shown = true; updateProgress() }; return }
         if (!shown) {
             shown = true
             view.subtitleView?.setBottomPaddingFraction(0.36f) // keep captions above the dock
@@ -1424,6 +1779,7 @@ class PlayerActivity : Screen() {
     }
 
     private fun hideControls(force: Boolean = false) {
+        if (uprightNow) return
         if (!force && !player.playWhenReady) return
         shown = false
         if (touch) loadingCenter.translationY = 0f
@@ -1447,6 +1803,11 @@ class PlayerActivity : Screen() {
             bar.set(position, player.bufferedPosition, if (live) 0L else duration)
             elapsed.text = if (live) "Live" else clock(position)
             length.text = if (live || duration <= 0) "" else "−${clock((duration - position).coerceAtLeast(0))}"
+            if (touch) {
+                uprightBar.set(position, player.bufferedPosition, if (live) 0L else duration)
+                uprightElapsed.text = elapsed.text
+                uprightLength.text = length.text
+            }
         }
         if (options.visibility == View.VISIBLE) {
             optionsBar.set(position, player.bufferedPosition, if (live) 0L else duration)
@@ -1598,8 +1959,10 @@ class PlayerActivity : Screen() {
             addView(list)
             setPadding(dp(22), dp(20), dp(22), dp(22))
             clipToPadding = false
-            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(baseAt(0xF0), 14), glass(14)))
-        }, FrameLayout.LayoutParams(dp(sized(310, 470)), resources.displayMetrics.heightPixels - dp(sized(54, 32))).apply {
+            // Upright it lies over the story under the picture: solid, so that text doesn't show through.
+            background = android.graphics.drawable.LayerDrawable(arrayOf(rounded(if (uprightNow) BASE else baseAt(0xF0), 14), glass(14)))
+        }, FrameLayout.LayoutParams(fitWidth(sized(310, 470), sized(27, PAD)), resources.displayMetrics.heightPixels - dp(sized(54, 32)) -
+            (if (uprightNow) dp(60) else 0)).apply {
             leftMargin = dp(sized(27, PAD)); topMargin = dp(sized(27, 16))
         })
         optionsBar = SeekBar(this).apply { isFocusable = false }
@@ -1614,6 +1977,8 @@ class PlayerActivity : Screen() {
         options.addView(optionsLeft, FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.END).apply {
             rightMargin = dp(PAD); bottomMargin = dp(27)
         })
+        // Upright, the time is under the picture already: the small bar would sit on the list's last rows.
+        if (uprightNow) for (v in listOf(optionsBar, optionsElapsed, optionsLeft)) v.visibility = View.GONE
         options.visibility = View.VISIBLE
         updateProgress()
         subsFirst.requestFocus()
@@ -1716,6 +2081,7 @@ class PlayerActivity : Screen() {
 
     override fun onStop() {
         super.onStop()
+        visible = false
         if (!::status.isInitialized) return
         main.removeCallbacks(tickTask)
         main.removeCallbacks(progressTask)
@@ -1735,12 +2101,21 @@ class PlayerActivity : Screen() {
 
     override fun onDestroy() {
         main.removeCallbacks(startTimeout)
+        orientationWatch?.disable()
+        if (touch && ::status.isInitialized) runCatching { unregisterReceiver(windowActions) }
+        if (current?.get() === this) current = null
         main.removeCallbacks(loadingTask)
         if (::status.isInitialized) player.release()
         super.onDestroy()
     }
 
     private companion object {
+        /** The player open now: a new one closes one left in the small window. */
+        var current: java.lang.ref.WeakReference<PlayerActivity>? = null
+        const val WINDOW_ACTION = "dev.canopy.WINDOW" // the small window's buttons
+        const val WINDOW_BACK = 1
+        const val WINDOW_PLAY = 2
+        const val WINDOW_AHEAD = 3
         const val TICK = 10_000L
         const val RESUME_SLACK = 10_000L // how far apart the saved and fresh resume points may be before it jumps
         const val SKIP = 10_000L // ms a Left/Right press on the bar moves
