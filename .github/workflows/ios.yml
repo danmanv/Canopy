@@ -79,6 +79,7 @@ jobs:
               sleep 14
               xcrun simctl io "$id" screenshot "shots/$tag-$screen.png"
             done
+            xcrun simctl spawn "$id" log show --last 1m --style compact --predicate 'process == "Canopy"' > "shots/$tag-player-log.txt" 2>&1 || true
             xcrun simctl shutdown "$id" || true
           done
           ls -la shots
@@ -109,6 +110,6 @@ jobs:
               -e "s|@URL@|$url|g" -e "s|@BRANCH@|${GITHUB_REF_NAME}|g" sidestore-source.json > source.json
           cat source.json
           gh release delete ios-nightly --cleanup-tag --yes || true
-          gh release create ios-nightly Canopy.ipa source.json $(ls shots/*.png 2>/dev/null) --prerelease --latest=false --target "$GITHUB_SHA" \
+          gh release create ios-nightly Canopy.ipa source.json $(ls shots/*.png shots/*.txt 2>/dev/null) --prerelease --latest=false --target "$GITHUB_SHA" \
             --title "Canopy for iPhone and iPad (test build $VERSION)" \
             --notes "Test build of Canopy for iPhone and iPad from ${GITHUB_REF_NAME} ($GITHUB_SHA). Install with SideStore: add the source https://github.com/${{ github.repository }}/releases/download/ios-nightly/source.json, or open Canopy.ipa in SideStore. Android TVs and phones keep updating from the latest release, not this one."

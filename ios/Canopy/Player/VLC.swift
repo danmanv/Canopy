@@ -18,13 +18,28 @@ final class VLC: NSObject {
     var subtitleTrack: Int32 = -1
     /// Bumped whenever VLC adds or drops tracks (an external subtitle arrived).
     var tracksVersion = 0
+    /// What VLC went through for the current source ("opening, buffering, error"), shown when a source fails.
+    var history: [String] = []
     private var started = false
     private var keptRatio: UnsafeMutablePointer<CChar>?
     private var keptCrop: UnsafeMutablePointer<CChar>?
 
+    /// VLC draws here; it exists before anything plays, so VLC always has somewhere to draw.
+    let surface: UIView = {
+        let v = UIView()
+        v.backgroundColor = .black
+        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        return v
+    }()
+
     override init() {
         super.init()
         player.delegate = self
+        player.drawable = surface
+        if AppModel.demo {
+            player.libraryInstance.debugLogging = true
+            player.libraryInstance.debugLoggingLevel = 3
+        }
     }
 
     func open(_ s: Stream, startAt ms: Int64) {
@@ -36,6 +51,7 @@ final class VLC: NSObject {
         media.addOption(":network-caching=3000")
         if ms > 5000 { media.addOption(":start-time=\(Double(ms) / 1000)") }
         player.media = media
+        history = []
         phase = .opening
         time = ms
         length = 0
@@ -101,6 +117,19 @@ final class VLC: NSObject {
 extension VLC: VLCMediaPlayerDelegate {
     nonisolated func mediaPlayerStateChanged(_ aNotification: Notification) {
         Task { @MainActor in
+            let name: String
+            switch player.state {
+            case .stopped: name = "stopped"
+            case .opening: name = "opening"
+            case .buffering: name = "buffering"
+            case .ended: name = "ended"
+            case .error: name = "error"
+            case .playing: name = "playing"
+            case .paused: name = "paused"
+            case .esAdded: name = "tracks"
+            @unknown default: name = "?"
+            }
+            if history.last != name && history.count < 12 { history.append(name) }
             switch player.state {
             case .opening: phase = started ? phase : .opening
             case .buffering: buffering = true
@@ -135,7 +164,8 @@ struct VLCSurface: UIViewRepresentable {
     func makeUIView(context: Context) -> UIView {
         let v = UIView()
         v.backgroundColor = .black
-        vlc.player.drawable = v
+        vlc.surface.frame = v.bounds
+        v.addSubview(vlc.surface)
         return v
     }
     func updateUIView(_ uiView: UIView, context: Context) {}

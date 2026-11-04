@@ -174,7 +174,8 @@ struct PlayerView: View {
 
     private func open(_ i: Int) {
         guard i < sources.count else {
-            failure = ["\(sources.count == 1 ? "This source" : "None of the \(sources.count) sources") would play."]
+            failure = ["\(sources.count == 1 ? "This source didn't play." : "None of the \(sources.count) sources played.")",
+                       "Player: " + vlc.history.joined(separator: " → ") + (Orientation.problem.map { " · \($0)" } ?? "")]
             showChoose = true
             startedPlaying = false
             return
@@ -674,6 +675,8 @@ struct TracksPanel: View {
 /// iPhone pages stay upright; the player turns sideways (and back) by itself. An iPad turns freely.
 @MainActor
 enum Orientation {
+    /// Why the last turn was refused, if it was.
+    static var problem: String?
     static var mask: UIInterfaceOrientationMask = UIDevice.current.userInterfaceIdiom == .pad ? .all : .portrait
 
     static func player() {
@@ -698,7 +701,9 @@ enum Orientation {
             c.setNeedsUpdateOfSupportedInterfaceOrientations()
             vc = c.presentedViewController
         }
-        scene.requestGeometryUpdate(.iOS(interfaceOrientations: m)) { _ in }
+        scene.requestGeometryUpdate(.iOS(interfaceOrientations: m)) { error in
+            Task { @MainActor in problem = error.localizedDescription }
+        }
     }
 }
 
