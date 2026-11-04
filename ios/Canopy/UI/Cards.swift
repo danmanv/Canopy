@@ -141,8 +141,9 @@ struct ScoreStrip: View {
                     .foregroundStyle(.white)
                     .lineLimit(1).minimumScaleFactor(0.6)
                     .padding(.horizontal, 4)
-                    .frame(width: width, height: 24)
-                    .background(LinearGradient(colors: [.black.opacity(0.8), .black.opacity(0.95)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: width, height: 22)
+                    // A fade, not a solid band, so the poster's own title lettering still shows through above it.
+                    .background(LinearGradient(colors: [.black.opacity(0.55), .black.opacity(0.95)], startPoint: .top, endPoint: .bottom))
             }
         }
         .task(id: id) {

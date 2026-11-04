@@ -600,7 +600,7 @@ abstract class Screen : Activity() {
             maxLines = 1
             gravity = Gravity.CENTER
             setPadding(dp(4), 0, dp(4), 0)
-            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF2000000.toInt(), 0xCC000000.toInt()))
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF2000000.toInt(), 0x8C000000.toInt()))
             // A narrow card (search, More like this) shrinks the words to fit rather than cutting a score off.
             setAutoSizeTextTypeUniformWithConfiguration(8, SMALL.toInt() + 1, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             visibility = View.GONE
@@ -1244,7 +1244,7 @@ abstract class Screen : Activity() {
         val TILE get() = Theme.now.tile // a poster's placeholder
         val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
-        const val SCORE_H = 22 // dp: the scores strip along a poster's foot
+        const val SCORE_H = 20 // dp: the scores strip along a poster's foot
         val GLASS get() = withAlpha(Theme.now.glass, 0x4D)
         const val GLASS_FOCUSED = 0x33FFFFFF
         val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)
