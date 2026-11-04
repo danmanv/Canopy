@@ -84,11 +84,14 @@ jobs:
           done
           ls -la shots
       - name: IPA
+        env:
+          # Rotten Tomatoes scores (Core/Ratings.swift); without it the app shows IMDb only.
+          MDBLIST_API_KEY: ${{ secrets.MDBLIST_API_KEY }}
         run: |
           set -o pipefail
           xcodebuild build -workspace Canopy.xcworkspace -scheme Canopy -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath build \
-            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" \
+            MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="$BUILD" MDBLIST_API_KEY="$MDBLIST_API_KEY" \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" | tail -n 120
           mkdir -p Payload
           cp -R build/Build/Products/Release-iphoneos/Canopy.app Payload/

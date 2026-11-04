@@ -246,13 +246,13 @@ class PhoneSearchActivity : PhoneScreen() {
             three.forEachIndexed { i, m ->
                 line.addView(LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
-                    addView(ImageView(context).apply {
+                    addView(scored(ImageView(context).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
                         background = rounded(TILE, CORNER)
                         clipToOutline = true
                         contentDescription = m.name
                         Images.load(m.poster ?: m.background, this, w)
-                    }, LinearLayout.LayoutParams(w, w * 3 / 2))
+                    }, m.id, m.type, m.rating), LinearLayout.LayoutParams(w, w * 3 / 2))
                     addView(text(m.name, SMALL_SP, bold = true).apply { maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END },
                         LinearLayout.LayoutParams(w, -2).apply { topMargin = dp(6) })
                     setOnClickListener { open(m) }

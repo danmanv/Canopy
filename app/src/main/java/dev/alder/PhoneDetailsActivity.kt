@@ -204,9 +204,14 @@ class PhoneDetailsActivity : PhoneScreen() {
             logo.visibility = View.GONE; title.visibility = View.VISIBLE
         }) { logo.visibility = View.VISIBLE; title.visibility = View.GONE }
         title.text = m.name.ifBlank { name }
-        facts.text = listOfNotNull(m.year, m.genres.take(2).joinToString(", ").ifEmpty { null },
-            m.runtime ?: m.videos.map { it.season }.filter { it > 0 }.distinct().size.takeIf { type == "series" && it > 0 }?.let(::seasons),
-            m.rating?.let { "IMDb $it" }).joinToString(DOT_SHORT)
+        fun fillFacts() {
+            facts.text = listOfNotNull(m.year, m.genres.take(2).joinToString(", ").ifEmpty { null },
+                m.runtime ?: m.videos.map { it.season }.filter { it > 0 }.distinct().size.takeIf { type == "series" && it > 0 }?.let(::seasons),
+                Ratings.line(m.id, m.rating, DOT_SHORT)).joinToString(DOT_SHORT)
+        }
+        fillFacts()
+        // Rotten Tomatoes joins the line when MDBList answers (kept for a week, so usually at once).
+        Ratings.fetch(m.id, type) { if (meta === m) fillFacts() }
         about.text = m.description.orEmpty()
         about.visibility = if (m.description.isNullOrBlank()) View.GONE else View.VISIBLE
         val names = listOfNotNull(m.cast.take(5).joinToString(", ").ifEmpty { null }?.let { "Starring $it" },
@@ -326,6 +331,8 @@ class PhoneDetailsActivity : PhoneScreen() {
         if (similarAsked) return
         similarAsked = true
         background({
+            // Picked for this title first (MDBList), then an add-on's own "similar", then shared genres.
+            Similar.of(this, type, metaId)?.takeIf { it.isNotEmpty() }?.let { return@background it }
             val addons = Stremio.addons(key)
             addons.firstNotNullOfOrNull { addon -> runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() } }
                 ?: addons.sameGenre(type, meta?.genres.orEmpty(), metaId)
@@ -339,12 +346,13 @@ class PhoneDetailsActivity : PhoneScreen() {
             titles.chunked(3).forEach { three ->
                 val line = LinearLayout(this).apply { setPadding(dp(20), 0, dp(20), 0) }
                 three.forEachIndexed { i, t ->
-                    line.addView(ImageView(this).apply {
+                    line.addView(scored(ImageView(this).apply {
                         scaleType = ImageView.ScaleType.CENTER_CROP
                         background = rounded(TILE, CORNER)
                         clipToOutline = true
                         contentDescription = t.name
                         Images.load(t.poster ?: t.background, this, w)
+                    }, t.id, t.type, t.rating).apply {
                         setOnClickListener {
                             startActivity(Intent(this@PhoneDetailsActivity, PhoneDetailsActivity::class.java)
                                 .putExtra("type", t.type).putExtra("id", t.id).putExtra("name", t.name)

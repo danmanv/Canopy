@@ -107,6 +107,7 @@ internal fun prepareNetwork(c: Context) {
     // screen isn't held up by the disk. The first few pictures may miss the disk cache; they're fetched as usual.
     val dir = c.cacheDir
     Http.saved = java.io.File(dir, "answers")
+    Ratings.init(c)
     Thread {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
         runCatching { android.net.http.HttpResponseCache.install(java.io.File(dir, "http"), 250L * 1024 * 1024) }
@@ -129,10 +130,13 @@ abstract class Screen : Activity() {
     /** A screen made for a phone (PhoneActivity): drawn at the phone's own size, and its taps are plain taps. */
     protected open val phoneLayout: Boolean get() = false
 
+    /** [phoneLayout] while the screen is being attached, before it can read its own context. */
+    protected open fun phoneLayoutIn(base: Context): Boolean = phoneLayout
+
     // On a phone every TV screen is drawn near a TV's size (Device.PHONE_DP tall), so it fits as it was laid out.
     override fun attachBaseContext(base: Context) {
         super.attachBaseContext(base)
-        if (!phoneLayout) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
+        if (!phoneLayoutIn(base)) Device.tvDensity(base)?.let { applyOverrideConfiguration(android.content.res.Configuration().apply { densityDpi = it }) }
     }
 
     private val taps by lazy { Taps(this, { window.decorView }, ::onBareTap, ::onSwipe) }
@@ -180,7 +184,8 @@ abstract class Screen : Activity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        if (hasFocus && touch) fullScreen(clearOfCutout) // the bars come back after the keyboard or a swipe from the edge
+        // The bars come back after the keyboard or a swipe from the edge; a phone's own screens keep them.
+        if (hasFocus && touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
     }
 
     override fun onCreate(savedInstanceState: android.os.Bundle?) {
@@ -188,7 +193,7 @@ abstract class Screen : Activity() {
         drawnIn = Theme.now
         super.onCreate(savedInstanceState)
         window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BASE)) // never a grey frame between screens
-        if (touch) fullScreen(clearOfCutout)
+        if (touch) { if (phoneLayout) showBars(clearOfCutout) else fullScreen(clearOfCutout) }
         prepareNetwork(this)
         // Every key starts the screensaver's quiet time again, before a screen's own key handling can swallow it.
         val screen = window.callback
@@ -581,6 +586,42 @@ abstract class Screen : Activity() {
         val mark = (size * 1.3f).toInt() // the mark's art fills about two thirds of its square
         addView(ImageView(context).apply { setImageResource(R.drawable.logo_transparent) }, LinearLayout.LayoutParams(dp(mark), dp(mark)))
         addView(text("canopy", size).onArt().apply { typeface = fonts.wordmark }, wrap().apply { marginStart = dp(4) })
+    }
+
+    /**
+     * A poster's scores in Canopy's own letters, along its foot: "IMDb 8.1  🍅 94%" (MDBList). Add-ons print theirs into
+     * the picture too small to read, so Images.poster swaps those pictures for plain ones and this goes on top. Fills
+     * itself when MDBList answers; null without an MDBList key. Lay it out across the card's foot, [SCORE_H] tall.
+     */
+    protected fun scoreStrip(id: String, type: String, imdb: String?): TextView? {
+        if (!Ratings.enabled) return null
+        val strip = text("", SMALL, bold = true, color = TEXT).apply {
+            includeFontPadding = false
+            maxLines = 1
+            gravity = Gravity.CENTER
+            setPadding(dp(4), 0, dp(4), 0)
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF2000000.toInt(), 0x8C000000.toInt()))
+            // A narrow card (search, More like this) shrinks the words to fit rather than cutting a score off.
+            setAutoSizeTextTypeUniformWithConfiguration(8, SMALL.toInt() + 1, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            visibility = View.GONE
+            tag = id
+        }
+        fun fill() {
+            val i = imdb ?: Ratings.cached(id)?.imdb
+            val t = Ratings.tomato(id)
+            if (i == null && t == null) { strip.visibility = View.GONE; return }
+            strip.text = android.text.SpannableStringBuilder().apply {
+                if (i != null) {
+                    append("IMDb", android.text.style.ForegroundColorSpan(RATING), 0)
+                    append(" $i")
+                }
+                if (t != null) { if (isNotEmpty()) append("   "); append(t) }
+            }
+            strip.visibility = View.VISIBLE
+        }
+        fill()
+        Ratings.fetch(id, type) { if (strip.tag == id) fill() }
+        return strip
     }
 
     /** The IMDb tag beside a rating, as tall as the letters. */
@@ -1036,16 +1077,26 @@ abstract class Screen : Activity() {
                 list.addView(this, LinearLayout.LayoutParams(-1, -2))
             }
         }
+        // A phone's own upright screens (Settings) stack the question over the answers; a TV has them side by side.
+        val stacked = phoneLayout && resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT
         dialog.setContentView(LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = LayerDrawable(arrayOf(sky(), android.graphics.drawable.ColorDrawable(0x99040812.toInt())))
-            setPadding(dp(64), dp(40), dp(64), dp(40))
-            addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            if (stacked) {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(16), dp(48), dp(16), dp(32))
+                words.setPadding(dp(20), 0, dp(20), 0)
+                addView(words, LinearLayout.LayoutParams(-1, -2))
+            } else {
+                setPadding(dp(64), dp(40), dp(64), dp(40))
+                addView(words, LinearLayout.LayoutParams(0, -2, 1f))
+            }
             addView(android.widget.ScrollView(context).apply {
                 isVerticalScrollBarEnabled = false
                 isFillViewport = false
                 addView(list)
-            }, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
+            }, if (stacked) LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(24) }
+                else LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(48) })
         })
         dialog.show()
         rows.getOrNull(focus)?.requestFocus()
@@ -1193,6 +1244,7 @@ abstract class Screen : Activity() {
         val TILE get() = Theme.now.tile // a poster's placeholder
         val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
+        const val SCORE_H = 20 // dp: the scores strip along a poster's foot
         val GLASS get() = withAlpha(Theme.now.glass, 0x4D)
         const val GLASS_FOCUSED = 0x33FFFFFF
         val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)

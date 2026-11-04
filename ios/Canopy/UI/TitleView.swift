@@ -11,6 +11,8 @@ struct TitleView: View {
     @Environment(\.horizontalSizeClass) private var size
     @Environment(\.dismiss) private var dismiss
     @State private var meta: Meta?
+    /// Rotten Tomatoes (and IMDb when the add-on has none) from MDBList.
+    @State private var scores: Ratings.Scores?
     @State private var failed = false
     @State private var season = -1
     @State private var similar: [Card] = []
@@ -50,6 +52,10 @@ struct TitleView: View {
             TrailerSheet(youTubeId: t.id)
         }
         .task { await load() }
+        .task(id: ref.id) {
+            scores = Ratings.cached(ref.id)
+            scores = await Ratings.fetch(ref.id, type: ref.type)
+        }
         .task(id: meta?.poster ?? ref.poster) { await tintFromPoster() }
         .task(id: meta?.trailer) {
             guard meta?.trailer != nil, Settings.trailers, !AppModel.demo else { return }
@@ -143,10 +149,17 @@ struct TitleView: View {
         }
     }
 
+    /// Year, runtime and genres, then "IMDb 8.1 · 🍅 94%".
+    private var infoLine: String? {
+        guard let meta else { return nil }
+        let line = [meta.info, Ratings.line(imdb: meta.rating, scores)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: "   ")
+        return line.isEmpty ? nil : line
+    }
+
     private var details: some View {
             VStack(alignment: .leading, spacing: 14) {
-                if let meta, !meta.info.isEmpty {
-                    Text(meta.info + (meta.rating.map { "   ★ \($0)" } ?? "")).font(Look.body(14)).foregroundStyle(theme.text2)
+                if let line = infoLine {
+                    Text(line).font(Look.body(14)).foregroundStyle(theme.text2)
                 }
                 if let w = whereLine {
                     Text(w).font(Look.bold(14)).foregroundStyle(theme.accentColor).lineLimit(1)
@@ -360,23 +373,40 @@ struct TitleView: View {
         if addons.isEmpty, let key = model.authKey { addons = (try? await Stremio.anyAddons(key)) ?? [] }
         if let fresh = await addons.meta(type: ref.type, id: ref.id, together: true) { apply(fresh) } else if meta == nil { failed = true }
         if ref.type == "movie", similar.isEmpty {
-            for a in addons {
+            // Picked for this title first (MDBList), then an add-on's own "similar", then shared genres.
+            if let s = await Similar.of(type: ref.type, id: ref.id) {
+                similar = s.filter { $0.id != ref.id && $0.type == ref.type }.prefix(20).map(Card.init)
+            }
+            for a in addons where similar.isEmpty {
                 if let s = try? await a.similar(type: ref.type, id: ref.id), !s.isEmpty {
                     similar = s.filter { $0.id != ref.id }.prefix(20).map(Card.init)
                     break
                 }
             }
-            // Few add-ons answer "similar": fall back to the same genre from a catalog that can filter by it.
+            // Last: catalogs filtered by each of the title's genres (up to three), titles found under more of them
+            // first. The top of one genre's list (all of "Drama") would be the same for every title.
             if similar.isEmpty, let genres = meta?.genres {
-                search: for g in genres {
+                var lists = [[Meta]]()
+                for g in genres.prefix(3) {
                     for c in model.catalogs(of: ref.type) {
                         guard let match = c.genres.first(where: { $0.caseInsensitiveCompare(g) == .orderedSame }) else { continue }
                         if let metas = try? await c.addon.catalog(c, genre: match), metas.count > 3 {
-                            similar = metas.filter { $0.id != ref.id }.prefix(24).map(Card.init)
-                            break search
+                            lists.append(metas.filter { $0.id != ref.id })
+                            break
                         }
                     }
                 }
+                let all = lists.flatMap { $0 }
+                var shared = [String: Int]()
+                for m in all { shared[m.id, default: 0] += 1 }
+                var seen = Set<String>()
+                let unique = all.filter { seen.insert($0.id).inserted }
+                // Stable: each list's own order within the same count.
+                let ranked = unique.enumerated().sorted { a, b in
+                    let x = shared[a.element.id] ?? 0, y = shared[b.element.id] ?? 0
+                    return x != y ? x > y : a.offset < b.offset
+                }.map(\.element)
+                similar = ranked.prefix(24).map(Card.init)
             }
         }
     }

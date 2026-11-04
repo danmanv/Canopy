@@ -15,6 +15,31 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 
 ## Unreleased
 
+## 1.3.6
+
+- **More like this** shows titles that MDBList recommends for each movie. Before, it showed the same titles of one genre for each movie. This is on the TV, the phone, the iPhone and the iPad.
+- When MDBList has no recommendations, **More like this** puts first the titles that have more genres in common with the movie.
+- An IMDb score always has one decimal, for example "6.0". A title without an IMDb score does not show "IMDb N/A".
+
+## 1.3.5
+
+- **Rotten Tomatoes scores.** Next to the IMDb score, Canopy shows the Rotten Tomatoes critics score, for example "🍅 94%". When critics have no score, it shows the audience score, "🍿 88%". The scores come from MDBList.
+- **Scores on posters.** Each poster shows the IMDb and Rotten Tomatoes scores along its bottom edge, in large letters. Canopy shows plain posters, because the scores that add-ons print on posters are too small to read.
+- **Play upright.** On a phone, hold the phone upright while a video plays. The video shows at the top. The controls, the name and the story of the episode show below it. Turn the phone sideways for the full screen, or tap **Full screen**.
+- **Play in a window.** On a phone, go to the Home screen while a video plays, or tap **Window**. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**. Tap the window to make it large again.
+- On a TV, the new profile screen shows all the letters. Before, the right 3 columns of letters were not on the screen. This also applies to a TV with a large display size.
+- On a phone, the upright player shows the other episodes of the season below the story. Tap an episode to play it.
+- On a phone, tap **Keep sideways** in the player to keep the video sideways when you lie down. Canopy keeps your choice. Tap it again to turn it off.
+- On a phone, **Settings** is upright. Tap a section to open it. Each setting shows what it does below its name.
+- **Settings** scrolls its list of sections when the screen is short. Before, **About** was not on the screen on some phones.
+- On a TV with a large font size, the letters of the name are not cut.
+
+## 1.3.4
+
+- On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.
+- On a phone, Android's status bar and navigation buttons stay on screen, except while a video plays. Back works as on any other app.
+- On a phone, a show in Continue Watching that is at the start of its next episode shows **Play** on the poster, and starts that episode.
+
 ## 1.3.3
 
 - **Canopy on your phone.** Install the same APK on an Android phone. Home, title pages, Search and the list of sources are upright. Tabs at the bottom open **Home**, **Movies**, **Shows** and **My List**. Tap a title to open it.

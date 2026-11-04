@@ -2,6 +2,15 @@ import XCTest
 @testable import Canopy
 
 final class CoreTests: XCTestCase {
+    func testRatings() throws {
+        let json = try JSONText.parse(#"{"ratings":[{"source":"imdb","value":8.13,"score":81},{"source":"tomatoes","value":94,"score":94},{"source":"popcorn","value":null},{"source":"metacritic","value":0}]}"#)
+        let s = Ratings.parse(json)
+        XCTAssertEqual(s, Ratings.Scores(tomatoes: 94, popcorn: nil, imdb: "8.1"))
+        XCTAssertEqual(Ratings.line(imdb: "7.9", s), "IMDb 7.9 · 🍅 94%")
+        XCTAssertEqual(Ratings.line(imdb: nil, Ratings.Scores(tomatoes: nil, popcorn: 88, imdb: nil)), "🍿 88%")
+        XCTAssertNil(Ratings.parse(try JSONText.parse(#"{"ratings":[]}"#)))
+    }
+
     func testRuntime() {
         XCTAssertEqual(formatRuntime("147 min"), "2h 27m")
         XCTAssertEqual(formatRuntime("2h35min"), "2h 35m")

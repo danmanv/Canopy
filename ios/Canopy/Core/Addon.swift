@@ -248,7 +248,8 @@ struct Meta: Identifiable, Hashable {
         description = json.text("description")
         year = json.text("releaseInfo").map { $0.trimmingCharacters(in: CharacterSet(charactersIn: "–- ")) }
         runtime = json.text("runtime").map(formatRuntime)
-        rating = json.text("imdbRating")
+        // "7.5": one decimal always ("6" reads "6.0"), and none for "N/A" or 0, which some add-ons send.
+        rating = json.text("imdbRating").flatMap(Double.init).flatMap { $0 > 0 ? String(format: "%.1f", $0) : nil }
         genres = Array(json.strings("genres").prefix(3))
         let links = json.objects("links")
         func linked(_ category: String) -> [String] { links.filter { $0.string("category") == category }.compactMap { $0.text("name") } }

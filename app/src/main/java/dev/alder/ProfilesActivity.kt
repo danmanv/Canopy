@@ -25,6 +25,10 @@ import android.widget.TextView
 // The app starts here; with a single profile it goes straight on to Home.
 class ProfilesActivity : Screen() {
     override val backArrow: Boolean get() = false // its screens have their own Back where there's somewhere to go
+    // On a phone, held upright and drawn at the phone's own size, with plain taps: the same steps, stacked.
+    override val phoneLayout: Boolean get() = touch
+    override fun phoneLayoutIn(base: android.content.Context) = Device.touch(base)
+    private val upright get() = phoneLayout
     override val screensaver: Boolean get() = false // it would show a profile's titles before its PIN
     // The sign-in code being waited on; anything else stops its polling loop.
     private var waitingCode: String? = null
@@ -38,6 +42,8 @@ class ProfilesActivity : Screen() {
     private var backTo: (() -> Unit)? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        requestedOrientation = if (Device.touch(this)) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         super.onCreate(savedInstanceState)
         val profiles = Profiles.all(this)
         // Home found this profile signed out: straight to its sign-in, the profile and its settings kept.
@@ -86,6 +92,22 @@ class ProfilesActivity : Screen() {
             Intent(intent).setClass(this, DetailsActivity::class.java).setFlags(0)))
         else startActivity(home)
         finish()
+    }
+
+    /**
+     * Puts [content] on screen over [backdrop]. On a phone every control answers a single tap: the TV's controls take
+     * focus on the first tap and only act on the second.
+     */
+    private fun show(content: View, backdrop: View) {
+        setWindowed(content, backdrop)
+        if (!upright) return
+        fun plain(v: View) {
+            if (v !is EditText) v.isFocusableInTouchMode = false
+            if (v is android.view.ViewGroup) for (i in 0 until v.childCount) plain(v.getChildAt(i))
+        }
+        plain(content)
+        window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE or
+            android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_HIDDEN)
     }
 
     // ---------- who's watching ----------
@@ -144,6 +166,31 @@ class ProfilesActivity : Screen() {
             tiles.addView(tile(null, null) {}.apply { setOnClickListener { showName() } },
                 LinearLayout.LayoutParams(dp(124), -2).apply { marginStart = dp(10); marginEnd = dp(10) })
         }
+        val tileViews = (0 until tiles.childCount).map { tiles.getChildAt(it) }
+        val manage = chip("Manage profiles").apply {
+            setOnClickListener { choose("Manage profiles", profiles.map { it.name }) { i -> showMenu(profiles[i]) } }
+        }
+        if (upright) {
+            // Two portraits to a row, under the question, with Manage profiles at the foot.
+            tiles.removeAllViews()
+            val grid = column(Gravity.CENTER_HORIZONTAL)
+            tileViews.chunked(2).forEach { pair ->
+                grid.addView(LinearLayout(this).apply {
+                    gravity = Gravity.CENTER_HORIZONTAL; clipChildren = false
+                    pair.forEach { addView(it, LinearLayout.LayoutParams(dp(124), -2).apply { marginStart = dp(12); marginEnd = dp(12) }) }
+                }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(20) })
+            }
+            val body = column(Gravity.CENTER_HORIZONTAL,
+                onboardingHeader(""),
+                text("Who's here tonight?", 30f, serif = true).onArt().apply { gravity = Gravity.CENTER }.marginTop(36),
+                grid.marginTop(8),
+                manage.apply { layoutParams = LinearLayout.LayoutParams(-2, dp(44)).apply { topMargin = dp(36) } },
+                text("Press and hold a portrait to rename it, set a PIN, change its colour or remove it.", SMALL, color = TEXT_2)
+                    .onArt().apply { gravity = Gravity.CENTER }.marginTop(12),
+            ).apply { setPadding(dp(20), 0, dp(20), dp(32)); clipChildren = false }
+            show(android.widget.ScrollView(this).apply { isFillViewport = true; addView(body) }, art)
+            return
+        }
         val content = FrameLayout(this).apply {
             addView(brand(), FrameLayout.LayoutParams(-2, -2, Gravity.TOP or Gravity.START).apply {
                 leftMargin = dp(PAD); topMargin = dp(31)
@@ -156,16 +203,12 @@ class ProfilesActivity : Screen() {
             addView(text("Who's here tonight?", 38f, serif = true).onArt().apply { gravity = Gravity.CENTER },
                 FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { topMargin = dp(118) })
             addView(tiles, FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply { topMargin = dp(190 - LIFT_ROOM) })
-            addView(chip("Manage profiles").apply {
-                setOnClickListener {
-                    choose("Manage profiles", profiles.map { it.name }) { i -> showMenu(profiles[i]) }
-                }
-            }, FrameLayout.LayoutParams(-2, dp(30), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(50) })
+            addView(manage, FrameLayout.LayoutParams(-2, dp(30), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(50) })
             addView(keyHint("Hold OK", "Rename · PIN · Colour · Remove"),
                 FrameLayout.LayoutParams(-2, -2, Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL).apply { bottomMargin = dp(20) })
         }
-        setWindowed(content, art)
-        tiles.getChildAt(profiles.indexOf(selected)).requestFocus()
+        show(content, art)
+        tileViews[profiles.indexOf(selected)].requestFocus()
     }
 
     private fun tile(profile: Profile?, last: TextView?, focused: () -> Unit): View {
@@ -267,13 +310,13 @@ class ProfilesActivity : Screen() {
         val copy = column(Gravity.START,
             text("Rename ${p.name}", SERIF_TITLE, serif = true),
             text("History and add-ons stay as they are.", BODY, color = TEXT_2).marginTop(4),
-            entry.field.apply { layoutParams = LinearLayout.LayoutParams(dp(FIELD_W), -2).apply { topMargin = dp(22) } },
+            entry.field.apply { layoutParams = LinearLayout.LayoutParams(fieldW, -2).apply { topMargin = dp(22) } },
             entry.keyboard.apply { layoutParams = LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) } },
             error.marginTop(6),
             save.marginTop(10),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
         val preview = column(Gravity.CENTER, avatar, previewName.marginTop(16)).apply { gravity = Gravity.CENTER }
-        setWindowed(onboardingFrame("", copy, preview, dp(40), 1.1f, 0.9f), onboardingBackdrop())
+        show(onboardingFrame("", copy, preview, dp(40), 1.1f, 0.9f), onboardingBackdrop())
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         entry.firstKey.requestFocus()
     }
@@ -344,14 +387,20 @@ class ProfilesActivity : Screen() {
             }
             draw()
         }
-        val keypad = LinearLayout(this).apply {
-            gravity = Gravity.CENTER
-            ((1..9) + 0 + -1).forEach { d ->
-                addView(chip(if (d < 0) "⌫" else "$d").apply {
-                    gravity = Gravity.CENTER
-                    setOnClickListener { tapped(d) }
-                }, LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginStart = dp(4); marginEnd = dp(4) })
-            }
+        // A phone's number pad: 1 to 9 in threes, then ⌫ and 0.
+        val keypad = column(Gravity.CENTER_HORIZONTAL)
+        listOf(listOf(1, 2, 3), listOf(4, 5, 6), listOf(7, 8, 9), listOf(-1, 0)).forEach { line ->
+            keypad.addView(LinearLayout(this).apply {
+                gravity = Gravity.CENTER
+                line.forEach { d ->
+                    addView(text(if (d < 0) "⌫" else "$d", 24f).apply {
+                        gravity = Gravity.CENTER
+                        background = glass(CORNER)
+                        contentDescription = if (d < 0) "Delete" else "$d"
+                        setOnClickListener { tapped(d) }
+                    }, LinearLayout.LayoutParams(dp(76), dp(56)).apply { marginStart = dp(6); marginEnd = dp(6) })
+                }
+            }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
         }
         val content = column(Gravity.CENTER_HORIZONTAL,
             text(title, SERIF_TITLE, bold = true, serif = true),
@@ -360,7 +409,7 @@ class ProfilesActivity : Screen() {
             if (touch) keypad.marginTop(24)
             else text("▲ ▼ change a digit    ◀ ▶ move    OK to confirm", SMALL, color = TEXT_2).marginTop(28),
         ).apply { gravity = Gravity.CENTER }
-        setWindowed(content, onboardingBackdrop())
+        show(content, onboardingBackdrop())
         row.requestFocus()
     }
 
@@ -396,6 +445,7 @@ class ProfilesActivity : Screen() {
             gravity = Gravity.CENTER
             setPadding(dp(4), dp(6), dp(4), dp(8))
             lineKey(this)
+            if (upright) minHeight = dp(48)
         }
         val go = {
             entry.input.text.toString().trim().takeIf { it.isNotEmpty() }?.replaceFirstChar { it.titlecase() }
@@ -439,11 +489,13 @@ class ProfilesActivity : Screen() {
             ), LinearLayout.LayoutParams(-2, -2).apply { if (index > 0) marginStart = dp(16) })
         }
         paint()
+        // The five colour names stay on one line each, the row shrinking as a whole when the column is narrow.
+        words.forEach { it.setSingleLine() }
 
         val copy = column(Gravity.START,
             text(if (first) "Welcome to Canopy" else "Who's this for?", SERIF_TITLE, serif = true).onArt(),
             text("A name and a portrait colour. You can change both later.", BODY, color = TEXT_2).onArt().marginTop(4),
-            entry.field.apply { layoutParams = LinearLayout.LayoutParams(dp(FIELD_W), -2).apply { topMargin = dp(22) } },
+            entry.field.apply { layoutParams = LinearLayout.LayoutParams(fieldW, -2).apply { topMargin = dp(22) } },
             entry.keyboard.apply { layoutParams = LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(14) } },
             error.marginTop(6),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
@@ -451,14 +503,24 @@ class ProfilesActivity : Screen() {
             avatar,
             previewName.marginTop(14),
             caps("Portrait colour", Theme.now.second).marginTop(24),
-            swatches.marginTop(10),
+            Shrink(swatches).marginTop(10),
             next.marginTop(28),
         ).apply { gravity = Gravity.CENTER }
         val content = onboardingFrame(if (first) "step 1 of 2" else "step 1 of 3", copy, preview, dp(40), 1.1f, 0.9f)
-        setWindowed(content, onboardingBackdrop())
+        show(content, onboardingBackdrop())
         window.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_ALWAYS_HIDDEN)
         entry.firstKey.requestFocus()
     }
+
+    /** The name's line: as wide as the letters on a TV (never wider than its column), the screen's width on a phone. */
+    private val fieldW get() = if (upright) -1 else minOf(dp(FIELD_W), nameRoom)
+
+    /**
+     * The name steps' left column on a TV, in px: the screen less its margins and the 40dp gap, at the 1.1 : 0.9
+     * share both name steps use. A TV with a larger display size or density has fewer dp across than the 960 the
+     * letters were drawn for, so the letters shrink to this rather than run off the column's edge.
+     */
+    private val nameRoom get() = ((resources.displayMetrics.widthPixels - 2 * dp(PAD) - dp(40)) * 1.1f / 2f).toInt()
 
     /** A line under a word, Light line: white under the remote's word, the accent under a chosen one. Square ends. */
     private fun lineUnder(color: Int, inset: Int = 0) = android.graphics.drawable.LayerDrawable(arrayOf(
@@ -511,7 +573,9 @@ class ProfilesActivity : Screen() {
             cursor.translationX = name.paddingStart + name.paint.measureText(name.text.toString())
         }
         val box = android.widget.FrameLayout(this).apply {
-            addView(name, android.widget.FrameLayout.LayoutParams(-1, dp(52)))
+            // At least 52dp, taller when the TV's font size is turned up, so the big letters are never clipped.
+            minimumHeight = dp(52)
+            addView(name, android.widget.FrameLayout.LayoutParams(-1, -2))
             addView(cursor, android.widget.FrameLayout.LayoutParams(dp(2), dp(34), Gravity.CENTER_VERTICAL))
             layoutParams = LinearLayout.LayoutParams(-1, -2)
         }
@@ -525,10 +589,13 @@ class ProfilesActivity : Screen() {
 
         val keyboard = column(Gravity.START)
         val keys = mutableListOf<TextView>()
+        // A letter's cell: 42dp, or narrower so all nine of a row fit the column on a TV with fewer dp across.
+        val keyW = maxOf(1, minOf(dp(KEY_W), nameRoom / COLUMNS))
         fun key(label: String, row: LinearLayout, sp: Float, width: Int) = text(label, sp, color = TEXT_2).onArt().apply {
             gravity = Gravity.CENTER
-            lineKey(this, if (width == -2) 0 else KEY_INSET)
-            row.addView(this, LinearLayout.LayoutParams(if (width == -2) -2 else dp(width), dp(KEY_H)).apply {
+            minHeight = dp(KEY_H) // taller, not clipped, when the TV's font size is turned up
+            lineKey(this, if (width == -2) 0 else minOf(KEY_INSET, (width / resources.displayMetrics.density / 3).toInt()))
+            row.addView(this, LinearLayout.LayoutParams(width, -2).apply {
                 if (width == -2 && row.childCount > 0) marginStart = dp(26)
             })
             keys += this
@@ -541,17 +608,19 @@ class ProfilesActivity : Screen() {
         }
         ("abcdefghijklmnopqrstuvwxyz").chunked(COLUMNS).forEach { letters ->
             keyboard.addView(LinearLayout(this).apply {
-                letters.forEach { letter -> letterKeys += key(letter.toString(), this, KEY_SP, KEY_W).apply { setOnClickListener {
+                letters.forEach { letter -> letterKeys += key(letter.toString(), this, KEY_SP, keyW).apply { setOnClickListener {
                     val typed = if (upper) letter.uppercaseChar() else letter
                     if (upper) caps(false)
                     name.text.append(typed)
                 } } }
                 // ⌫ ends the last row of letters, where the grid has room for it.
-                if (letters.length < COLUMNS) key("⌫", this, KEY_SP, KEY_W).apply {
+                if (letters.length < COLUMNS) key("⌫", this, KEY_SP, keyW).apply {
                     contentDescription = "Delete"
                     setOnClickListener { if (name.length() > 0) name.text.delete(name.length() - 1, name.length()) }
                 }
-            })
+            // Wrap-content, not the default match-parent: a wrap-content column takes its width only from children
+            // that wrap, so match-parent letter rows were cut to the width of the Shift/Space row (A-F, J-O, S-X).
+            }, LinearLayout.LayoutParams(-2, -2))
         }
         keyboard.addView(LinearLayout(this).apply {
             key("⇧  Shift", this, SMALL, -2).setOnClickListener { caps(!upper) }
@@ -605,6 +674,7 @@ class ProfilesActivity : Screen() {
         var linkUrl: String? = null
         val openLink = pill("Sign in on this phone").apply {
             visibility = if (touch) View.VISIBLE else View.GONE
+            if (upright) { minHeight = dp(48); gravity = Gravity.CENTER; setPadding(dp(20), 0, dp(20), 0) }
             setOnClickListener {
                 linkUrl?.let { url -> runCatching { startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url))) } }
             }
@@ -626,9 +696,13 @@ class ProfilesActivity : Screen() {
             background = glass(14)
         }
         val steps = column(Gravity.START,
-            text(if (again != null) "Sign in again" else "Connect Stremio", 40f, serif = true).onArt(),
-            text(if (again != null) "Stremio signed $name out of this TV. Scan with $name's phone to connect again. $name's settings and PIN stay."
-                else "Scan with $name's phone. Stremio opens and asks to sign in this TV.", BODY).onArt().marginTop(10),
+            text(if (again != null) "Sign in again" else "Connect Stremio", if (upright) 30f else 40f, serif = true).onArt(),
+            text(when {
+                upright && again != null -> "Stremio signed $name out of Canopy on this phone. Sign in again here; $name's settings and PIN stay."
+                upright -> "Tap below: Stremio opens and asks to sign in Canopy on this phone. Or scan the code with another phone."
+                again != null -> "Stremio signed $name out of this TV. Scan with $name's phone to connect again. $name's settings and PIN stay."
+                else -> "Scan with $name's phone. Stremio opens and asks to sign in this TV."
+            }, BODY).onArt().marginTop(10),
             openLink.marginTop(14),
             text("", BODY, color = TEXT_2).onArt().apply {
                 val line = "Or go to link.stremio.com and enter"
@@ -651,11 +725,13 @@ class ProfilesActivity : Screen() {
                 SMALL, color = TEXT_3).onArt().marginTop(10),
         ).apply { gravity = Gravity.CENTER_VERTICAL }
         val first = Profiles.all(this).isEmpty()
-        val content = onboardingFrame(if (again != null) "sign in again" else if (first) "step 2 of 2" else "step 2 of 3", left, steps, dp(55), 0f, 1f, dp(300))
-        content.addView(back, FrameLayout.LayoutParams(-2, dp(32), Gravity.BOTTOM or Gravity.START).apply {
+        val content = onboardingFrame(if (again != null) "sign in again" else if (first) "step 2 of 2" else "step 2 of 3", left, steps, dp(55), 0f, 1f, dp(300),
+            rightFirst = true)
+        // A phone has its own Back.
+        if (!upright) content.addView(back, FrameLayout.LayoutParams(-2, dp(32), Gravity.BOTTOM or Gravity.START).apply {
             leftMargin = dp(PAD); bottomMargin = dp(40)
         })
-        setWindowed(content, onboardingBackdrop())
+        show(content, onboardingBackdrop())
         back.requestFocus()
 
         waitingCode = null
@@ -696,16 +772,50 @@ class ProfilesActivity : Screen() {
         }
     }
 
-    private fun onboardingFrame(step: String, left: View, right: View, gap: Int, leftWeight: Float, rightWeight: Float, leftWidth: Int = 0) =
+    /**
+     * A setup step: on a TV, [left] and [right] side by side under the wordmark and the step's marks; on a phone the
+     * two stacked in a page that scrolls ([right] first with [rightFirst]).
+     */
+    private fun onboardingFrame(step: String, left: View, right: View, gap: Int, leftWeight: Float, rightWeight: Float, leftWidth: Int = 0,
+                                rightFirst: Boolean = false): FrameLayout {
+        if (upright) return FrameLayout(this).apply {
+            val body = column(Gravity.CENTER_HORIZONTAL, onboardingHeader(step)).apply { setPadding(dp(20), 0, dp(20), dp(32)) }
+            (if (rightFirst) listOf(right, left) else listOf(left, right)).forEach { v ->
+                body.addView(v, LinearLayout.LayoutParams(if (v.layoutParams?.width ?: -1 > 0) v.layoutParams.width else -1, -2).apply {
+                    topMargin = dp(28); gravity = Gravity.CENTER_HORIZONTAL
+                })
+            }
+            addView(android.widget.ScrollView(this@ProfilesActivity).apply { isFillViewport = true; addView(body) },
+                FrameLayout.LayoutParams(-1, -1))
+        }
+        return tvFrame(step, left, right, gap, leftWeight, rightWeight, leftWidth)
+    }
+
+    /** The wordmark, and how far along the setup is ("Welcome · step 1 of 2" and square marks). */
+    private fun onboardingHeader(step: String): View = LinearLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(-1, -2)
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(0, dp(16), 0, 0)
+        addView(brand(), LinearLayout.LayoutParams(0, -2, 1f))
+        if (step.isEmpty()) return@apply
+        val current = step.substringAfter("step ").substringBefore(" of ").toIntOrNull() ?: 1
+        val total = step.substringAfter(" of ").toIntOrNull() ?: 2
+        addView(text((if (total > 2) "New profile · " else "Welcome · ") + step, SMALL, color = TEXT_2))
+        repeat(total) { index -> addView(View(this@ProfilesActivity).apply {
+            background = GradientDrawable().apply { setColor(if (index < current) TUNGSTEN else GLASS_EDGE) }
+        }, LinearLayout.LayoutParams(dp(5), dp(5)).apply { marginStart = dp(5) }) }
+    }
+
+    private fun tvFrame(step: String, left: View, right: View, gap: Int, leftWeight: Float, rightWeight: Float, leftWidth: Int) =
         android.widget.FrameLayout(this).apply {
             val body = LinearLayout(this@ProfilesActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(PAD), dp(68), dp(PAD), dp(35))
-                addView(left, if (leftWidth > 0)
+                addView(Fit(left, pivotStart = true), if (leftWidth > 0)
                     LinearLayout.LayoutParams(leftWidth, -2).apply { marginEnd = gap }
                 else LinearLayout.LayoutParams(0, -1, leftWeight).apply { marginEnd = gap })
-                addView(right, LinearLayout.LayoutParams(0, -1, rightWeight))
+                addView(Fit(right, pivotStart = false), LinearLayout.LayoutParams(0, -1, rightWeight))
             }
             addView(body, android.widget.FrameLayout.LayoutParams(-1, -1))
             val current = step.substringAfter("step ").substringBefore(" of ").toIntOrNull() ?: 1
@@ -812,7 +922,7 @@ class ProfilesActivity : Screen() {
                 "${profile.name}'s own \"Top Picks\" then show up on Home. You can finish this later.", BODY, color = TEXT_3).marginTop(16),
             done.marginTop(32),
         )
-        setWindowed(onboardingFrame("step 3 of 3", column(Gravity.CENTER,
+        show(onboardingFrame("step 3 of 3", column(Gravity.CENTER,
             qr.apply { background = rounded(TEXT, 12) },
             text(profile.name, BODY, bold = true).marginTop(12)
         ).apply { gravity = Gravity.CENTER; setPadding(dp(22), dp(22), dp(22), dp(22)); background = glass(14) },
@@ -823,7 +933,7 @@ class ProfilesActivity : Screen() {
     private fun showReady(profile: Profile) {
         backTo = { openHome(profile) }
         val done = onboardingButton("Continue to Canopy").apply { setOnClickListener { openHome(profile) } }
-        setWindowed(onboardingFrame("step 3 of 3", column(Gravity.CENTER,
+        show(onboardingFrame("step 3 of 3", column(Gravity.CENTER,
             onboardingAvatar(profile.name.take(1).uppercase(), 100, profile.color),
             text(profile.name, SERIF_TITLE, serif = true).marginTop(12)
         ).apply { gravity = Gravity.CENTER }, column(Gravity.START,
@@ -847,6 +957,59 @@ class ProfilesActivity : Screen() {
             canvas.drawRect(((c + 4) * px).toFloat(), ((r + 4) * px).toFloat(), ((c + 5) * px).toFloat(), ((r + 5) * px).toFloat(), paint)
         }
         return bmp
+    }
+
+    /**
+     * Holds a setup column at its own height, centred, and shrinks it (letters and all) when the TV's screen is
+     * shorter than it, as on a TV with a larger display or font size, so nothing runs off the top or bottom.
+     */
+    private class Fit(private val child: View, private val pivotStart: Boolean) : FrameLayout(child.context) {
+        init {
+            clipChildren = false
+            addView(child, LayoutParams(-1, -2))
+        }
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val wMode = MeasureSpec.getMode(widthSpec)
+            child.measure(if (wMode == MeasureSpec.UNSPECIFIED) widthSpec
+                else MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthSpec), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            val natural = child.measuredHeight
+            val hMode = MeasureSpec.getMode(heightSpec)
+            val room = if (hMode == MeasureSpec.UNSPECIFIED) natural else MeasureSpec.getSize(heightSpec)
+            val scale = if (natural > room && natural > 0) room.toFloat() / natural else 1f
+            child.scaleX = scale
+            child.scaleY = scale
+            setMeasuredDimension(if (wMode == MeasureSpec.UNSPECIFIED) child.measuredWidth else MeasureSpec.getSize(widthSpec),
+                if (hMode == MeasureSpec.EXACTLY) room else minOf(natural, room))
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            val top = (b - t - child.measuredHeight) / 2
+            child.layout(0, top, child.measuredWidth, top + child.measuredHeight)
+            child.pivotX = if (pivotStart) 0f else child.measuredWidth / 2f
+            child.pivotY = child.measuredHeight / 2f
+        }
+    }
+
+    /** Holds a row at its own size and shrinks it, centred, when its column is narrower than it. */
+    private class Shrink(private val child: View) : FrameLayout(child.context) {
+        init { addView(child, LayoutParams(-2, -2)) }
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            child.measure(free, free)
+            val room = if (MeasureSpec.getMode(widthSpec) == MeasureSpec.UNSPECIFIED) child.measuredWidth else MeasureSpec.getSize(widthSpec)
+            val scale = if (child.measuredWidth > room && child.measuredWidth > 0) room.toFloat() / child.measuredWidth else 1f
+            child.pivotX = 0f
+            child.pivotY = 0f
+            child.scaleX = scale
+            child.scaleY = scale
+            setMeasuredDimension((child.measuredWidth * scale).toInt(), (child.measuredHeight * scale).toInt())
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) =
+            child.layout(0, 0, child.measuredWidth, child.measuredHeight)
     }
 
     private companion object {

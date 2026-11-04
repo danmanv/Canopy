@@ -356,6 +356,13 @@ class PhoneActivity : PhoneScreen() {
         val name = text("", 20f, serif = true).apply {
             gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
+        // The framed poster's foot holds Resume or Play, so its scores sit under its name: "IMDb 8.1 · 🍅 94%".
+        val scores = text("", BODY_SP, bold = true, color = TEXT_2).apply { gravity = Gravity.CENTER; maxLines = 1 }
+        fun showScores(item: Item) {
+            val line = Ratings.line(item.id, metas[item.id]?.rating, DOT_SHORT)
+            scores.text = line ?: ""
+            scores.visibility = if (line == null) View.GONE else View.VISIBLE
+        }
         val strip = ResumeStrip(STRIP_H)
         val done = View(this).apply { setBackgroundColor(TUNGSTEN) }
         // The strip and, under it along the poster's very bottom edge, how far along it is.
@@ -377,13 +384,17 @@ class PhoneActivity : PhoneScreen() {
             selected = i
             val item = items[i]
             name.text = item.name
+            showScores(item)
+            Ratings.fetch(item.id, item.type) { if (selected == i) showScores(item) }
             done.visibility = if (item.resume) View.VISIBLE else View.GONE
             done.layoutParams = (done.layoutParams as FrameLayout.LayoutParams).apply { width = (cardW * item.progress).toInt() }
             val timeLeft = item.left?.split(DOT_SHORT)?.let { parts ->
                 if (item.type == "series") parts.joinToString(DOT_SHORT) else parts.lastOrNull { it.endsWith("left") }
             }
-            strip.bind(cards[i], if (item.resume) "Resume" else if (item.type == "series") "Episodes" else "Play", timeLeft)
-            strip.setOnClickListener { if (item.resume || item.type != "series") play(item) else openDetails(item) }
+            // A film, or a show Continue Watching has an episode for (the next one, not started yet): Play starts it.
+            val playable = item.resume || item.type != "series" || item.videoId != null
+            strip.bind(cards[i], if (item.resume) "Resume" else if (playable) "Play" else "Episodes", timeLeft)
+            strip.setOnClickListener { if (playable) play(item) else openDetails(item) }
             strip.setOnLongClickListener { titleMenu(item); true }
             framed[p] = item
             showBackdrop(item, p)
@@ -474,6 +485,7 @@ class PhoneActivity : PhoneScreen() {
                 LinearLayout.LayoutParams(-1, -2))
             addView(stage, LinearLayout.LayoutParams(-1, cardH + 2 * ring).apply { topMargin = dp(4) })
             addView(name, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12); leftMargin = dp(20); rightMargin = dp(20) })
+            addView(scores, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); leftMargin = dp(20); rightMargin = dp(20) })
         }
         select(0)
         scroller.post { shape() }
@@ -499,7 +511,7 @@ class PhoneActivity : PhoneScreen() {
     private fun row(title: String, items: List<Item>): View {
         val line = LinearLayout(this).apply { setPadding(dp(20), 0, dp(10), 0) }
         items.forEach { item ->
-            line.addView(poster(item, posterW).apply {
+            line.addView(scored(poster(item, posterW), item).apply {
                 setOnClickListener { openDetails(item) }
                 setOnLongClickListener { titleMenu(item); true }
             }, LinearLayout.LayoutParams(posterW, posterH).apply { rightMargin = dp(10) })
@@ -522,7 +534,7 @@ class PhoneActivity : PhoneScreen() {
         items.chunked(3).forEach { three ->
             val line = LinearLayout(this)
             three.forEachIndexed { i, item ->
-                line.addView(poster(item, w).apply {
+                line.addView(scored(poster(item, w), item).apply {
                     setOnClickListener { openDetails(item) }
                     setOnLongClickListener { titleMenu(item); true }
                 }, LinearLayout.LayoutParams(w, w * 3 / 2).apply { if (i > 0) leftMargin = gap })
@@ -531,6 +543,9 @@ class PhoneActivity : PhoneScreen() {
         }
         return box
     }
+
+    /** A row's or the grid's poster with its scores; not in progress, where the poster shows how far along it is. */
+    private fun scored(image: View, item: Item): View = if (item.resume) image else scored(image, item.id, item.type, metas[item.id]?.rating)
 
     private fun poster(item: Item, widthPx: Int, loaded: (() -> Unit)? = null) = ImageView(this).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
@@ -647,7 +662,7 @@ class PhoneActivity : PhoneScreen() {
         val left = if (duration > 0 && offset > 1) (if (mins >= 60) "${mins / 60}h ${mins % 60}m left" else "$mins min left") else null
         val progress = if (duration > 0 && offset > 1) (offset.toFloat() / duration).coerceIn(0.01f, 1f) else 0f
         val line = listOfNotNull(episode, left).joinToString(DOT_SHORT).ifEmpty { null }
-        return Item(item.getString("_id"), item.optString("type"), item.optString("name"), item.text("poster"),
+        return Item(item.getString("_id"), item.optString("type"), item.optString("name"), Images.poster(item.getString("_id"), item.text("poster")),
             null, videoId, progress, line, line ?: "")
     }
 
