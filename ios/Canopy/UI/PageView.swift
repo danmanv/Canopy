@@ -56,6 +56,7 @@ struct PageView: View {
         }
         .coordinateSpace(name: "page")
         .onPreferenceChange(OffsetKey.self) { scrolled = $0 }
+        .modifier(ScrollOffset(offset: $scrolled))
         .refreshable { await model.refresh(); rows = [:]; asked = []; load() }
         .background(alignment: .top) {
             LinearGradient(colors: [wash.opacity(0.55), wash.opacity(0.2), theme.baseColor.opacity(0)], startPoint: .top, endPoint: .bottom)
@@ -256,6 +257,19 @@ struct CatalogView: View {
             if new.isEmpty { end = true }
             cards += new
             loading = false
+        }
+    }
+}
+
+/// On iOS 18 and later the scroll view reports its own offset, which is reliable where the GeometryReader trick
+/// (kept for iOS 17) can stop updating, leaving the top bar see-through over the page.
+private struct ScrollOffset: ViewModifier {
+    @Binding var offset: CGFloat
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: CGFloat.self) { $0.contentOffset.y + $0.contentInsets.top } action: { _, y in offset = y }
+        } else {
+            content
         }
     }
 }
