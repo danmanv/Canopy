@@ -1,8 +1,8 @@
 import SwiftUI
 
 private struct OffsetKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = nextValue() }
+    static var defaultValue = false
+    static func reduce(value: inout Bool, nextValue: () -> Bool) { value = nextValue() }
 }
 
 /// One tab's page: the slide-through carousel, then rows of posters (My List: a grid). Draws from last time at once and
@@ -15,7 +15,7 @@ struct PageView: View {
     @State private var rows: [String: [Card]] = [:]
     @State private var asked = Set<String>()
     @State private var genre: String?
-    @State private var scrolled: CGFloat = 0
+    @State private var solid = false
     @State private var wash: Color = .clear
 
     private var wide: Bool { size == .regular }
@@ -49,25 +49,26 @@ struct PageView: View {
             }
             .background(alignment: .top) {
                 GeometryReader { g in
-                    Color.clear.preference(key: OffsetKey.self, value: -g.frame(in: .named("page")).minY)
+                    Color.clear.preference(key: OffsetKey.self, value: -g.frame(in: .named("page")).minY > -20)
                 }
                 .frame(height: 0)
             }
             .padding(.top, 50)
             .padding(.bottom, 110)
+            // The colour wash scrolls away with the content, so no state changes while scrolling.
+            .background(alignment: .top) {
+                LinearGradient(colors: [wash.opacity(0.55), wash.opacity(0.2), theme.baseColor.opacity(0)], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 700)
+                    .offset(y: -80)
+                    .animation(.easeOut(duration: 0.4), value: wash)
+            }
         }
         .coordinateSpace(name: "page")
-        .onPreferenceChange(OffsetKey.self) { y in if #unavailable(iOS 18.0) { scrolled = y + 50 } }
-        .modifier(ScrollOffset(offset: $scrolled))
+        // Only flips when the page crosses the line under the top bar, never per scroll frame.
+        .onPreferenceChange(OffsetKey.self) { past in if #unavailable(iOS 18.0), past != solid { solid = past } }
+        .modifier(ScrolledPast(solid: $solid))
         .refreshable { await model.refresh(); rows = [:]; asked = []; load() }
-        .background(alignment: .top) {
-            LinearGradient(colors: [wash.opacity(0.55), wash.opacity(0.2), theme.baseColor.opacity(0)], startPoint: .top, endPoint: .bottom)
-                .frame(height: 620)
-                .offset(y: -min(scrolled, 620))
-                .ignoresSafeArea()
-                .animation(.easeOut(duration: 0.4), value: wash)
-        }
-        .overlay(alignment: .top) { TopBar(solid: scrolled > 30) }
+        .overlay(alignment: .top) { TopBar(solid: solid) }
         .onAppear(perform: load)
         .onChange(of: model.addons.count) { load() }
         .onChange(of: genre) { load() }
@@ -263,17 +264,12 @@ struct CatalogView: View {
     }
 }
 
-/// On iOS 18 and later the scroll view reports its own offset, which is reliable where the GeometryReader trick
-/// (kept for iOS 17) can stop updating, leaving the top bar see-through over the page.
-private struct ScrollOffset: ViewModifier {
-    @Binding var offset: CGFloat
+/// iOS 18+: the scroll view reports when the page passes the line under the top bar (reliable, and only on change).
+private struct ScrolledPast: ViewModifier {
+    @Binding var solid: Bool
     func body(content: Content) -> some View {
         if #available(iOS 18.0, *) {
-            // Clamped and rounded, so the page only redraws while the top wash is still moving, not on every frame
-            // of every scroll.
-            content.onScrollGeometryChange(for: CGFloat.self) { g in
-                (min(max(g.contentOffset.y + g.contentInsets.top, 0), 640) / 8).rounded() * 8
-            } action: { _, y in offset = y }
+            content.onScrollGeometryChange(for: Bool.self) { $0.contentOffset.y + $0.contentInsets.top > 30 } action: { _, past in solid = past }
         } else {
             content
         }
