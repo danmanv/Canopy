@@ -146,6 +146,12 @@ enum Art {
         id.hasPrefix("tt") ? "https://images.metahub.space/background/medium/\(id.components(separatedBy: ":")[0])/img" : nil
     }
 
+    /// The poster to show: with MDBList scores on, Cinemeta's plain picture for an IMDb title (Canopy draws its own
+    /// readable scores on it; add-ons often print theirs too small to read). Else [url], then Cinemeta's.
+    static func poster(_ id: String, _ url: String?) -> String? {
+        (Ratings.enabled ? poster(for: id) : nil) ?? url ?? poster(for: id)
+    }
+
     static func poster(for id: String) -> String? {
         id.hasPrefix("tt") ? "https://images.metahub.space/poster/medium/\(id.components(separatedBy: ":")[0])/img" : nil
     }

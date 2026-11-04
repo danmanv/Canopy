@@ -648,6 +648,7 @@ class SearchActivity : Screen() {
             }
             clipToOutline = true
             addView(image, FrameLayout.LayoutParams(-1, -1))
+            scoreStrip(meta.id, meta.type, meta.rating)?.let { addView(it, FrameLayout.LayoutParams(-1, dp(SCORE_H), Gravity.BOTTOM)) }
             addView(shade, FrameLayout.LayoutParams(-1, -1))
             cardFocus(6) { has ->
                 // grow() unclamps ancestors; Search must keep each row inside its result pane.

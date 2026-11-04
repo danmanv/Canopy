@@ -209,7 +209,7 @@ class Meta(json: JSONObject) {
     val id: String = json.getString("id")
     val type: String = json.optString("type")
     val name: String = json.optString("name")
-    val poster = json.text("poster")
+    val poster = Images.poster(id, json.text("poster"))
     val background = json.text("background")
     /** The title as artwork (AIOMetadata and Cinemeta provide it), shown instead of plain text when present. */
     val logo = json.text("logo")

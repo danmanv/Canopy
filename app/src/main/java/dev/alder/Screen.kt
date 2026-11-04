@@ -107,6 +107,7 @@ internal fun prepareNetwork(c: Context) {
     // screen isn't held up by the disk. The first few pictures may miss the disk cache; they're fetched as usual.
     val dir = c.cacheDir
     Http.saved = java.io.File(dir, "answers")
+    Ratings.init(c)
     Thread {
         android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
         runCatching { android.net.http.HttpResponseCache.install(java.io.File(dir, "http"), 250L * 1024 * 1024) }
@@ -585,6 +586,42 @@ abstract class Screen : Activity() {
         val mark = (size * 1.3f).toInt() // the mark's art fills about two thirds of its square
         addView(ImageView(context).apply { setImageResource(R.drawable.logo_transparent) }, LinearLayout.LayoutParams(dp(mark), dp(mark)))
         addView(text("canopy", size).onArt().apply { typeface = fonts.wordmark }, wrap().apply { marginStart = dp(4) })
+    }
+
+    /**
+     * A poster's scores in Canopy's own letters, along its foot: "IMDb 8.1  🍅 94%" (MDBList). Add-ons print theirs into
+     * the picture too small to read, so Images.poster swaps those pictures for plain ones and this goes on top. Fills
+     * itself when MDBList answers; null without an MDBList key. Lay it out across the card's foot, [SCORE_H] tall.
+     */
+    protected fun scoreStrip(id: String, type: String, imdb: String?): TextView? {
+        if (!Ratings.enabled) return null
+        val strip = text("", SMALL, bold = true, color = TEXT).apply {
+            includeFontPadding = false
+            maxLines = 1
+            gravity = Gravity.CENTER
+            setPadding(dp(4), 0, dp(4), 0)
+            background = GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(0xF2000000.toInt(), 0x8C000000.toInt()))
+            // A narrow card (search, More like this) shrinks the words to fit rather than cutting a score off.
+            setAutoSizeTextTypeUniformWithConfiguration(8, SMALL.toInt() + 1, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            visibility = View.GONE
+            tag = id
+        }
+        fun fill() {
+            val i = imdb ?: Ratings.cached(id)?.imdb
+            val t = Ratings.tomato(id)
+            if (i == null && t == null) { strip.visibility = View.GONE; return }
+            strip.text = android.text.SpannableStringBuilder().apply {
+                if (i != null) {
+                    append("IMDb", android.text.style.ForegroundColorSpan(RATING), 0)
+                    append(" $i")
+                }
+                if (t != null) { if (isNotEmpty()) append("   "); append(t) }
+            }
+            strip.visibility = View.VISIBLE
+        }
+        fill()
+        Ratings.fetch(id, type) { if (strip.tag == id) fill() }
+        return strip
     }
 
     /** The IMDb tag beside a rating, as tall as the letters. */
@@ -1207,6 +1244,7 @@ abstract class Screen : Activity() {
         val TILE get() = Theme.now.tile // a poster's placeholder
         val ICE get() = Theme.now.second // values and the far end of a bar
         const val RATING = 0xFFF3C969.toInt() // the IMDb tag's gold
+        const val SCORE_H = 20 // dp: the scores strip along a poster's foot
         val GLASS get() = withAlpha(Theme.now.glass, 0x4D)
         const val GLASS_FOCUSED = 0x33FFFFFF
         val GLASS_EDGE get() = withAlpha(Theme.now.text, 0x24)

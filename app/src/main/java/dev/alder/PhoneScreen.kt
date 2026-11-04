@@ -58,6 +58,20 @@ abstract class PhoneScreen : Screen() {
         action.contentDescription = label
     }
 
+    /**
+     * [image] (a poster) with its IMDb and Rotten Tomatoes scores along its foot, in a card with the poster's soft
+     * corners. Just [image] without an MDBList key.
+     */
+    protected fun scored(image: android.view.View, id: String, type: String, imdb: String?): android.view.View {
+        val strip = scoreStrip(id, type, imdb) ?: return image
+        return android.widget.FrameLayout(this).apply {
+            background = rounded(TILE, CORNER)
+            clipToOutline = true
+            addView(image, android.widget.FrameLayout.LayoutParams(-1, -1))
+            addView(strip, android.widget.FrameLayout.LayoutParams(-1, dp(SCORE_H + 2), Gravity.BOTTOM))
+        }
+    }
+
     companion object {
         const val TOUCH = 48 // dp: the smallest thing a thumb is asked to hit
         const val BIG_BUTTON = 52
