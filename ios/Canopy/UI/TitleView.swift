@@ -355,6 +355,18 @@ struct TitleView: View {
                     break
                 }
             }
+            // Few add-ons answer "similar": fall back to the same genre from a catalog that can filter by it.
+            if similar.isEmpty, let genres = meta?.genres {
+                search: for g in genres {
+                    for c in model.catalogs(of: ref.type) {
+                        guard let match = c.genres.first(where: { $0.caseInsensitiveCompare(g) == .orderedSame }) else { continue }
+                        if let metas = try? await c.addon.catalog(c, genre: match), metas.count > 3 {
+                            similar = metas.filter { $0.id != ref.id }.prefix(24).map(Card.init)
+                            break search
+                        }
+                    }
+                }
+            }
         }
     }
 
