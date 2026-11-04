@@ -13,16 +13,18 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
-## Unreleased
+## 1.3.5
 
 - **Rotten Tomatoes scores.** Next to the IMDb score, Canopy shows the Rotten Tomatoes critics score, for example "🍅 94%". When critics have no score, it shows the audience score, "🍿 88%". The scores come from MDBList.
 - **Scores on posters.** Each poster shows the IMDb and Rotten Tomatoes scores along its bottom edge, in large letters. Canopy shows plain posters, because the scores that add-ons print on posters are too small to read.
 - **Play upright.** On a phone, hold the phone upright while a video plays. The video shows at the top. The controls, the name and the story of the episode show below it. Turn the phone sideways for the full screen, or tap **Full screen**.
+- **Play in a window.** On a phone, go to the Home screen while a video plays, or tap **Window**. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**. Tap the window to make it large again.
+- On a TV, the new profile screen shows all the letters. Before, the right 3 columns of letters were not on the screen. This also applies to a TV with a large display size.
 - On a phone, the upright player shows the other episodes of the season below the story. Tap an episode to play it.
 - On a phone, tap **Keep sideways** in the player to keep the video sideways when you lie down. Canopy keeps your choice. Tap it again to turn it off.
 - On a phone, **Settings** is upright. Tap a section to open it. Each setting shows what it does below its name.
 - **Settings** scrolls its list of sections when the screen is short. Before, **About** was not on the screen on some phones.
-- **Play in a window.** On a phone, go to the Home screen while a video plays, or tap **Window**. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**. Tap the window to make it large again.
+- On a TV with a large font size, the letters of the name are not cut.
 
 ## 1.3.4
 
