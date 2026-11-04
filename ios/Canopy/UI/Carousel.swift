@@ -19,7 +19,7 @@ struct Carousel: View {
     private var cardW: CGFloat {
         // What's left of the screen's height after the top bar, the name/Resume block, one full row of posters and
         // the tab bar, so the first row below always shows whole.
-        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 560) / 1.5)) }
+        if size == .regular { return max(120, min(width * 0.34, 320, (UIScreen.main.bounds.height - 470) / 1.5)) }
         return min(width * 0.62, 330)
     }
     private var framed: Card? { cards.first { $0.id == current } ?? cards.first }
@@ -37,7 +37,11 @@ struct Carousel: View {
                                 .clipShape(Soft(radius: 8))
                                 .overlay(alignment: .bottom) {
                                     if size == .regular, let p = c.progress, p > 0 {
-                                        ProgressLine(value: p).padding(.horizontal, 10).padding(.bottom, 8)
+                                        // Along the poster's very bottom edge.
+                                        GeometryReader { g in
+                                            Rectangle().fill(theme.accentColor).frame(width: g.size.width * max(0, min(1, p)), height: 3)
+                                                .frame(maxHeight: .infinity, alignment: .bottom)
+                                        }
                                     }
                                 }
                                 .overlay {
@@ -69,7 +73,16 @@ struct Carousel: View {
                     .shadow(color: theme.accentColor.opacity(0.45), radius: 12)
                     .allowsHitTesting(false)
             }
-            if let c = framed { if size == .regular { compact(c) } else { below(c) } }
+            .overlay {
+                // iPad: a frosted strip across the framed poster's foot is the Resume button; it stays in the frame
+                // and changes with whichever poster is in it.
+                if size == .regular, let c = framed {
+                    glassStrip(c)
+                        .frame(width: cardW, height: cardW * 1.5, alignment: .bottom)
+                        .clipShape(Soft(radius: 8))
+                }
+            }
+            if size != .regular, let c = framed { below(c) }
         }
         .background(GeometryReader { g in
             Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w }
@@ -102,23 +115,31 @@ struct Carousel: View {
         .animation(.easeOut(duration: 0.2), value: c.id)
     }
 
-    /// iPad: the poster already shows the title and its progress, so under it there's just one button that says
-    /// what it will do: "▶ Resume · 26 min left", "▶ S2 E3 · 26 min left" or "▶ Play".
-    private func compact(_ c: Card) -> some View {
+    /// iPad (design 1, "Glass footer"): play circle, "Resume" over the time left, on frosted glass with a hairline top.
+    private func glassStrip(_ c: Card) -> some View {
         Button {
             start(c)
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "play.fill")
-                Text(c.progress != nil ? "Resume" : "Play")
-                if let left = c.left {
-                    Text("·").opacity(0.6)
-                    Text(left).lineLimit(1).minimumScaleFactor(0.8)
+            HStack(spacing: 12) {
+                Circle().fill(theme.accentColor).frame(width: 38, height: 38)
+                    .overlay(Image(systemName: "play.fill").font(.system(size: 15, weight: .bold)).foregroundStyle(.black).offset(x: 1))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(c.progress != nil ? "Resume" : "Play").font(Look.bold(15)).foregroundStyle(.white)
+                    if let left = c.left {
+                        Text(left).font(Look.body(12)).foregroundStyle(.white.opacity(0.85)).lineLimit(1)
+                    }
                 }
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 14)
+            .frame(maxWidth: .infinity)
+            .frame(height: 66)
+            .background(.ultraThinMaterial)
+            .overlay(alignment: .top) { Rectangle().fill(.white.opacity(0.18)).frame(height: 1) }
+            .padding(.bottom, c.progress != nil ? 3 : 0)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(PrimaryButton())
-        .frame(width: max(cardW + 10, 240))
+        .buttonStyle(.plain)
         .animation(.easeOut(duration: 0.2), value: c.id)
     }
 
