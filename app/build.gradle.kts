@@ -14,8 +14,8 @@ android {
         applicationId = "dev.canopy"
         minSdk = 26
         targetSdk = 36
-        versionCode = 13
-        versionName = "1.3.5"
+        versionCode = 14
+        versionName = "1.3.6"
         // TVs are ARM; the x86 builds of ffmpeg's native code would only add size.
         ndk { abiFilters += listOf("armeabi-v7a", "arm64-v8a") }
         // Rotten Tomatoes scores (Ratings.kt): the MDBLIST_API_KEY secret in CI. For a local build, mdblist.key in

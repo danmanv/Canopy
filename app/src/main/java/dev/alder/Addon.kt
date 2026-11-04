@@ -190,14 +190,22 @@ fun List<Addon>.meta(type: String, id: String, together: Boolean = false): Meta?
  * More like this when no add-on answers "similar" (few do): titles of the same genre from a catalog that can filter by
  * it, so a film's title page still has somewhere to go. Network: off the main thread.
  */
+/**
+ * Without MDBList or an add-on that answers "similar": titles from catalogs filtered by each of [genres] (up to three),
+ * those found under more of them first. The top of one genre's list (all of "Drama") would be the same for every title;
+ * sharing two or three genres keeps it closer to this one.
+ */
 fun List<Addon>.sameGenre(type: String, genres: List<String>, except: String): List<Meta> {
     val catalogs = flatMap { it.catalogs }.filter { it.type == type }
-    for (g in genres) for (c in catalogs) {
-        val match = c.genres.firstOrNull { it.equals(g, ignoreCase = true) } ?: continue
-        val metas = runCatching { c.addon.catalog(c, match) }.getOrNull().orEmpty().filter { it.id != except }
-        if (metas.size > 3) return metas
+    val lists = genres.take(3).mapNotNull { g ->
+        catalogs.firstNotNullOfOrNull { c ->
+            val match = c.genres.firstOrNull { it.equals(g, ignoreCase = true) } ?: return@firstNotNullOfOrNull null
+            runCatching { c.addon.catalog(c, match) }.getOrNull()?.filter { it.id != except }?.takeIf { it.size > 3 }
+        }
     }
-    return emptyList()
+    val all = lists.flatten()
+    val shared = all.groupingBy { it.id }.eachCount()
+    return all.distinctBy { it.id }.sortedByDescending { shared[it.id] } // stable: each list's order within a count
 }
 
 fun List<Addon>.savedMeta(type: String, id: String): Meta? =

@@ -331,6 +331,8 @@ class PhoneDetailsActivity : PhoneScreen() {
         if (similarAsked) return
         similarAsked = true
         background({
+            // Picked for this title first (MDBList), then an add-on's own "similar", then shared genres.
+            Similar.of(this, type, metaId)?.takeIf { it.isNotEmpty() }?.let { return@background it }
             val addons = Stremio.addons(key)
             addons.firstNotNullOfOrNull { addon -> runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() } }
                 ?: addons.sameGenre(type, meta?.genres.orEmpty(), metaId)
