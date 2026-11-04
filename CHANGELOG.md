@@ -13,6 +13,11 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
+## Unreleased
+
+- **Play upright.** On a phone, hold the phone upright while a video plays. The video shows at the top. The controls, the name and the story of the episode show below it. Turn the phone sideways for the full screen, or tap **Full screen**.
+- **Play in a window.** On a phone, go to the Home screen while a video plays, or tap **Window**. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**. Tap the window to make it large again.
+
 ## 1.3.4
 
 - On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.
