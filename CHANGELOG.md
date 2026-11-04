@@ -13,7 +13,11 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
-## Unreleased
+## 1.3.4
+
+- On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.
+- On a phone, Android's status bar and navigation buttons stay on screen, except while a video plays. Back works as on any other app.
+- On a phone, a show in Continue Watching that is at the start of its next episode shows **Play** on the poster, and starts that episode.
 
 ## 1.3.3
 
