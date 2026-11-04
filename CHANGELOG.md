@@ -13,6 +13,11 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
+## Unreleased
+
+- On a phone, **Settings** turns with the phone. When you hold the phone upright, the sections are a row of names at the top. Slide the row to see more sections.
+- On a phone held sideways, you can scroll the list of sections. Before, **About** was below the bottom of the screen.
+
 ## 1.3.4
 
 - On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.

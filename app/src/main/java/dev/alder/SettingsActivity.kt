@@ -201,6 +201,7 @@ class SettingsActivity : Screen() {
     )
 
     private lateinit var groups: LinearLayout
+    private var tabs: android.widget.HorizontalScrollView? = null
     private lateinit var detailRows: LinearLayout
     private lateinit var rowsScroll: ScrollView
     private lateinit var detailTitle: TextView
@@ -220,11 +221,19 @@ class SettingsActivity : Screen() {
 
     override val fullChoices get() = true
 
+    /** A phone held upright: the sections become a row of tabs across the top, the settings fill the width below. */
+    private var upright = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Settings.hdrPref(this) // migrate the old HDR switch before any row reads it
+        // A phone turns it with the phone (it opens from the upright phone screens); the section open stays open.
+        if (touch) requestedOrientation = android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER
+        savedInstanceState?.getString(OPEN_GROUP)?.let { intent.putExtra(OPEN_GROUP, it) }
         val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
         val height = resources.displayMetrics.heightPixels / resources.displayMetrics.density
+        upright = touch && height > width
+        val side = if (upright) 20 else 48
         // Full screen, like Netflix's: no panels. Big section names on the left, a hairline, then the settings as rows.
         val root = FrameLayout(this).apply { background = sky(); clipChildren = false; clipToPadding = false }
 
@@ -241,20 +250,37 @@ class SettingsActivity : Screen() {
         }
         header.addView(avatar, LinearLayout.LayoutParams(dp(30), dp(30)))
         root.addView(header, FrameLayout.LayoutParams(-1, dp(44), Gravity.TOP).apply {
-            leftMargin = dp(48); rightMargin = dp(48); topMargin = dp(26)
+            leftMargin = dp(if (upright) 56 else side); rightMargin = dp(side); topMargin = dp(26) // upright: clear of the Back arrow
         })
 
-        groups = column(Gravity.START)
-        Group.entries.forEach(::addGroup)
-        root.addView(groups, FrameLayout.LayoutParams(dp(220), -2, Gravity.TOP or Gravity.START).apply {
-            leftMargin = dp(36); topMargin = dp(96)
-        })
-        // The hairline between the sections and their settings, fading out at both ends.
-        root.addView(View(this).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0x2EFFFFFF, 0x2EFFFFFF, 0))
-        }, FrameLayout.LayoutParams(dp(1), dp((height - 120).toInt()), Gravity.TOP or Gravity.START).apply {
-            leftMargin = dp(272); topMargin = dp(96)
-        })
+        if (upright) {
+            // The sections as words in a row that slides sideways, the open one underlined, as in the top menu.
+            groups = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; setPadding(dp(12), 0, dp(12), 0) }
+            Group.entries.forEach(::addGroup)
+            tabs = android.widget.HorizontalScrollView(this).apply {
+                isHorizontalScrollBarEnabled = false
+                addView(groups)
+            }
+            root.addView(tabs, FrameLayout.LayoutParams(-1, dp(GROUP_H + 4), Gravity.TOP).apply { topMargin = dp(84) })
+            root.addView(View(this).apply { setBackgroundColor(0x2EFFFFFF) },
+                FrameLayout.LayoutParams(-1, dp(1), Gravity.TOP).apply { topMargin = dp(84 + GROUP_H + 4) })
+        } else {
+            groups = column(Gravity.START)
+            Group.entries.forEach(::addGroup)
+            // In a scroller: ten sections are taller than a phone held sideways, which cut off About.
+            root.addView(ScrollView(this).apply {
+                isVerticalScrollBarEnabled = false
+                addView(groups)
+            }, FrameLayout.LayoutParams(dp(220), dp((height - 112).toInt()), Gravity.TOP or Gravity.START).apply {
+                leftMargin = dp(36); topMargin = dp(96)
+            })
+            // The hairline between the sections and their settings, fading out at both ends.
+            root.addView(View(this).apply {
+                background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(0, 0x2EFFFFFF, 0x2EFFFFFF, 0))
+            }, FrameLayout.LayoutParams(dp(1), dp((height - 120).toInt()), Gravity.TOP or Gravity.START).apply {
+                leftMargin = dp(272); topMargin = dp(96)
+            })
+        }
 
         detailTitle = text("", SERIF_TITLE, serif = true).apply { setPadding(dp(16), 0, 0, 0) }
         detailRows = column(Gravity.START)
@@ -272,15 +298,20 @@ class SettingsActivity : Screen() {
             addView(hint, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
             addView(rowsScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
         }
-        root.addView(detail, FrameLayout.LayoutParams(dp((width - 344).toInt()), dp((height - 120).toInt()), Gravity.TOP or Gravity.START).apply {
-            leftMargin = dp(296); topMargin = dp(92)
-        })
+        val detailTop = if (upright) 84 + GROUP_H + 4 + 18 else 92
+        root.addView(detail, FrameLayout.LayoutParams(dp((if (upright) width - 16 else width - 344).toInt()), dp((height - detailTop - 16).toInt()),
+            Gravity.TOP or Gravity.START).apply { leftMargin = dp(if (upright) 4 else 296); topMargin = dp(detailTop) })
         window.setBackgroundDrawable(null)
         setContentView(root)
         profileName.text = Profiles.active(this)?.name.orEmpty()
         val start = intent.getStringExtra(OPEN_GROUP)?.let { name -> Group.entries.firstOrNull { it.name == name } } ?: Group.STREAMS
         showGroup(start)
         groupViews[start]?.post { groupViews[start]?.requestFocus() }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        selectedGroup?.let { outState.putString(OPEN_GROUP, it.name) }
     }
 
     override fun onResume() {
@@ -310,7 +341,8 @@ class SettingsActivity : Screen() {
             // The rows end where they end: Down past the last one stays put instead of falling into the group list.
             if (event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_DOWN && detailRows.childCount > 0 &&
                 currentFocus === detailRows.getChildAt(detailRows.childCount - 1)) return true
-            if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK &&
+            // On a phone Back always leaves: a tapped row holds the focus, and Back stopping at its section read as stuck.
+            if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && !touch &&
                 currentFocus?.let { isInside(it, detailRows) } == true) {
                 if (selectedGroup?.let { groupViews[it]?.requestFocus() } == true) return true
             }
@@ -332,12 +364,15 @@ class SettingsActivity : Screen() {
         }
         groupViews[group] = row
         groupLabels[group] = label
-        groups.addView(row, LinearLayout.LayoutParams(-1, dp(GROUP_H)))
+        groups.addView(row, if (upright) LinearLayout.LayoutParams(-2, dp(GROUP_H)) else LinearLayout.LayoutParams(-1, dp(GROUP_H)))
     }
 
-    /** The open section's mint line, without the focus wash. */
+    /** The open section's mint line, without the focus wash: beside it in the list, under it in the upright tabs. */
     private fun openLine() = android.graphics.drawable.LayerDrawable(arrayOf(android.graphics.drawable.ColorDrawable(TUNGSTEN))).apply {
-        setLayerWidth(0, dp(3)); setLayerInsetTop(0, dp(10)); setLayerInsetBottom(0, dp(10))
+        if (upright) {
+            setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(2))
+            setLayerInsetLeft(0, dp(14)); setLayerInsetRight(0, dp(8))
+        } else { setLayerWidth(0, dp(3)); setLayerInsetTop(0, dp(10)); setLayerInsetBottom(0, dp(10)) }
     }
 
     /** A settings row at rest: only the hairline under it. */
@@ -355,6 +390,8 @@ class SettingsActivity : Screen() {
             }
         }
         detailTitle.text = group.label
+        // Upright, the open tab slides into view.
+        if (upright) groupViews[group]?.let { tab -> tabs?.post { tabs?.smoothScrollTo((tab.left - dp(40)).coerceAtLeast(0), 0) } }
         detailRows.removeAllViews()
         rowsScroll.scrollTo(0, 0)
         choiceRows.clear()
