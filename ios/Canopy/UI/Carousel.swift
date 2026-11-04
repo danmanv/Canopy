@@ -17,7 +17,9 @@ struct Carousel: View {
 
     // On iPad the poster is kept to about a third of the screen's height, so the rows below show too (landscape most of all).
     private var cardW: CGFloat {
-        if size == .regular { return min(width * 0.3, 260, UIScreen.main.bounds.height * 0.36 / 1.5) }
+        // What's left of the screen's height after the top bar, the name/Resume block, one full row of posters and
+        // the tab bar, so the first row below always shows whole.
+        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 600) / 1.5)) }
         return min(width * 0.62, 330)
     }
     private var framed: Card? { cards.first { $0.id == current } ?? cards.first }
@@ -73,8 +75,8 @@ struct Carousel: View {
     }
 
     private func below(_ c: Card) -> some View {
-        VStack(spacing: 10) {
-            Text(c.name).font(Look.title(22)).foregroundStyle(theme.textColor).lineLimit(2).multilineTextAlignment(.center)
+        VStack(spacing: size == .regular ? 7 : 10) {
+            Text(c.name).font(Look.title(size == .regular ? 19 : 22)).foregroundStyle(theme.textColor).lineLimit(2).multilineTextAlignment(.center)
             if let left = c.left {
                 Text(left).font(Look.bold(14)).foregroundStyle(theme.accentColor)
             } else if !c.facts.isEmpty {

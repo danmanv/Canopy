@@ -44,18 +44,20 @@ struct PageView: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
+            VStack(alignment: .leading, spacing: 22) {
+                content
+            }
+            .background(alignment: .top) {
                 GeometryReader { g in
                     Color.clear.preference(key: OffsetKey.self, value: -g.frame(in: .named("page")).minY)
                 }
                 .frame(height: 0)
-                content
             }
-            .padding(.top, 58)
+            .padding(.top, 50)
             .padding(.bottom, 110)
         }
         .coordinateSpace(name: "page")
-        .onPreferenceChange(OffsetKey.self) { y in if #unavailable(iOS 18.0) { scrolled = y + 58 } }
+        .onPreferenceChange(OffsetKey.self) { y in if #unavailable(iOS 18.0) { scrolled = y + 50 } }
         .modifier(ScrollOffset(offset: $scrolled))
         .refreshable { await model.refresh(); rows = [:]; asked = []; load() }
         .background(alignment: .top) {
