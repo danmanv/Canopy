@@ -13,6 +13,11 @@ Write every entry in ASD-STE100 Simplified Technical English (STE):
 
 Put changes that are not released under `## Unreleased`. Before each release, read all of `## Unreleased` again and rewrite each entry that does not obey these rules. Then rename that heading to the version number.
 
+## 1.3.5
+
+- On a TV with a large display size, the new profile screen shows all the letters. Before, the right 3 columns of letters and the portrait were not on the screen.
+- On a TV with a large font size, the letters of the name are not cut.
+
 ## 1.3.4
 
 - On a phone, the first screens are upright too: **Who's watching**, a new profile's name and colour, **Connect Stremio** and the PIN, with a number pad for the PIN. Tap **Sign in on this phone** to connect Stremio.
