@@ -44,6 +44,8 @@ struct PlayerView: View {
     /// The next episode's sources, found a few minutes before this one ends so Next up starts at once.
     @State private var nextSources: (id: String, list: [Stream])?
     @State private var nextAsked = false
+    /// Sideways because Full screen was tapped: Back turns the phone upright again before closing.
+    @State private var fullScreenByButton = false
 
     enum Panel { case tracks, picture }
     struct Segment { let label: String; let start: Int64; let end: Int64; var jump: Int64 = 0 }
@@ -60,7 +62,7 @@ struct PlayerView: View {
         GeometryReader { g in
             // Upright: the picture in a 16:9 strip at the top, the controls and the episode under it. Sideways: the
             // whole screen.
-            let upright = g.size.height > g.size.width
+            let upright = Orientation.phone && g.size.height > g.size.width
             let videoSize = upright ? CGSize(width: g.size.width, height: (g.size.width * 9 / 16).rounded()) : g.size
             ZStack(alignment: .top) {
                 (upright ? theme.baseColor : Color.black).ignoresSafeArea()
@@ -69,8 +71,7 @@ struct PlayerView: View {
                         Color.black
                         VLCSurface(vlc: vlc)
                             .opacity(startedPlaying ? 1 : 0)
-                        gestures
-                        if upright && startedPlaying && controls && panel == nil { stripControls.transition(.opacity) }
+                        if upright { stripGestures } else { gestures }
                         if vlc.buffering && startedPlaying { Spinner(size: upright ? 34 : 44) }
                         skipPill(upright: upright)
                     }
@@ -136,7 +137,15 @@ struct PlayerView: View {
     }
 
     private var closeButton: some View {
-        Button { close() } label: {
+        Button {
+            // Sideways only because Full screen was tapped: back to upright first, then Back closes.
+            if fullScreenByButton && Orientation.phone && screen.width > screen.height {
+                fullScreenByButton = false
+                Orientation.app()
+            } else {
+                close()
+            }
+        } label: {
             Image(systemName: "chevron.left").font(.system(size: 20, weight: .semibold)).foregroundStyle(.white)
                 .frame(width: 48, height: 48).contentShape(Rectangle())
         }
@@ -518,7 +527,7 @@ struct PlayerView: View {
                     Text(Date(), style: .time).font(Look.bold(14)).foregroundStyle(.white.opacity(0.85))
                         .padding(.trailing, Orientation.phone ? 4 : 20)
                     if Orientation.phone {
-                        bare("arrow.down.right.and.arrow.up.left", size: 20) { Orientation.app() }.padding(.trailing, 8)
+                        bare("arrow.down.right.and.arrow.up.left", size: 20) { fullScreenByButton = false; Orientation.app() }.padding(.trailing, 8)
                     }
                 }
                 Spacer()
@@ -547,111 +556,79 @@ struct PlayerView: View {
         }
     }
 
-    // MARK: Upright
+    // MARK: Upright (phone held upright, as the Android phone)
 
-    /// Over the strip: back, and full screen (turns the phone). The rest is in the panel under it.
-    private var stripControls: some View {
-        ZStack {
-            LinearGradient(colors: [.black.opacity(0.55), .clear, .clear, .black.opacity(0.45)], startPoint: .top, endPoint: .bottom)
-                .allowsHitTesting(false)
-            VStack {
-                HStack {
-                    closeButton
-                    Spacer()
-                }
-                Spacer()
-                HStack {
-                    Spacer()
-                    if Orientation.phone {
-                        bare("arrow.up.left.and.arrow.down.right", size: 20) { Orientation.player() }
-                    }
-                }
-            }
+    /// On the strip: a tap in the middle plays or pauses, a double tap on either side skips 10 s. No controls on it.
+    private var stripGestures: some View {
+        HStack(spacing: 0) {
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture(count: 2) { vlc.jump(-10) }
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture { vlc.toggle() }
+            Color.clear.contentShape(Rectangle())
+                .onTapGesture(count: 2) { vlc.jump(10) }
         }
     }
 
-    /// Under the strip: name and episode, the bar, play and skip, the options, the episode's story, then what's next.
+    /// Under the strip, on graphite: the bar, back 10 / Play / ahead 10, a hairline, the name, episode and story, then
+    /// a row of buttons along the foot.
     private var uprightPanel: some View {
         let current = request.videos.first { $0.id == request.videoId }
-        let later = laterEpisodes
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(request.title.name).font(Look.title(22)).foregroundStyle(theme.textColor).lineLimit(2)
-                    if let e = request.episode { Text(e).font(Look.body(14)).foregroundStyle(theme.text2).lineLimit(2) }
+        return VStack(spacing: 0) {
+            bar.padding(.horizontal, 20).padding(.top, 14)
+            HStack(spacing: 36) {
+                bare("gobackward.10", size: 30) { vlc.jump(-10) }.frame(width: 64, height: 64)
+                Button { vlc.toggle() } label: {
+                    Image(systemName: vlc.phase == .playing ? "pause.fill" : "play.fill").font(.system(size: 32, weight: .semibold))
+                        .foregroundStyle(.white).frame(width: 80, height: 80)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
+                        .overlay(Circle().stroke(Color.white.opacity(0.18), lineWidth: 1))
                 }
-                bar
-                HStack(spacing: 40) {
-                    Spacer(minLength: 0)
-                    panelIcon("gobackward.10", size: 26) { vlc.jump(-10); touched() }
-                    Button { vlc.toggle(); touched() } label: {
-                        Image(systemName: vlc.phase == .playing ? "pause.fill" : "play.fill").font(.system(size: 28, weight: .semibold))
-                            .foregroundStyle(.black).frame(width: 66, height: 66)
-                            .background(Circle().fill(theme.accentColor))
-                    }
-                    panelIcon("goforward.10", size: 26) { vlc.jump(10); touched() }
-                    Spacer(minLength: 0)
-                }
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
-                    option("captions.bubble", "Audio & subtitles") { panel = .tracks }
-                    option("aspectratio", "Picture size") { panel = .picture }
-                    if sources.count > 0 || !request.picked {
-                        option("square.stack.3d.up", "Sources") { close(); chooseSource(request) }
-                    }
-                    if let next = request.next { option("forward.end", "Next episode") { playNext(next) } }
-                }
-                if let o = current?.overview, !o.isEmpty {
-                    Text(o).font(Look.body(14)).foregroundStyle(theme.text2)
-                }
-                if !later.isEmpty {
-                    Text("Next episodes").font(Look.title(17)).foregroundStyle(theme.textColor).padding(.top, 4)
-                    ForEach(later) { v in
-                        Button { playNext(v) } label: {
-                            HStack(spacing: 12) {
-                                RemoteImage(url: v.thumbnail, width: 128).frame(width: 128, height: 72).clipShape(Soft())
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text(v.label).font(Look.bold(12)).foregroundStyle(theme.accentColor)
-                                    Text(v.title.isEmpty ? "Episode \(v.episode)" : v.title).font(Look.bold(14))
-                                        .foregroundStyle(theme.textColor).lineLimit(2).multilineTextAlignment(.leading)
-                                }
-                                Spacer(minLength: 0)
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
+                bare("goforward.10", size: 30) { vlc.jump(10) }.frame(width: 64, height: 64)
             }
-            .padding(.horizontal, 20).padding(.top, 16).padding(.bottom, 30)
-            .frame(maxWidth: 700, alignment: .leading)
-            .frame(maxWidth: .infinity)
-        }
-        .scrollIndicators(.hidden)
-        .simultaneousGesture(TapGesture().onEnded { lastTouch = Date() })
-    }
-
-    /// The episodes after this one in its season and the next, as many as eight.
-    private var laterEpisodes: [Video] {
-        guard let i = request.videos.firstIndex(where: { $0.id == request.videoId }) else { return [] }
-        return Array(request.videos[(i + 1)...].filter { $0.season > 0 }.prefix(8))
-    }
-
-    private func panelIcon(_ icon: String, size: CGFloat, _ run: @escaping () -> Void) -> some View {
-        Button(action: run) {
-            Image(systemName: icon).font(.system(size: size, weight: .medium)).foregroundStyle(theme.textColor).frame(width: 54, height: 54)
+            .padding(.vertical, 8)
+            Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(alignment: .top, spacing: 4) {
+                        Text(request.title.name).font(Look.title(25)).foregroundStyle(theme.textColor).lineLimit(2)
+                        Spacer(minLength: 0)
+                    }
+                    if let e = request.episode {
+                        Text(e).font(Look.bold(15)).foregroundStyle(theme.accentColor).lineLimit(2)
+                    }
+                    if let o = current?.overview, !o.isEmpty {
+                        Text(o).font(Look.body(15)).foregroundStyle(theme.text2).padding(.top, 4)
+                    }
+                }
+                .padding(.horizontal, 20).padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollIndicators(.hidden)
+            HStack(spacing: 0) {
+                cell("chevron.left", "Back") { close() }
+                cell("captions.bubble", "Audio & subtitles") { panel = .tracks }
+                if sources.count > 0 || !request.picked {
+                    cell("square.stack.3d.up", "Change stream") { close(); chooseSource(request) }
+                }
+                if let next = request.next { cell("forward.end", "Next episode") { playNext(next) } }
+                cell("arrow.up.left.and.arrow.down.right", "Full screen") { fullScreenByButton = true; Orientation.player() }
+            }
+            .padding(.top, 6).padding(.bottom, 4)
+            .overlay(alignment: .top) { Rectangle().fill(Color.white.opacity(0.1)).frame(height: 1) }
         }
     }
 
-    private func option(_ icon: String, _ label: String, _ run: @escaping () -> Void) -> some View {
+    /// One of the equal cells along the foot: icon over a small label.
+    private func cell(_ icon: String, _ label: String, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
-            HStack(spacing: 8) {
-                Image(systemName: icon).font(.system(size: 16, weight: .medium))
-                Text(label).font(Look.bold(13)).lineLimit(1)
-                Spacer(minLength: 0)
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 20, weight: .medium))
+                Text(label).font(Look.bold(11)).lineLimit(1).minimumScaleFactor(0.8)
             }
-            .foregroundStyle(theme.textColor)
-            .padding(.horizontal, 14).frame(height: 46)
-            .glassCard(theme)
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
