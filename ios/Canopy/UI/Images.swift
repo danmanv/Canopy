@@ -38,18 +38,32 @@ final class ImageStore: Sendable {
     func image(_ url: String, width: CGFloat) async -> UIImage? {
         let k = key(url, width)
         if let img = memory.object(forKey: k as NSString) { return img }
-        guard let u = URL(string: url) else { return nil }
+        guard let u = URL(string: url) ?? URL(string: url.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? "") else {
+            print("[poster] bad url \(url)")
+            return nil
+        }
         var r = URLRequest(url: u)
         r.setValue(Http.userAgent, forHTTPHeaderField: "User-Agent")
         for attempt in 0..<2 {
             if Task.isCancelled { return nil }
-            if let (data, resp) = try? await session.data(for: r),
-               (resp as? HTTPURLResponse).map({ $0.statusCode < 400 }) ?? true {
+            do {
+                let (data, resp) = try await session.data(for: r)
+                let code = (resp as? HTTPURLResponse)?.statusCode ?? 0
+                guard code < 400 else {
+                    print("[poster] HTTP \(code) \(url)")
+                    if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
+                    continue
+                }
                 let img = await Task.detached(priority: .userInitiated) { Self.downsample(data, width: width) }.value
+                if img == nil {
+                    print("[poster] undecodable \(data.count) bytes \((resp as? HTTPURLResponse)?.mimeType ?? "?") \(url) head=\(String(decoding: data.prefix(40), as: UTF8.self))")
+                }
                 if let img {
                     memory.setObject(img, forKey: k as NSString, cost: Int(img.size.width * img.size.height * img.scale * img.scale * 4))
                 }
                 return img
+            } catch {
+                if (error as? URLError)?.code != .cancelled { print("[poster] \(error.localizedDescription) \(url)") }
             }
             if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
         }
