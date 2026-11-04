@@ -22,8 +22,6 @@ Canopy runs on Android TV / Google TV, Android phones, iPhone and iPad. Before y
 2. If Chrome warns, tap **Download anyway**. Then tap the file, allow **Install from this source**, and if Play Protect warns, tap **More details › Install anyway**.
 3. Open Canopy and sign in with Stremio. It updates itself from each release.
 
-> **Note (2026-11-04):** releases up to 1.3.0 have only the TV screens, so a phone shows them sideways. The phone screens arrive in the next release. Until then, use `Canopy-phone-test-pr37.apk` from the OneDrive Canopy folder.
-
 ## iPhone and iPad
 
 Each device needs the Mac once. After that it updates over Wi-Fi.
