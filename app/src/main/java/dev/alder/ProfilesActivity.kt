@@ -510,8 +510,15 @@ class ProfilesActivity : Screen() {
         entry.firstKey.requestFocus()
     }
 
-    /** The name's line: as wide as the letters on a TV, the screen's width on a phone. */
-    private val fieldW get() = if (upright) -1 else dp(FIELD_W)
+    /** The name's line: as wide as the letters on a TV (never wider than its column), the screen's width on a phone. */
+    private val fieldW get() = if (upright) -1 else minOf(dp(FIELD_W), nameRoom)
+
+    /**
+     * The name steps' left column on a TV, in px: the screen less its margins and the 40dp gap, at the 1.1 : 0.9
+     * share both name steps use. A TV with a larger display size or density has fewer dp across than the 960 the
+     * letters were drawn for, so the letters shrink to this rather than run off the column's edge.
+     */
+    private val nameRoom get() = ((resources.displayMetrics.widthPixels - 2 * dp(PAD) - dp(40)) * 1.1f / 2f).toInt()
 
     /** A line under a word, Light line: white under the remote's word, the accent under a chosen one. Square ends. */
     private fun lineUnder(color: Int, inset: Int = 0) = android.graphics.drawable.LayerDrawable(arrayOf(
@@ -564,7 +571,9 @@ class ProfilesActivity : Screen() {
             cursor.translationX = name.paddingStart + name.paint.measureText(name.text.toString())
         }
         val box = android.widget.FrameLayout(this).apply {
-            addView(name, android.widget.FrameLayout.LayoutParams(-1, dp(52)))
+            // At least 52dp, taller when the TV's font size is turned up, so the big letters are never clipped.
+            minimumHeight = dp(52)
+            addView(name, android.widget.FrameLayout.LayoutParams(-1, -2))
             addView(cursor, android.widget.FrameLayout.LayoutParams(dp(2), dp(34), Gravity.CENTER_VERTICAL))
             layoutParams = LinearLayout.LayoutParams(-1, -2)
         }
@@ -578,10 +587,13 @@ class ProfilesActivity : Screen() {
 
         val keyboard = column(Gravity.START)
         val keys = mutableListOf<TextView>()
+        // A letter's cell: 42dp, or narrower so all nine of a row fit the column on a TV with fewer dp across.
+        val keyW = maxOf(1, minOf(dp(KEY_W), nameRoom / COLUMNS))
         fun key(label: String, row: LinearLayout, sp: Float, width: Int) = text(label, sp, color = TEXT_2).onArt().apply {
             gravity = Gravity.CENTER
-            lineKey(this, if (width == -2) 0 else KEY_INSET)
-            row.addView(this, LinearLayout.LayoutParams(if (width == -2) -2 else dp(width), dp(KEY_H)).apply {
+            minHeight = dp(KEY_H) // taller, not clipped, when the TV's font size is turned up
+            lineKey(this, if (width == -2) 0 else minOf(KEY_INSET, (width / resources.displayMetrics.density / 3).toInt()))
+            row.addView(this, LinearLayout.LayoutParams(width, -2).apply {
                 if (width == -2 && row.childCount > 0) marginStart = dp(26)
             })
             keys += this
@@ -594,13 +606,13 @@ class ProfilesActivity : Screen() {
         }
         ("abcdefghijklmnopqrstuvwxyz").chunked(COLUMNS).forEach { letters ->
             keyboard.addView(LinearLayout(this).apply {
-                letters.forEach { letter -> letterKeys += key(letter.toString(), this, KEY_SP, KEY_W).apply { setOnClickListener {
+                letters.forEach { letter -> letterKeys += key(letter.toString(), this, KEY_SP, keyW).apply { setOnClickListener {
                     val typed = if (upper) letter.uppercaseChar() else letter
                     if (upper) caps(false)
                     name.text.append(typed)
                 } } }
                 // ⌫ ends the last row of letters, where the grid has room for it.
-                if (letters.length < COLUMNS) key("⌫", this, KEY_SP, KEY_W).apply {
+                if (letters.length < COLUMNS) key("⌫", this, KEY_SP, keyW).apply {
                     contentDescription = "Delete"
                     setOnClickListener { if (name.length() > 0) name.text.delete(name.length() - 1, name.length()) }
                 }
@@ -796,10 +808,10 @@ class ProfilesActivity : Screen() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(PAD), dp(68), dp(PAD), dp(35))
-                addView(left, if (leftWidth > 0)
+                addView(Fit(left, pivotStart = true), if (leftWidth > 0)
                     LinearLayout.LayoutParams(leftWidth, -2).apply { marginEnd = gap }
                 else LinearLayout.LayoutParams(0, -1, leftWeight).apply { marginEnd = gap })
-                addView(right, LinearLayout.LayoutParams(0, -1, rightWeight))
+                addView(Fit(right, pivotStart = false), LinearLayout.LayoutParams(0, -1, rightWeight))
             }
             addView(body, android.widget.FrameLayout.LayoutParams(-1, -1))
             val current = step.substringAfter("step ").substringBefore(" of ").toIntOrNull() ?: 1
@@ -941,6 +953,39 @@ class ProfilesActivity : Screen() {
             canvas.drawRect(((c + 4) * px).toFloat(), ((r + 4) * px).toFloat(), ((c + 5) * px).toFloat(), ((r + 5) * px).toFloat(), paint)
         }
         return bmp
+    }
+
+    /**
+     * Holds a setup column at its own height, centred, and shrinks it (letters and all) when the TV's screen is
+     * shorter than it, as on a TV with a larger display or font size, so nothing runs off the top or bottom.
+     */
+    private class Fit(private val child: View, private val pivotStart: Boolean) : FrameLayout(child.context) {
+        init {
+            clipChildren = false
+            addView(child, LayoutParams(-1, -2))
+        }
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val wMode = MeasureSpec.getMode(widthSpec)
+            child.measure(if (wMode == MeasureSpec.UNSPECIFIED) widthSpec
+                else MeasureSpec.makeMeasureSpec(MeasureSpec.getSize(widthSpec), MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED))
+            val natural = child.measuredHeight
+            val hMode = MeasureSpec.getMode(heightSpec)
+            val room = if (hMode == MeasureSpec.UNSPECIFIED) natural else MeasureSpec.getSize(heightSpec)
+            val scale = if (natural > room && natural > 0) room.toFloat() / natural else 1f
+            child.scaleX = scale
+            child.scaleY = scale
+            setMeasuredDimension(if (wMode == MeasureSpec.UNSPECIFIED) child.measuredWidth else MeasureSpec.getSize(widthSpec),
+                if (hMode == MeasureSpec.EXACTLY) room else minOf(natural, room))
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) {
+            val top = (b - t - child.measuredHeight) / 2
+            child.layout(0, top, child.measuredWidth, top + child.measuredHeight)
+            child.pivotX = if (pivotStart) 0f else child.measuredWidth / 2f
+            child.pivotY = child.measuredHeight / 2f
+        }
     }
 
     private companion object {
