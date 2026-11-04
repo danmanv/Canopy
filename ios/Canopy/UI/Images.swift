@@ -35,7 +35,7 @@ final class ImageStore: Sendable {
 
     /// Loads in the caller's task, so a poster scrolled off screen stops downloading and frees its connection for
     /// the ones in view. Tries twice; decoding happens off the main thread.
-    func image(_ url: String, width: CGFloat) async -> UIImage? {
+    func image(_ url: String, width: CGFloat, scale: CGFloat = 3) async -> UIImage? {
         let k = key(url, width)
         if let img = memory.object(forKey: k as NSString) { return img }
         guard let u = URL(string: url) ?? URL(string: url.addingPercentEncoding(withAllowedCharacters: .urlFragmentAllowed) ?? "") else {
@@ -54,7 +54,7 @@ final class ImageStore: Sendable {
                     if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
                     continue
                 }
-                let img = await Task.detached(priority: .userInitiated) { Self.downsample(data, width: width) }.value
+                let img = await Task.detached(priority: .userInitiated) { Self.downsample(data, width: width, scale: scale) }.value
                 if img == nil {
                     print("[poster] undecodable \(data.count) bytes \((resp as? HTTPURLResponse)?.mimeType ?? "?") \(url) head=\(String(decoding: data.prefix(40), as: UTF8.self))")
                 }
@@ -70,9 +70,9 @@ final class ImageStore: Sendable {
         return nil
     }
 
-    private static func downsample(_ data: Data, width: CGFloat) -> UIImage? {
+    private static func downsample(_ data: Data, width: CGFloat, scale: CGFloat) -> UIImage? {
         guard let src = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary) else { return nil }
-        let px = max(64, width * UIScreen.main.scale)
+        let px = max(64, width * scale)
         let opts: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceShouldCacheImmediately: true,
                                      kCGImageSourceCreateThumbnailWithTransform: true, kCGImageSourceThumbnailMaxPixelSize: px]
         guard let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else { return UIImage(data: data) }
@@ -89,6 +89,7 @@ struct RemoteImage: View {
     var fallback: String? = nil
     var onLoad: ((UIImage) -> Void)? = nil
     @Environment(\.theme) private var theme
+    @Environment(\.displayScale) private var scale
     @State private var image: UIImage?
     @State private var loadedFor: String?
 
@@ -107,8 +108,8 @@ struct RemoteImage: View {
             guard let url, !url.isEmpty else { image = nil; return }
             if loadedFor == url, image != nil { return }
             if let c = ImageStore.shared.cached(url, width: width) { image = c; loadedFor = url; onLoad?(c); return }
-            var img = await ImageStore.shared.image(url, width: width)
-            if img == nil, let fallback { img = await ImageStore.shared.image(fallback, width: width) }
+            var img = await ImageStore.shared.image(url, width: width, scale: scale)
+            if img == nil, let fallback { img = await ImageStore.shared.image(fallback, width: width, scale: scale) }
             guard !Task.isCancelled else { return }
             withAnimation(.easeOut(duration: 0.25)) { image = img }
             loadedFor = url
