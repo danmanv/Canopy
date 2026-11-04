@@ -23,6 +23,35 @@ import java.util.Locale
 internal fun readyStreams(answers: Array<List<Stream>?>, allowGaps: Boolean): List<Stream> =
     (if (allowGaps) answers.asList() else answers.takeWhile { it != null }).flatMap { it.orEmpty() }
 
+/** The stream add-ons for one video: the household's shared ones first, then the profile's own. Network: off the main thread. */
+internal fun streamAddons(key: String, lenders: List<Profile>, type: String, videoId: String): List<Addon> {
+    val own = Stremio.addons(key).filter { it.serves("stream", type, videoId) }
+    val household = lenders.flatMap { lender ->
+        runCatching {
+            (Stremio.savedAddons(lender.authKey) ?: Stremio.addons(lender.authKey))
+                .filter { it.shareable && it.serves("stream", type, videoId) }
+        }.getOrDefault(emptyList())
+    }.distinctBy { it.id }
+    return household + own.filterNot { mine -> household.any { it.id == mine.id } }
+}
+
+/**
+ * The next episode's sources, found by the player 4 minutes before this one ends, so Next up starts at once. Kept per
+ * add-on (the sources page still ranks them) for 20 minutes, as debrid links don't last forever; used once.
+ */
+internal object NextSources {
+    private class Found(val videoId: String, val at: Long, val answers: Map<String, Addon.Streams>)
+    @Volatile private var found: Found? = null
+
+    fun put(videoId: String, answers: Map<String, Addon.Streams>) { found = Found(videoId, System.currentTimeMillis(), answers) }
+
+    fun take(videoId: String): Map<String, Addon.Streams>? {
+        val f = found?.takeIf { it.videoId == videoId } ?: return null
+        found = null
+        return f.answers.takeIf { System.currentTimeMillis() - f.at < 20 * 60_000L }
+    }
+}
+
 open class StreamsActivity : Screen() {
     private val pick by lazy { phoneLayout || intent.getBooleanExtra("pick", false) || Settings.alwaysList(this) }
 
@@ -145,16 +174,7 @@ open class StreamsActivity : Screen() {
         val tv = Device.of(this)
 
         val lenders = Profiles.streamLenders(this)
-        background({
-            val own = Stremio.addons(key).filter { it.serves("stream", type, videoId) }
-            val household = lenders.flatMap { lender ->
-                runCatching {
-                    (Stremio.savedAddons(lender.authKey) ?: Stremio.addons(lender.authKey))
-                        .filter { it.shareable && it.serves("stream", type, videoId) }
-                }.getOrDefault(emptyList())
-            }.distinctBy { it.id }
-            household + own.filterNot { mine -> household.any { it.id == mine.id } }
-        }) { result ->
+        background({ streamAddons(key, lenders, type, videoId) }) { result ->
             val addons = result.getOrElse { say("Couldn't load sources. Check your connection and try again."); return@background }
             if (addons.isEmpty()) { say("No stream add-ons are connected. Add one in Stremio to find sources."); return@background }
             val answers = arrayOfNulls<List<Stream>>(addons.size)
@@ -205,8 +225,11 @@ open class StreamsActivity : Screen() {
             // Keep add-on order when earlier ones answer promptly; after 800 ms, a playable later answer can start.
             fun tryStart(allowGaps: Boolean = false) {
                 if (started || pick || listed) return
-                val ready = readyStreams(answers, allowGaps)
-                val best = rank(ready.filter { it.isVideo && it.playableOn(tv) && wanted(it) }, videoId)
+                fun usable(ready: List<Stream>) = rank(ready.filter { it.isVideo && it.playableOn(tv) && wanted(it) }, videoId)
+                // Last time's file (or release group) answered: start it without waiting for the slower add-ons.
+                val early = usable(readyStreams(answers, true))
+                val best = if (early.firstOrNull()?.let { knownGood(it, videoId) } == true) early
+                    else usable(readyStreams(answers, allowGaps))
                 if (best.isEmpty() && answers.any { it == null }) return
                 if (best.isEmpty()) return showList()
                 started = true
@@ -218,8 +241,9 @@ open class StreamsActivity : Screen() {
                 @Suppress("DEPRECATION") overridePendingTransition(0, 0)
             }
 
+            val prefetched = if (pick) null else NextSources.take(videoId)
             addons.forEachIndexed { i, addon ->
-                background({ addon.streams(type, videoId) }) { streams ->
+                background({ prefetched?.get(addon.id) ?: addon.streams(type, videoId) }) { streams ->
                     streams.exceptionOrNull()?.let { e ->
                         failures[i] = e
                         android.util.Log.w("Canopy", "streams from ${addon.name} failed", e)
@@ -322,13 +346,29 @@ open class StreamsActivity : Screen() {
         val tv = Device.of(this)
         val prefer = preference()
         val lower = intent.getIntExtra("maxHeight", 0) > 0 // the player asked for less: the tallest that's left
+        val episode = Stream.episodeOf(videoId)
+        // A file naming another episode (a season pack's wrong file, another show filed here) sinks below the rest.
+        fun wrong(s: Stream) = episode != null && s.namesOtherEpisode(episode.first, episode.second)
         return streams.sortedWith(compareByDescending<Stream> { if (lower) it.height else 0 }
-            .thenByDescending { file != null && it.filename == file }
+            .thenBy { wrong(it) }
+            .thenByDescending { file != null && it.filename == file && !wrong(it) }
             .thenByDescending { binge != null && it.bingeGroup == binge }
             .thenBy { it.awkward }
             .thenBy { it.dolbyVisionOnly && !tv.dolbyVision } // may show no picture (or purple and green) here: last
             .thenByDescending { it.fit(tv) }
             .thenByDescending(prefer))
+    }
+
+    /**
+     * The file that played last time for this video, or the release group the show has been playing from: safe to
+     * start without waiting for the other add-ons. Never one that names a different episode.
+     */
+    private fun knownGood(s: Stream, videoId: String): Boolean {
+        Stream.episodeOf(videoId)?.let { (season, episode) -> if (s.namesOtherEpisode(season, episode)) return false }
+        val prefs = getSharedPreferences("sources", MODE_PRIVATE)
+        val file = prefs.getString("file:$videoId", null)
+        val binge = prefs.getString("binge:${intent.getStringExtra("id")}", null)
+        return (file != null && s.filename == file) || (binge != null && s.bingeGroup == binge)
     }
 
     /** Settings' stream preferences as a score, higher first. At "No preference" with TV speakers, every source scores 0. */

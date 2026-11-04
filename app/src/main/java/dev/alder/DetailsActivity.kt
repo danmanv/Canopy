@@ -59,6 +59,23 @@ class DetailsActivity : Screen() {
     private var itemChangedHere = false
     private var similarRequested = false
 
+    // The page takes a soft tint from the poster, where the shade lies over the art: left and along the foot.
+    private val tintLayer by lazy { View(this).apply { alpha = 0f } }
+    private var tinted: String? = null
+
+    private fun tintFromPoster(url: String?) {
+        if (url == null || url == tinted) return
+        tinted = url
+        background({ Images.tintOf(url) }) { r ->
+            val c = Images.blend(BASE, r.getOrNull() ?: return@background, 0.3f)
+            tintLayer.background = android.graphics.drawable.LayerDrawable(arrayOf(
+                GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT, intArrayOf(withAlpha(c, 0x8C), withAlpha(c, 0x26), 0)),
+                GradientDrawable(GradientDrawable.Orientation.BOTTOM_TOP, intArrayOf(withAlpha(c, 0x99), withAlpha(c, 0x00), 0)),
+            ))
+            tintLayer.animate().alpha(1f).setDuration(600).start()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // A phone has its own title page, upright (PhoneDetailsActivity).
@@ -74,6 +91,7 @@ class DetailsActivity : Screen() {
         hero = FrameLayout(this).apply { clipChildren = false }
         root = FrameLayout(this).apply {
             clipChildren = false
+            addView(tintLayer, FrameLayout.LayoutParams(-1, -1))
             addView(hero, FrameLayout.LayoutParams(-1, -1))
             addView(TextClock(this@DetailsActivity).apply {
                 format12Hour = "h:mm a"
@@ -88,12 +106,14 @@ class DetailsActivity : Screen() {
         setWindowed(root, heroArt)
 
         (initialArt ?: poster)?.let { Images.load(it, heroArt, artWidth, urgent = true) { heroArt.alpha = 1f; refrost() } }
+        tintFromPoster(poster ?: Images.posterFor(metaId))
 
         // The title page is drawn once from last time's details and then hears from the meta add-on and the library.
         // Each answer used to rebuild the whole block: the logo went and came back and Play lost its light for a
         // frame, the flicker just after the page opened. Now only what changed is redrawn.
         fun show(m: Meta) {
             meta = m
+            if (tinted == null) tintFromPoster(m.poster)
             val art = m.background ?: initialArt ?: poster
             // The art the page opened on stays: swapping it for the add-on's own a moment later blanked the screen for
             // a frame (Images.load clears the picture first) and then cut to a different one. Only a stand-in (the
@@ -567,9 +587,10 @@ class DetailsActivity : Screen() {
 
     private fun loadSimilar() {
         background({
-            Stremio.addons(key).firstNotNullOfOrNull { addon ->
+            val addons = Stremio.addons(key)
+            addons.firstNotNullOfOrNull { addon ->
                 runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() }
-            }.orEmpty()
+            } ?: addons.sameGenre(type, meta?.genres.orEmpty(), metaId) // few add-ons answer "similar"
         }) { result ->
             result.getOrNull()?.let { titles ->
                 titles.asSequence().filter { it.id != metaId && it.type == type }

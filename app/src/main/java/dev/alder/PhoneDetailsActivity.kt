@@ -50,16 +50,39 @@ class PhoneDetailsActivity : PhoneScreen() {
     private lateinit var below: LinearLayout // episodes or More like this
 
     private val screenW by lazy { resources.displayMetrics.widthPixels }
+    private lateinit var fade: GradientDrawable
+    private lateinit var bar: FrameLayout
+    private var tinted: String? = null
+
+    /** The page takes a soft tint from the poster: its base colour moved a third of the way to the poster's own. */
+    private fun tintFromPoster(url: String?) {
+        if (url == null || url == tinted) return
+        tinted = url
+        background({ Images.tintOf(url) }) { r ->
+            val tint = r.getOrNull() ?: return@background
+            val from = BASE
+            val to = Images.blend(BASE, tint, 0.3f)
+            android.animation.ValueAnimator.ofObject(android.animation.ArgbEvaluator(), from, to).apply {
+                duration = 600
+                addUpdateListener { a ->
+                    val c = a.animatedValue as Int
+                    fade.colors = intArrayOf(withAlpha(c, 0x33), withAlpha(c, 0x00), c)
+                    window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(c))
+                    bar.setBackgroundColor(withAlpha(c, 0xF5))
+                }
+            }.start()
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         key = authKey ?: return finish()
         art = ImageView(this).apply { scaleType = ImageView.ScaleType.CENTER_CROP; alpha = 0f }
+        fade = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(baseAt(0x33), baseAt(0x00), baseAt(0xFF)))
+        val fadeView = View(this).apply { background = fade }
         val artBox = FrameLayout(this).apply {
             addView(art, FrameLayout.LayoutParams(-1, -1))
-            addView(View(context).apply {
-                background = GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, intArrayOf(baseAt(0x33), baseAt(0x00), baseAt(0xFF)))
-            }, FrameLayout.LayoutParams(-1, -1))
+            addView(fadeView, FrameLayout.LayoutParams(-1, -1))
         }
         logo = ImageView(this).apply { scaleType = ImageView.ScaleType.FIT_START; adjustViewBounds = true; visibility = View.GONE }
         title = text(name, 30f, serif = true).apply { maxLines = 3; ellipsize = TextUtils.TruncateAt.END }
@@ -114,7 +137,7 @@ class PhoneDetailsActivity : PhoneScreen() {
         }
         // Past the art, a solid bar with the title comes in behind Back, so Back never sits on an episode.
         val barTitle = text(name, 17f, serif = true).apply { maxLines = 1; ellipsize = TextUtils.TruncateAt.END; gravity = Gravity.CENTER_VERTICAL }
-        val bar = FrameLayout(this).apply {
+        bar = FrameLayout(this).apply {
             setBackgroundColor(baseAt(0xF5))
             alpha = 0f
             elevation = dp(3).toFloat()
@@ -142,6 +165,7 @@ class PhoneDetailsActivity : PhoneScreen() {
             Images.load(url, art, screenW, urgent = true) { art.animate().alpha(1f).setDuration(Motion.STANDARD).start() }
         }
         fill(null)
+        tintFromPoster(poster ?: Images.posterFor(metaId))
 
         background({
             (Stremio.savedAddons(key) ?: Stremio.addons(key)).savedMeta(type, metaId) to Stremio.savedLibrary(key)?.firstOrNull { it.optString("_id") == metaId }
@@ -171,6 +195,7 @@ class PhoneDetailsActivity : PhoneScreen() {
 
     private fun show(m: Meta) {
         meta = m
+        if (tinted == null) tintFromPoster(m.poster)
         if (art.drawable == null) m.background?.let { url ->
             Images.load(url, art, screenW, urgent = true) { art.animate().alpha(1f).setDuration(Motion.STANDARD).start() }
         }
@@ -301,7 +326,9 @@ class PhoneDetailsActivity : PhoneScreen() {
         if (similarAsked) return
         similarAsked = true
         background({
-            Stremio.addons(key).firstNotNullOfOrNull { addon -> runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() } }.orEmpty()
+            val addons = Stremio.addons(key)
+            addons.firstNotNullOfOrNull { addon -> runCatching { addon.similar(type, metaId) }.getOrNull()?.takeIf { it.isNotEmpty() } }
+                ?: addons.sameGenre(type, meta?.genres.orEmpty(), metaId)
         }) { r ->
             val titles = r.getOrNull().orEmpty().filter { it.id != metaId && it.type == type }.distinctBy { it.id }.take(12)
             if (titles.isEmpty()) return@background

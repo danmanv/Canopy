@@ -288,7 +288,9 @@ class PlayerActivity : Screen() {
                 player.videoFormat?.frameRate?.let(::matchFrameRate)
                 // Next time: the same release for this video, and the same group (release and quality) for the next episode.
                 val s = sources[at]
-                getSharedPreferences("sources", MODE_PRIVATE).edit()
+                // A file naming another episode (the Nocturne bug) is never remembered as this one's known-good file.
+                val wrong = Stream.episodeOf(videoId)?.let { (season, episode) -> s.namesOtherEpisode(season, episode) } == true
+                if (!wrong) getSharedPreferences("sources", MODE_PRIVATE).edit()
                     .putString("file:$videoId", s.filename).putString("binge:$metaId", s.bingeGroup).apply()
             }
 
@@ -610,6 +612,28 @@ class PlayerActivity : Screen() {
         }
         // Keep the current episode full screen; offer the next one only near its actual end.
         if (!upNextDismissed && upNextPanel.visibility != View.VISIBLE && duration - position < upNextWindow(duration)) showUpNext()
+        if (duration - position < PREFETCH_BEFORE_END) prefetchNext()
+    }
+
+    private var nextAsked = false
+
+    /** Finds the next episode's sources a few minutes before this one ends, so Next up starts at once (NextSources). */
+    private fun prefetchNext() {
+        if (nextAsked) return
+        val next = nextVideo() ?: return
+        val key = authKey ?: return
+        nextAsked = true
+        val lenders = Profiles.streamLenders(this)
+        val kind = type
+        background({
+            val addons = streamAddons(key, lenders, kind, next.id)
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(addons.size.coerceIn(1, 6))
+            try {
+                addons.map { a -> a.id to pool.submit<Addon.Streams?> { runCatching { a.streams(kind, next.id) }.getOrNull() } }
+                    .mapNotNull { (id, f) -> runCatching { f.get(20, java.util.concurrent.TimeUnit.SECONDS) }.getOrNull()?.let { id to it } }
+                    .toMap()
+            } finally { pool.shutdownNow() }
+        }) { found -> found.getOrNull()?.takeIf { it.isNotEmpty() }?.let { NextSources.put(next.id, it) } }
     }
 
     /** The episode after this one, or null for a film, the last episode, or before the episode list is in. */
@@ -1705,6 +1729,7 @@ class PlayerActivity : Screen() {
         const val SKIP_SHOWN = 10_000L // ms the Skip intro pill stays, as in NuvioTV
         const val GUESS_JUMP = 85_000L // ms "Skip 85 s" moves when no one has timed the intro: a typical opening's length
         const val GUESS_WINDOW = 180_000L // ms from the start that "Skip 85 s" is offered
+        const val PREFETCH_BEFORE_END = 4 * 60_000L // ms before the end the next episode's sources are found
         const val UP_NEXT_COUNTDOWN = 15_000L // ms Up next counts down before the next episode starts
         const val COUNTDOWN_STEP = 250L
         const val HIDE = 5_000L // ms the controls stay up while playing

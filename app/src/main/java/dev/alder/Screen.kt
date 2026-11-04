@@ -868,6 +868,88 @@ abstract class Screen : Activity() {
         @Deprecated("Drawable API") override fun getOpacity() = PixelFormat.TRANSLUCENT
     }
 
+    // ---------- the glass Resume strip (as on the iPhone and iPad) ----------
+
+    /** A poster's frosted copy and its own colour, worked out once per picture, off the main thread. */
+    private val posterGlass = java.util.WeakHashMap<Bitmap, Pair<Bitmap, Int?>?>()
+
+    /**
+     * The glass Resume strip across a poster's foot, as on the iPhone and iPad: the poster under it frosted and warmed
+     * with the poster's own colour, a hairline along the top; an accent disc with Play, then "Resume" over the time left.
+     * [height] in dp; the text sizes follow it. Call [bind] with the poster it sits on.
+     */
+    protected inner class ResumeStrip(private val heightDp: Int) : LinearLayout(this@Screen) {
+        private val label: TextView
+        private val leftLine: TextView
+        private val glass = PosterGlassDrawable()
+
+        init {
+            gravity = Gravity.CENTER_VERTICAL
+            val k = heightDp / 66f
+            setPadding(dp((14 * k).toInt().coerceAtLeast(8)), 0, dp(8), 0)
+            background = glass
+            val disc = dp((38 * k).toInt())
+            addView(FrameLayout(context).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TUNGSTEN) }
+                addView(ImageView(context).apply { setImageResource(R.drawable.ic_play); setColorFilter(BASE) },
+                    FrameLayout.LayoutParams(disc * 11 / 20, disc * 11 / 20, Gravity.CENTER).apply { leftMargin = disc / 20 })
+            }, LayoutParams(disc, disc))
+            label = text("Resume", 15f * k.coerceAtLeast(0.8f), bold = true, color = Color.WHITE).apply { maxLines = 1 }
+            leftLine = text("", 12f * k.coerceAtLeast(0.8f), color = 0xD9FFFFFF.toInt()).apply {
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            }
+            addView(LinearLayout(context).apply {
+                orientation = VERTICAL
+                addView(label); addView(leftLine)
+            }, LayoutParams(0, -2, 1f).apply { marginStart = dp((12 * k).toInt().coerceAtLeast(6)) })
+        }
+
+        /** Shows [action] ("Resume", "Play") and [timeLeft] over [poster]'s foot, frosted from that poster. */
+        fun bind(poster: ImageView, action: String, timeLeft: String?) {
+            label.text = action
+            leftLine.text = timeLeft.orEmpty()
+            leftLine.visibility = if (timeLeft.isNullOrEmpty()) View.GONE else View.VISIBLE
+            glass.poster = poster
+            invalidate()
+        }
+    }
+
+    /** The strip's background: the poster under it, frosted, lined up with the sharp one, then the poster's colour. */
+    private inner class PosterGlassDrawable : Drawable() {
+        var poster: ImageView? = null
+        private val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        private val dark = Paint().apply { color = 0x73000000 }
+        private val tint = Paint()
+        private val line = Paint().apply { color = 0x2EFFFFFF }
+
+        override fun draw(canvas: Canvas) {
+            val b = bounds
+            val src = (poster?.drawable as? BitmapDrawable)?.bitmap
+            val known = src?.let { posterGlass[it] }
+            if (src != null && known == null && !posterGlass.containsKey(src)) {
+                posterGlass[src] = null
+                background({ Images.frost(src, 60) to Images.tint(src) }) { r ->
+                    r.getOrNull()?.let { posterGlass[src] = it; invalidateSelf() }
+                }
+            }
+            if (known != null) {
+                // The whole poster's frosted copy, drawn at the poster's size with its foot at the strip's foot.
+                val h = poster?.height?.takeIf { it > 0 } ?: (b.width() * 3 / 2)
+                canvas.save()
+                canvas.clipRect(b)
+                canvas.drawBitmap(known.first, null, Rect(b.left, b.bottom - h, b.right, b.bottom), paint)
+                canvas.restore()
+            } else canvas.drawColor(0x40000000)
+            canvas.drawRect(b, dark)
+            known?.second?.let { tint.color = withAlpha(it, 0x52); canvas.drawRect(b, tint) }
+            canvas.drawRect(b.left.toFloat(), b.top.toFloat(), b.right.toFloat(), b.top + dp(1).toFloat(), line)
+        }
+
+        override fun setAlpha(alpha: Int) {}
+        override fun setColorFilter(colorFilter: ColorFilter?) {}
+        @Deprecated("Drawable API") override fun getOpacity() = PixelFormat.TRANSLUCENT
+    }
+
     /** A thin watched-so-far bar over a dark track. */
     protected fun progressBar(progress: Float, color: Int = TUNGSTEN) = LinearLayout(this).apply {
         val p = progress.coerceIn(0f, 1f)

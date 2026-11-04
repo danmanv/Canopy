@@ -59,6 +59,7 @@ class PhoneActivity : PhoneScreen() {
 
     private val screenW by lazy { resources.displayMetrics.widthPixels }
     private val posterW get() = dp(POSTER_W)
+    private val carouselW get() = minOf(screenW * 62 / 100, dp(CAROUSEL_MAX)) // the framed poster: 62% of the width, as on the iPhone
     private val posterH get() = dp(POSTER_W * 3 / 2)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -305,7 +306,7 @@ class PhoneActivity : PhoneScreen() {
     /** Shows' and Movies' first catalogs, fetched while Home shows: their tabs then open with posters, not grey boxes. */
     private fun warmTabs(all: List<Addon.Catalog>) = listOf("series", "movie").forEach { type ->
         val c = all.firstOrNull { it.type == type } ?: return@forEach
-        val px = dp(CAROUSEL_W)
+        val px = carouselW
         background({
             val metas = runCatching { c.addon.savedCatalog(c) }.getOrNull()?.takeIf { it.isNotEmpty() } ?: c.addon.catalog(c)
             Images.warmAll(metas.take(4).mapNotNull { it.poster }, px, 4000)
@@ -339,10 +340,12 @@ class PhoneActivity : PhoneScreen() {
 
     /**
      * One big poster in a fixed frame in the middle; the posters either side slide through the frame as the finger
-     * moves, and stop with one in it. The framed title's name, facts and Resume (or Play) sit under it.
+     * moves, and stop with one in it. A glass strip across the framed poster's foot is its Resume (or Play) button, with
+     * the time left, frosted from the poster and warmed with its colour, as on the iPhone; it fades while the posters move.
+     * The framed title's name sits under it.
      */
     private fun carousel(title: String, items: List<Item>, p: Page): View {
-        val cardW = dp(CAROUSEL_W)
+        val cardW = carouselW
         val cardH = cardW * 3 / 2
         val gap = dp(14)
         val step = cardW + gap
@@ -350,40 +353,46 @@ class PhoneActivity : PhoneScreen() {
         val cards = mutableListOf<ImageView>()
         var selected = -1
 
-        val name = text("", 22f, serif = true).apply {
-            gravity = Gravity.CENTER; maxLines = 2; ellipsize = TextUtils.TruncateAt.END
+        val name = text("", 20f, serif = true).apply {
+            gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
         }
-        val facts = text("", BODY_SP, color = TEXT_2).apply { gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END }
-        val bar = FrameLayout(this).apply { background = rounded(PROGRESS_TRACK, 0) }
+        val strip = ResumeStrip(STRIP_H)
         val done = View(this).apply { setBackgroundColor(TUNGSTEN) }
-        bar.addView(done, FrameLayout.LayoutParams(0, -1))
-        val go = button("Resume", primary = true) {}
-        val info = iconButton(R.drawable.ic_info, "More info") {}.apply {
-            background = GradientDrawable().apply { setColor(withAlpha(TEXT, 0x14)); setStroke(dp(1), withAlpha(TEXT, 0x40)); cornerRadius = dp(CORNER).toFloat() }
+        // The strip and, under it along the poster's very bottom edge, how far along it is.
+        val foot = FrameLayout(this).apply {
+            addView(strip, FrameLayout.LayoutParams(-1, dp(STRIP_H), Gravity.TOP))
+            addView(done, FrameLayout.LayoutParams(0, dp(3), Gravity.BOTTOM or Gravity.START))
+            // Only the bottom corners round, with the poster's.
+            outlineProvider = object : android.view.ViewOutlineProvider() {
+                override fun getOutline(view: View, outline: android.graphics.Outline) =
+                    outline.setRoundRect(0, -dp(CORNER), view.width, view.height, dp(CORNER).toFloat())
+            }
+            clipToOutline = true
         }
 
-        lateinit var strip: HorizontalScrollView
+        lateinit var scroller: HorizontalScrollView
         fun select(i: Int) {
             if (i == selected || i !in items.indices) return
-            if (selected >= 0) strip.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
+            if (selected >= 0) scroller.performHapticFeedback(HapticFeedbackConstants.CLOCK_TICK)
             selected = i
             val item = items[i]
             name.text = item.name
-            facts.text = item.facts
-            bar.visibility = if (item.resume) View.VISIBLE else View.INVISIBLE
+            done.visibility = if (item.resume) View.VISIBLE else View.GONE
             done.layoutParams = (done.layoutParams as FrameLayout.LayoutParams).apply { width = (cardW * item.progress).toInt() }
-            setLabel(go, if (item.resume) "Resume" else if (item.type == "series") "Episodes" else "Play")
-            go.setOnClickListener { if (item.resume || item.type != "series") play(item) else openDetails(item) }
-            go.setOnLongClickListener { play(item, pick = true); true }
-            info.setOnClickListener { openDetails(item) }
+            val timeLeft = item.left?.split(DOT_SHORT)?.let { parts ->
+                if (item.type == "series") parts.joinToString(DOT_SHORT) else parts.lastOrNull { it.endsWith("left") }
+            }
+            strip.bind(cards[i], if (item.resume) "Resume" else if (item.type == "series") "Episodes" else "Play", timeLeft)
+            strip.setOnClickListener { if (item.resume || item.type != "series") play(item) else openDetails(item) }
+            strip.setOnLongClickListener { titleMenu(item); true }
             framed[p] = item
             showBackdrop(item, p)
-            fill(item) { if (selected == i) { facts.text = item.facts; showBackdrop(item, p) } }
+            fill(item) { if (selected == i) showBackdrop(item, p) }
             items.getOrNull(i + 1)?.let { fill(it) {} }
         }
 
         fun shape() {
-            val middle = strip.scrollX + side + cardW / 2f
+            val middle = scroller.scrollX + side + cardW / 2f
             cards.forEachIndexed { i, card ->
                 val d = (abs(side + i * step + cardW / 2f - middle) / step).coerceAtMost(1f)
                 card.scaleX = 1f - 0.14f * d
@@ -393,17 +402,19 @@ class PhoneActivity : PhoneScreen() {
         }
 
         fun settle(velocity: Int) {
-            val at = strip.scrollX / step.toFloat()
+            val at = scroller.scrollX / step.toFloat()
             val extra = (abs(velocity) / dp(2200)).coerceAtMost(3)
             val to = when {
                 velocity > 0 -> ceil(at).toInt() + extra
                 velocity < 0 -> floor(at).toInt() - extra
                 else -> at.roundToInt()
             }.coerceIn(0, items.lastIndex)
-            strip.smoothScrollTo(to * step, 0)
+            scroller.smoothScrollTo(to * step, 0)
         }
 
-        strip = object : HorizontalScrollView(this) {
+        // While the posters move (a finger, or the glide to a stop) the strip steps aside, and comes back once they rest.
+        val rest = Runnable { foot.animate().alpha(1f).setDuration(300).start() }
+        scroller = object : HorizontalScrollView(this) {
             var flung = false
             override fun fling(velocityX: Int) { flung = true; settle(velocityX) }
             override fun onTouchEvent(ev: MotionEvent): Boolean {
@@ -420,17 +431,24 @@ class PhoneActivity : PhoneScreen() {
         }
         val line = LinearLayout(this).apply { setPadding(side, 0, side - gap, 0); gravity = Gravity.CENTER_VERTICAL }
         items.forEachIndexed { i, item ->
-            val card = poster(item, cardW).apply {
-                setOnClickListener { if (i == selected) openDetails(item) else strip.smoothScrollTo(i * step, 0) }
+            val card = poster(item, cardW) { if (i == selected) strip.invalidate() }.apply {
+                setOnClickListener { if (i == selected) openDetails(item) else scroller.smoothScrollTo(i * step, 0) }
                 setOnLongClickListener { titleMenu(item); true }
             }
             cards += card
             line.addView(card, LinearLayout.LayoutParams(cardW, cardH).apply { rightMargin = gap })
         }
-        strip.addView(line, FrameLayout.LayoutParams(-2, -1))
-        strip.setOnScrollChangeListener { _, x, _, _, _ ->
+        scroller.addView(line, FrameLayout.LayoutParams(-2, -1))
+        var lastX = 0
+        scroller.setOnScrollChangeListener { _, x, _, _, _ ->
             shape()
             select((x / step.toFloat()).roundToInt())
+            if (x != lastX) {
+                lastX = x
+                if (foot.alpha > 0f) foot.animate().alpha(0f).setDuration(120).start()
+                main.removeCallbacks(rest)
+                main.postDelayed(rest, 160)
+            }
         }
 
         // The frame stays put; the posters move through it.
@@ -441,26 +459,24 @@ class PhoneActivity : PhoneScreen() {
         }
         val stage = FrameLayout(this).apply {
             clipChildren = false
-            addView(strip, FrameLayout.LayoutParams(-1, cardH + 2 * ring, Gravity.CENTER_VERTICAL))
+            addView(scroller, FrameLayout.LayoutParams(-1, cardH + 2 * ring, Gravity.CENTER_VERTICAL))
+            addView(foot, FrameLayout.LayoutParams(cardW, dp(STRIP_H + 3), Gravity.CENTER_HORIZONTAL or Gravity.BOTTOM).apply {
+                bottomMargin = ring
+            })
             addView(frame, FrameLayout.LayoutParams(cardW + 2 * ring, cardH + 2 * ring, Gravity.CENTER))
         }
+        foot.elevation = dp(1).toFloat()
 
-        val buttons = LinearLayout(this).apply {
-            addView(go, LinearLayout.LayoutParams(0, dp(BIG_BUTTON), 1f))
-            addView(info, LinearLayout.LayoutParams(dp(BIG_BUTTON), dp(BIG_BUTTON)).apply { leftMargin = dp(10) })
-        }
         val block = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            addView(heading(title), LinearLayout.LayoutParams(-1, -2))
-            addView(stage, LinearLayout.LayoutParams(-1, cardH + 2 * ring).apply { topMargin = dp(6) })
-            addView(bar, LinearLayout.LayoutParams(cardW, dp(4)).apply { topMargin = dp(8) })
+            addView(heading(title).apply { setPadding(dp(20), dp(6), dp(20), dp(4)); gravity = Gravity.CENTER },
+                LinearLayout.LayoutParams(-1, -2))
+            addView(stage, LinearLayout.LayoutParams(-1, cardH + 2 * ring).apply { topMargin = dp(4) })
             addView(name, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12); leftMargin = dp(20); rightMargin = dp(20) })
-            addView(facts, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4); leftMargin = dp(20); rightMargin = dp(20) })
-            addView(buttons, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(14); leftMargin = dp(20); rightMargin = dp(20) })
         }
         select(0)
-        strip.post { shape() }
+        scroller.post { shape() }
         return block
     }
 
@@ -516,12 +532,12 @@ class PhoneActivity : PhoneScreen() {
         return box
     }
 
-    private fun poster(item: Item, widthPx: Int) = ImageView(this).apply {
+    private fun poster(item: Item, widthPx: Int, loaded: (() -> Unit)? = null) = ImageView(this).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
         background = rounded(TILE, CORNER)
         clipToOutline = true
         contentDescription = item.name
-        Images.load(item.poster, this, widthPx, orElse = item.art)
+        Images.load(item.poster, this, widthPx, orElse = item.art) { loaded?.invoke() }
     }
 
     // ---------- titles ----------
@@ -541,16 +557,42 @@ class PhoneActivity : PhoneScreen() {
         item.facts = listOfNotNull(item.left, about.ifEmpty { null }).joinToString(DOT_SHORT)
     }
 
-    /** Press and hold a poster: the title's page, or a source chosen by hand; a title in progress can leave Continue Watching. */
+    /**
+     * Press and hold a poster: the title's page, or a source chosen by hand. A title in progress can also start over, be
+     * marked watched (a show moves on to its next episode) or leave Continue Watching.
+     */
     private fun titleMenu(item: Item) {
         val inProgress = item.resume && page == Page.HOME
-        val options = listOfNotNull("More info", "Choose a source".takeIf { item.resume || item.type != "series" },
-            "Remove from Continue Watching".takeIf { inProgress })
+        val show = item.type == "series"
+        val startOver = if (show) "Start episode over" else "Start over"
+        val watched = if (show) "Mark episode as watched" else "Mark as watched"
+        val options = listOfNotNull(startOver.takeIf { inProgress }, watched.takeIf { inProgress }, "More info",
+            "Choose a source".takeIf { item.resume || item.type != "series" }, "Remove from Continue Watching".takeIf { inProgress })
         choose(item.name, options) { i ->
             when (options[i]) {
+                startOver -> play(item, startOver = true)
+                watched -> markWatched(item)
                 "More info" -> openDetails(item)
                 "Choose a source" -> play(item, pick = true)
                 else -> hide(item)
+            }
+        }
+    }
+
+    /** "Mark as watched" from Continue Watching: a film is done and leaves the row; a show moves to its next episode. */
+    private fun markWatched(item: Item) {
+        val original = library.firstOrNull { it.optString("_id") == item.id } ?: return
+        val updated = JSONObject(original.toString())
+        val key = profile.authKey
+        val known = metas[item.id]
+        background({
+            if (item.type == "series") Library.finishEpisode(updated,
+                (known ?: Stremio.addons(key).let { it.savedMeta(item.type, item.id) ?: it.meta(item.type, item.id) })?.videos.orEmpty())
+            else Library.markTitleWatched(updated)
+            Stremio.saveLibrary(key, listOf(updated))
+        }) { result ->
+            result.fold({ refreshLibrary[Page.HOME]?.invoke() }) {
+                if (!isFinishing) choose("Couldn't mark it watched", listOf("OK"), "Check the connection and try again.") { }
             }
         }
     }
@@ -568,7 +610,7 @@ class PhoneActivity : PhoneScreen() {
         }
     }
 
-    private fun play(item: Item, pick: Boolean = false) {
+    private fun play(item: Item, pick: Boolean = false, startOver: Boolean = false) {
         val videoId = item.videoId ?: item.id
         val meta = metas[item.id]
         val videos = meta?.videos.orEmpty()
@@ -577,7 +619,7 @@ class PhoneActivity : PhoneScreen() {
         val episode = item.left?.substringBefore(DOT_SHORT)?.takeIf { item.type == "series" && it.startsWith("S") }
         startActivity(Intent(this, if (pick) PhoneStreamsActivity::class.java else StreamsActivity::class.java)
             .putExtra("type", item.type).putExtra("id", item.id).putExtra("name", item.name).putExtra("poster", item.poster)
-            .putExtra("videoId", videoId).putExtra("nextVideoId", next?.id).putExtra("pick", pick)
+            .putExtra("videoId", videoId).putExtra("nextVideoId", next?.id).putExtra("pick", pick).putExtra("startOver", startOver)
             .putExtra("background", meta?.background ?: item.art)
             .putExtra("logo", meta?.logo ?: Images.logoFor(item.id))
             .putExtra("still", videos.getOrNull(at)?.thumbnail)
@@ -612,7 +654,8 @@ class PhoneActivity : PhoneScreen() {
     private companion object {
         const val TOP_BAR = 60
         const val TAB_BAR = 64
-        const val CAROUSEL_W = 200 // dp: the framed poster
+        const val CAROUSEL_MAX = 330 // dp: the framed poster at most
+        const val STRIP_H = 66 // dp: the glass Resume strip across the framed poster's foot
         const val POSTER_W = 112 // dp: a row's posters
         const val BACKDROP_H = 560
         const val MAX_ROWS = 14

@@ -186,6 +186,20 @@ fun List<Addon>.meta(type: String, id: String, together: Boolean = false): Meta?
 }
 
 /** Last time's details from disk, from the first add-on in the account's order that kept some; no network. */
+/**
+ * More like this when no add-on answers "similar" (few do): titles of the same genre from a catalog that can filter by
+ * it, so a film's title page still has somewhere to go. Network: off the main thread.
+ */
+fun List<Addon>.sameGenre(type: String, genres: List<String>, except: String): List<Meta> {
+    val catalogs = flatMap { it.catalogs }.filter { it.type == type }
+    for (g in genres) for (c in catalogs) {
+        val match = c.genres.firstOrNull { it.equals(g, ignoreCase = true) } ?: continue
+        val metas = runCatching { c.addon.catalog(c, match) }.getOrNull().orEmpty().filter { it.id != except }
+        if (metas.size > 3) return metas
+    }
+    return emptyList()
+}
+
 fun List<Addon>.savedMeta(type: String, id: String): Meta? =
     filter { it.serves("meta", type, id) }.firstNotNullOfOrNull { runCatching { it.savedMeta(type, id) }.getOrNull() }
 
@@ -315,10 +329,29 @@ class Stream(
     /** How well it suits this TV, higher first: nothing above the screen's resolution, HDR only on an HDR screen. */
     fun fit(tv: Device): Int = (if (height > tv.height) 0 else 2) + (if (hdr || dolbyVision) (if (tv.hdr) 0 else -1) else 0)
 
+    /**
+     * True when the file or source names a different episode ("S01E03" while S1 E1 was asked for): a season pack's
+     * wrong file, or another show filed under this one. Names with no episode, or with this one among several, pass.
+     */
+    fun namesOtherEpisode(season: Int, episode: Int): Boolean {
+        val named = episodeTag.findAll(words).toList()
+        return named.isNotEmpty() && named.none { it.groupValues[1].toInt() == season && it.groupValues[2].toInt() == episode }
+    }
+
     fun toJson(): JSONObject = JSONObject().put("name", title).put("description", description).put("url", url)
         .put("headers", JSONObject(headers)).put("size", size).put("filename", filename).put("binge", bingeGroup)
 
     companion object {
+        private val episodeTag = Regex("s(\\d{1,2})[ ._-]?e(\\d{1,3})")
+
+        /** "tt123:2:5" → (2, 5); null for a film. */
+        fun episodeOf(videoId: String): Pair<Int, Int>? {
+            val p = videoId.split(":")
+            if (p.size < 3) return null
+            val e = p[p.size - 1].toIntOrNull() ?: return null
+            return (p[p.size - 2].toIntOrNull() ?: return null) to e
+        }
+
         fun from(json: JSONObject): Stream? {
             val url = json.text("url") ?: return null
             val hints = json.optJSONObject("behaviorHints")

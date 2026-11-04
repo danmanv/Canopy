@@ -1650,12 +1650,20 @@ class MainActivity : Screen() {
         }
     }
 
-    /** Hold OK on a Continue Watching title: choose a source yourself, pin it to Tonight, or take it off the row. */
+    /**
+     * Hold OK on a Continue Watching title: its title page, start it (or the episode) over, mark it watched (a show moves
+     * on to the next episode), choose a source yourself, pin it to Tonight, or take it off the row.
+     */
     private fun continueMenu(item: Item) {
         val pinned = HomeRows.pinned(this, item.id)
-        choose(item.name, listOf("Choose a source", if (pinned) "Unpin from Tonight" else "Pin to Tonight", "Remove from Continue Watching")) { selected ->
-            if (selected == 0) return@choose play(item, pick = true)
-            if (selected == 1) {
+        val show = item.type == "series"
+        choose(item.name, listOf("More info", if (show) "Start episode over" else "Start over", if (show) "Mark episode as watched" else "Mark as watched",
+            "Choose a source", if (pinned) "Unpin from Tonight" else "Pin to Tonight", "Remove from Continue Watching")) { selected ->
+            if (selected == 0) return@choose openDetails(item)
+            if (selected == 1) return@choose play(item, startOver = true)
+            if (selected == 2) return@choose finishContinue(item)
+            if (selected == 3) return@choose play(item, pick = true)
+            if (selected == 4) {
                 HomeRows.pin(this, item.id, !pinned)
                 redrawContinue?.invoke()
                 return@choose
@@ -1674,6 +1682,28 @@ class MainActivity : Screen() {
                     forgetIfSessionGone(error)
                     if (!isFinishing) choose("Couldn't remove it", listOf("OK"), "Check the connection and try again.") { }
                 }
+            }
+        }
+    }
+
+    /** "Mark as watched" from Continue Watching: a film is done and leaves the row; a show moves to its next episode. */
+    private fun finishContinue(item: Item) {
+        val original = library.firstOrNull { it.optString("_id") == item.id } ?: return
+        val updated = JSONObject(original.toString())
+        val key = profile.authKey
+        val known = metas[item.id]
+        background({
+            val videos = if (item.type != "series") emptyList()
+                else (known ?: Stremio.addons(key).let { it.savedMeta(item.type, item.id) ?: it.meta(item.type, item.id) })?.videos.orEmpty()
+            if (item.type == "series") Library.finishEpisode(updated, videos) else Library.markTitleWatched(updated)
+            Stremio.saveLibrary(key, listOf(updated))
+        }) { result ->
+            result.fold({
+                library = library.map { if (it.optString("_id") == item.id) updated else it }
+                refreshLibrary?.invoke()
+            }) { error ->
+                forgetIfSessionGone(error)
+                if (!isFinishing) choose("Couldn't mark it watched", listOf("OK"), "Check the connection and try again.") { }
             }
         }
     }
@@ -2034,6 +2064,10 @@ class MainActivity : Screen() {
             private val shade = View(context).apply { setBackgroundColor(Color.BLACK); alpha = 0f }
             // On every card in progress, as Netflix does: comparing how far along titles are is the point of the row.
             private val progress = item.progress.takeIf { it > 0 }?.let { progressBar(it) }
+            // Continue Watching: the focused poster wears the glass Resume strip across its foot (as on the iPhone and
+            // iPad), with the time left, and OK resumes. Hold OK for the title page and the rest.
+            private val resumeStrip = if (item.resume && !wide && !grid) ResumeStrip(TV_STRIP_H).apply { alpha = 0f } else null
+            private val timeLeft = item.left?.split(DOT)?.lastOrNull { it.endsWith("left") }
 
             init {
                 outlineProvider = object : android.view.ViewOutlineProvider() {
@@ -2056,6 +2090,7 @@ class MainActivity : Screen() {
                     setPadding(dp(8), dp(3), dp(8), dp(4))
                 }, LayoutParams(-2, -2, Gravity.TOP or Gravity.END).apply { setMargins(0, dp(10), dp(10), 0) })
                 addView(face, LayoutParams(-1, -1))
+                resumeStrip?.let { addView(it, LayoutParams(-1, dp(TV_STRIP_H), Gravity.BOTTOM).apply { bottomMargin = dp(4) }) }
                 // On a wide card, a bar inset inside its dark foot. On a poster, a bar along the very bottom edge, below
                 // a ratings strip's words instead of through them.
                 if (progress != null) addView(progress.apply { clipToOutline = true },
@@ -2074,12 +2109,16 @@ class MainActivity : Screen() {
                     // Focus grows into the gaps without moving its neighbours, and wears a white edge that reads from the
                     // couch on any poster (the clip to the card's outline keeps it inside the rounded corners).
                     if (focusFrame == null) lift(has) // a phone's row has its fixed frame instead
+                    resumeStrip?.let { strip ->
+                        if (has) strip.bind(image, "Resume", timeLeft)
+                        strip.animate().alpha(if (has) 1f else 0f).setDuration(if (has) 300L else 120L).start()
+                    }
                     if (has) {
                         focus(index)
                         showHero(item)
                     } else main.post { if (!view.hasFocus()) pendingUpdate?.let { pendingUpdate = null; it() } }
                 }
-                setOnClickListener { openDetails(item) }
+                setOnClickListener { if (resumeStrip != null) play(item) else openDetails(item) }
                 if (grid) setOnLongClickListener { listMenu(item); true }
                 else if (item.resume) setOnLongClickListener { continueMenu(item); true }
             }
@@ -2124,6 +2163,7 @@ class MainActivity : Screen() {
                     if (nameMade.isInitialized()) name.visibility = if (wide) View.VISIBLE else View.INVISIBLE
                     if (now) face.alpha = 1f else face.animate().alpha(1f).setDuration(Motion.QUICK).setInterpolator(Motion.EASE).start()
                     if (isFocused) lift(true)
+                    resumeStrip?.invalidate() // its glass is frosted from this poster
                 }
                 now = false
             }
@@ -2229,14 +2269,14 @@ class MainActivity : Screen() {
     }
 
     /** Resume: straight to the sources for the episode Continue Watching points at; with [pick] (held OK) they're all listed. */
-    private fun play(item: Item, pick: Boolean = false) {
+    private fun play(item: Item, pick: Boolean = false, startOver: Boolean = false) {
         val videoId = item.videoId ?: item.id
         val videos = metas[item.id]?.videos.orEmpty()
         val next = videos.getOrNull(videos.indexOfFirst { it.id == videoId } + 1)?.takeIf { videos.any { it.id == videoId } }
         val episode = item.left?.substringBefore(" · ")?.takeIf { item.type == "series" && it.startsWith("S") }
         startActivity(Intent(this, StreamsActivity::class.java)
             .putExtra("type", item.type).putExtra("id", item.id).putExtra("name", item.name).putExtra("poster", item.poster)
-            .putExtra("videoId", videoId).putExtra("nextVideoId", next?.id).putExtra("pick", pick)
+            .putExtra("videoId", videoId).putExtra("nextVideoId", next?.id).putExtra("pick", pick).putExtra("startOver", startOver)
             .putExtra("background", metas[item.id]?.background ?: item.art)
             .putExtra("logo", metas[item.id]?.logo ?: item.logo)
             .putExtra("still", videos.firstOrNull { it.id == videoId }?.thumbnail)
@@ -2351,6 +2391,7 @@ class MainActivity : Screen() {
         const val TRAILER_LOAD = 800L // ms before it starts loading out of sight: racing along a row loads none
         const val TRAILER_FADE = 800L
         const val HEADER_H = 76 // dp
+        const val TV_STRIP_H = 40 // dp: the glass Resume strip on a focused Continue Watching poster
         const val WHATS_NEW_WAIT = 1_500L // ms after Home opens: its first row draws before the pop-up covers it
         // 2:3 posters, six and a bit across (56 + 7 × 120 + 6 × 16 = 992 of 960 dp): the seventh runs off the edge to
         // say there's more, like the TV apps the layout follows.
