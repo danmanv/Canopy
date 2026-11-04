@@ -58,15 +58,18 @@
             </intent-filter>
             <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
         </activity>
-        <activity android:name=".SettingsActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".SettingsActivity" /> <!-- sideways on a TV, upright on a phone: set in onCreate -->
         <activity android:name=".AddonsActivity" android:screenOrientation="sensorLandscape" />
         <activity android:name=".DetailsActivity" android:screenOrientation="sensorLandscape" />
         <activity android:name=".CatalogActivity" android:screenOrientation="sensorLandscape" />
         <activity android:name=".StreamsActivity" android:screenOrientation="sensorLandscape" />
         <activity
             android:name=".PlayerActivity"
-            android:screenOrientation="sensorLandscape"
-            android:configChanges="keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|screenLayout" />
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenSize|smallestScreenSize|screenLayout" />
+        <!-- PlayerActivity sets its own orientation: sideways on a TV; on a phone, upright or sideways as the phone is
+             held (a small window over other apps too), so a turn mustn't restart the video. -->
         <activity
             android:name=".ScreensaverActivity"
             android:screenOrientation="sensorLandscape"
