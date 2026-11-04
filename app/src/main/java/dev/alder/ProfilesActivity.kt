@@ -489,6 +489,8 @@ class ProfilesActivity : Screen() {
             ), LinearLayout.LayoutParams(-2, -2).apply { if (index > 0) marginStart = dp(16) })
         }
         paint()
+        // The five colour names stay on one line each, the row shrinking as a whole when the column is narrow.
+        words.forEach { it.setSingleLine() }
 
         val copy = column(Gravity.START,
             text(if (first) "Welcome to Canopy" else "Who's this for?", SERIF_TITLE, serif = true).onArt(),
@@ -501,7 +503,7 @@ class ProfilesActivity : Screen() {
             avatar,
             previewName.marginTop(14),
             caps("Portrait colour", Theme.now.second).marginTop(24),
-            swatches.marginTop(10),
+            Shrink(swatches).marginTop(10),
             next.marginTop(28),
         ).apply { gravity = Gravity.CENTER }
         val content = onboardingFrame(if (first) "step 1 of 2" else "step 1 of 3", copy, preview, dp(40), 1.1f, 0.9f)
@@ -616,7 +618,9 @@ class ProfilesActivity : Screen() {
                     contentDescription = "Delete"
                     setOnClickListener { if (name.length() > 0) name.text.delete(name.length() - 1, name.length()) }
                 }
-            })
+            // Wrap-content, not the default match-parent: a wrap-content column takes its width only from children
+            // that wrap, so match-parent letter rows were cut to the width of the Shift/Space row (A-F, J-O, S-X).
+            }, LinearLayout.LayoutParams(-2, -2))
         }
         keyboard.addView(LinearLayout(this).apply {
             key("⇧  Shift", this, SMALL, -2).setOnClickListener { caps(!upper) }
@@ -986,6 +990,26 @@ class ProfilesActivity : Screen() {
             child.pivotX = if (pivotStart) 0f else child.measuredWidth / 2f
             child.pivotY = child.measuredHeight / 2f
         }
+    }
+
+    /** Holds a row at its own size and shrinks it, centred, when its column is narrower than it. */
+    private class Shrink(private val child: View) : FrameLayout(child.context) {
+        init { addView(child, LayoutParams(-2, -2)) }
+
+        override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+            val free = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED)
+            child.measure(free, free)
+            val room = if (MeasureSpec.getMode(widthSpec) == MeasureSpec.UNSPECIFIED) child.measuredWidth else MeasureSpec.getSize(widthSpec)
+            val scale = if (child.measuredWidth > room && child.measuredWidth > 0) room.toFloat() / child.measuredWidth else 1f
+            child.pivotX = 0f
+            child.pivotY = 0f
+            child.scaleX = scale
+            child.scaleY = scale
+            setMeasuredDimension((child.measuredWidth * scale).toInt(), (child.measuredHeight * scale).toInt())
+        }
+
+        override fun onLayout(changed: Boolean, l: Int, t: Int, r: Int, b: Int) =
+            child.layout(0, 0, child.measuredWidth, child.measuredHeight)
     }
 
     private companion object {
