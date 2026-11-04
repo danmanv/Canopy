@@ -19,7 +19,7 @@ struct Carousel: View {
     private var cardW: CGFloat {
         // What's left of the screen's height after the top bar, the name/Resume block, one full row of posters and
         // the tab bar, so the first row below always shows whole.
-        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 600) / 1.5)) }
+        if size == .regular { return max(120, min(width * 0.3, 260, (UIScreen.main.bounds.height - 640) / 1.5)) }
         return min(width * 0.62, 330)
     }
     private var framed: Card? { cards.first { $0.id == current } ?? cards.first }
