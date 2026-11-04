@@ -106,6 +106,8 @@ struct PlayerView: View {
 
     private var starting: some View {
         ZStack {
+            // Solid, so the upright page under it doesn't show through while the source is found.
+            Color.black.ignoresSafeArea()
             RemoteImage(url: request.title.background ?? Art.background(for: request.title.id), width: 900, placeholder: false)
                 .opacity(0.35).blur(radius: 6).ignoresSafeArea()
             LinearGradient(colors: [.black.opacity(0.2), .black.opacity(0.85)], startPoint: .top, endPoint: .bottom).ignoresSafeArea()
