@@ -18,6 +18,8 @@ Put changes that are not released under `## Unreleased`. Before each release, re
 - **Play upright.** On a phone, hold the phone upright while a video plays. The video shows at the top. The controls, the name and the story of the episode show below it. Turn the phone sideways for the full screen, or tap **Full screen**.
 - On a phone, the upright player shows the other episodes of the season below the story. Tap an episode to play it.
 - On a phone, tap **Keep sideways** in the player to keep the video sideways when you lie down. Canopy keeps your choice. Tap it again to turn it off.
+- On a phone, **Settings** is upright. Tap a section to open it. Each setting shows what it does below its name.
+- **Settings** scrolls its list of sections when the screen is short. Before, **About** was not on the screen on some phones.
 - **Play in a window.** On a phone, go to the Home screen while a video plays, or tap **Window**. The video continues in a small window above other apps. The window has **Back 10 seconds**, **Play** and **Ahead 10 seconds**. Tap the window to make it large again.
 
 ## 1.3.4

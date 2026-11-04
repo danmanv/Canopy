@@ -58,7 +58,7 @@
             </intent-filter>
             <meta-data android:name="android.app.searchable" android:resource="@xml/searchable" />
         </activity>
-        <activity android:name=".SettingsActivity" android:screenOrientation="sensorLandscape" />
+        <activity android:name=".SettingsActivity" /> <!-- sideways on a TV, upright on a phone: set in onCreate -->
         <activity android:name=".AddonsActivity" android:screenOrientation="sensorLandscape" />
         <activity android:name=".DetailsActivity" android:screenOrientation="sensorLandscape" />
         <activity android:name=".CatalogActivity" android:screenOrientation="sensorLandscape" />

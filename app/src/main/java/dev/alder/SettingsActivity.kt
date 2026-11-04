@@ -220,9 +220,22 @@ class SettingsActivity : Screen() {
 
     override val fullChoices get() = true
 
+    // A phone holds Settings upright, drawn at its own size: the sections as a list, and a tap opens one over it, with
+    // each setting's explanation under its name (there's no remote focus to show it). A TV keeps the side-by-side page.
+    override val phoneLayout: Boolean get() = touch
+    override fun phoneLayoutIn(base: Context) = Device.touch(base)
+    override val backArrow: Boolean get() = !touch // upright has its own, beside the title
+    private val upright get() = phoneLayout
+    private lateinit var sectionList: ScrollView
+    private lateinit var sectionPage: LinearLayout
+    private lateinit var backButton: ImageView
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedOrientation = if (touch) android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
         Settings.hdrPref(this) // migrate the old HDR switch before any row reads it
+        if (upright) return buildUpright()
         val width = resources.displayMetrics.widthPixels / resources.displayMetrics.density
         val height = resources.displayMetrics.heightPixels / resources.displayMetrics.density
         // Full screen, like Netflix's: no panels. Big section names on the left, a hairline, then the settings as rows.
@@ -246,7 +259,12 @@ class SettingsActivity : Screen() {
 
         groups = column(Gravity.START)
         Group.entries.forEach(::addGroup)
-        root.addView(groups, FrameLayout.LayoutParams(dp(220), -2, Gravity.TOP or Gravity.START).apply {
+        // In a scroll, so a short screen still reaches About at the foot of the list.
+        root.addView(ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            clipChildren = false; clipToPadding = false
+            addView(groups)
+        }, FrameLayout.LayoutParams(dp(220), dp((height - 110).toInt()), Gravity.TOP or Gravity.START).apply {
             leftMargin = dp(36); topMargin = dp(96)
         })
         // The hairline between the sections and their settings, fading out at both ends.
@@ -298,6 +316,11 @@ class SettingsActivity : Screen() {
     }
 
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        if (upright && event.keyCode == android.view.KeyEvent.KEYCODE_BACK && ::sectionPage.isInitialized &&
+            sectionPage.visibility == View.VISIBLE) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) closeSection()
+            return true
+        }
         if (event.action == android.view.KeyEvent.ACTION_DOWN) {
             if (event.keyCode == android.view.KeyEvent.KEYCODE_DPAD_RIGHT &&
                 groupViews.values.any { it.hasFocus() }) {
@@ -562,6 +585,7 @@ class SettingsActivity : Screen() {
 
     private fun settingRow(label: String, value: View, help: String, perProfile: Boolean = false,
                            focus: (Boolean) -> Unit = {}, click: () -> Unit): View {
+        if (upright) return uprightRow(label, value, help, perProfile, click)
         val line = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             addView(text(label, ROW_SP, bold = true), LinearLayout.LayoutParams(-2, -2))
@@ -734,6 +758,100 @@ class SettingsActivity : Screen() {
         }
         refresh += ::draw
         draw()
+    }
+
+    // ---------- upright, on a phone ----------
+
+    private fun buildUpright() {
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = sky() }
+        backButton = ImageView(this).apply {
+            setImageResource(R.drawable.ic_back); setColorFilter(TEXT)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            contentDescription = "Back"
+            setOnClickListener { if (sectionPage.visibility == View.VISIBLE) closeSection() else finish() }
+        }
+        detailTitle = text("Settings", 28f, serif = true).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END }
+        profileName = text(Profiles.active(this)?.name.orEmpty(), 15f, bold = true, color = TEXT_2)
+        avatar = text(Profiles.active(this)?.name?.take(1)?.uppercase() ?: "A", 15f, bold = true, color = BASE).apply {
+            gravity = Gravity.CENTER
+            val colour = Profiles.active(this@SettingsActivity)?.color ?: TUNGSTEN
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR, intArrayOf(colour, darker(colour))).apply {
+                cornerRadius = dp(CORNER).toFloat()
+            }
+        }
+        root.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(8), dp(18), dp(8))
+            addView(backButton, LinearLayout.LayoutParams(dp(48), dp(48)))
+            addView(detailTitle, LinearLayout.LayoutParams(0, -2, 1f).apply { marginStart = dp(4) })
+            addView(profileName, LinearLayout.LayoutParams(-2, -2).apply { marginEnd = dp(10) })
+            addView(avatar, LinearLayout.LayoutParams(dp(34), dp(34)))
+        }, LinearLayout.LayoutParams(-1, -2))
+
+        // The sections: big names down the page, each with a chevron.
+        groups = column(Gravity.START).apply { setPadding(0, dp(4), 0, dp(24)) }
+        for (group in Group.entries) groups.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), 0, dp(22), 0)
+            isClickable = true
+            background = hairline()
+            addView(text(group.label, 22f, serif = true), LinearLayout.LayoutParams(0, -2, 1f))
+            addView(text("›", 24f, color = TEXT_3), LinearLayout.LayoutParams(-2, -2))
+            setOnClickListener { openSection(group) }
+        }, LinearLayout.LayoutParams(-1, dp(64)))
+        sectionList = ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(groups) }
+        root.addView(sectionList, LinearLayout.LayoutParams(-1, 0, 1f))
+
+        // One section, over the list: what it's for, then its settings.
+        hint = text("", 15f, color = TEXT_2).apply { setPadding(dp(24), 0, dp(24), 0) }
+        detailRows = column(Gravity.START).apply { setPadding(dp(8), 0, dp(8), dp(32)) }
+        rowsScroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false; addView(detailRows) }
+        sectionPage = column(Gravity.START).apply {
+            visibility = View.GONE
+            addView(hint, LinearLayout.LayoutParams(-1, -2))
+            addView(rowsScroll, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin = dp(10) })
+        }
+        root.addView(sectionPage, LinearLayout.LayoutParams(-1, 0, 1f))
+        window.setBackgroundDrawable(null)
+        setContentView(root)
+        // A theme change redraws the screen: it comes back to the section it was in.
+        intent.getStringExtra(OPEN_GROUP)?.let { name -> Group.entries.firstOrNull { it.name == name } }?.let(::openSection)
+    }
+
+    private fun openSection(group: Group) {
+        showGroup(group)
+        detailTitle.text = group.label
+        sectionList.visibility = View.GONE
+        sectionPage.visibility = View.VISIBLE
+        rowsScroll.scrollTo(0, 0)
+    }
+
+    private fun closeSection() {
+        intent.removeExtra(OPEN_GROUP)
+        detailTitle.text = "Settings"
+        sectionPage.visibility = View.GONE
+        sectionList.visibility = View.VISIBLE
+    }
+
+    /** A setting upright: its name and value on one line, what it does under them, all one tap. */
+    private fun uprightRow(label: String, value: View, help: String, perProfile: Boolean, click: () -> Unit): View {
+        val row = column(Gravity.START).apply {
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            isClickable = true
+            background = hairline()
+            addView(LinearLayout(context).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(text(label, 17f, bold = true).apply { maxLines = 2 }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (perProfile) addView(badge("THIS PROFILE", filled = false), LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) })
+                (value as? TextView)?.textSize = 16f
+                addView(value, LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(12) })
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(text(help, 14f, color = TEXT_3).apply { setLineSpacing(0f, 1.15f) }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+            setOnClickListener { click() }
+        }
+        detailRows.addView(row, LinearLayout.LayoutParams(-1, -2))
+        if (firstDetail == null) firstDetail = row
+        return row
     }
 
     private companion object {
