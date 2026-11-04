@@ -38,7 +38,7 @@ struct Carousel: View {
                                 .frame(width: cardW, height: cardW * 1.5)
                                 .clipShape(Soft(radius: 8))
                                 .overlay(alignment: .bottom) {
-                                    if size == .regular, let p = c.progress, p > 0 {
+                                    if let p = c.progress, p > 0 {
                                         // Along the poster's very bottom edge.
                                         GeometryReader { g in
                                             Rectangle().fill(theme.accentColor).frame(width: g.size.width * max(0, min(1, p)), height: 3)
@@ -80,7 +80,7 @@ struct Carousel: View {
             .overlay {
                 // iPad: a frosted strip across the framed poster's foot is the Resume button; it stays in the frame
                 // and changes with whichever poster is in it.
-                if size == .regular, let c = framed {
+                if let c = framed {
                     glassStrip(c)
                         .frame(width: cardW, height: cardW * 1.5, alignment: .bottom)
                         .clipShape(Soft(radius: 8))
@@ -88,7 +88,7 @@ struct Carousel: View {
                         .animation(.easeOut(duration: moving ? 0.12 : 0.3), value: moving)
                 }
             }
-            if size != .regular, let c = framed { below(c) }
+            if size != .regular, let c = framed { nameLine(c) }
         }
         .background(GeometryReader { g in
             Color.clear.onAppear { width = g.size.width }.onChange(of: g.size.width) { _, w in width = w }
@@ -98,30 +98,14 @@ struct Carousel: View {
         .onChange(of: cards.first?.id) { _, first in if !cards.contains(where: { $0.id == current }) { current = first } }
     }
 
-    private func below(_ c: Card) -> some View {
-        VStack(spacing: size == .regular ? 7 : 10) {
-            Text(c.name).font(Look.title(size == .regular ? 19 : 22)).foregroundStyle(theme.textColor).lineLimit(2).multilineTextAlignment(.center)
-            if let left = c.left {
-                Text(left).font(Look.bold(14)).foregroundStyle(theme.accentColor)
-            } else if !c.facts.isEmpty {
-                Text(c.facts).font(Look.body(14)).foregroundStyle(theme.text2)
-            }
-            if let p = c.progress, p > 0 {
-                ProgressLine(value: p).frame(width: min(cardW, 260))
-            }
-            Button {
-                start(c)
-            } label: {
-                Label(c.progress != nil ? "Resume" : "Play", systemImage: "play.fill")
-            }
-            .buttonStyle(PrimaryButton())
-            .frame(width: min(cardW + 10, 300))
-        }
-        .padding(.horizontal, 20)
-        .animation(.easeOut(duration: 0.2), value: c.id)
+    /// Phone: just the framed title's name under it; Resume and the time left are on the glass strip.
+    private func nameLine(_ c: Card) -> some View {
+        Text(c.name).font(Look.title(20)).foregroundStyle(theme.textColor).lineLimit(1)
+            .padding(.horizontal, 20)
+            .animation(.easeOut(duration: 0.2), value: c.id)
     }
 
-    /// iPad (design 1, "Glass footer"): play circle, "Resume" over the time left, on frosted glass with a hairline top.
+    /// Design 1, "Glass footer": play circle, "Resume" over the time left, on frosted glass with a hairline top.
     private func glassStrip(_ c: Card) -> some View {
         Button {
             start(c)
