@@ -7,36 +7,53 @@ private final class Memory: @unchecked Sendable {
     let cache = NSCache<NSString, UIImage>()
 }
 
-actor ImageStore {
+final class ImageStore: Sendable {
     static let shared = ImageStore()
-    private nonisolated let box = Memory()
-    private nonisolated var memory: NSCache<NSString, UIImage> { box.cache }
-    private var running = [String: Task<UIImage?, Never>]()
+    private let box = Memory()
+    private var memory: NSCache<NSString, UIImage> { box.cache }
 
-    init() { box.cache.totalCostLimit = 120 << 20 }
+    /// Its own session: many connections per host (poster add-ons serve every picture from one host) and a large
+    /// disk cache, so pictures seen once come back instantly on the next launch.
+    private let session: URLSession = {
+        let c = URLSessionConfiguration.default
+        c.httpMaximumConnectionsPerHost = 12
+        c.timeoutIntervalForRequest = 30
+        c.requestCachePolicy = .returnCacheDataElseLoad
+        c.urlCache = URLCache(memoryCapacity: 32 << 20, diskCapacity: 400 << 20,
+                              directory: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first?
+                                  .appendingPathComponent("images", isDirectory: true))
+        return URLSession(configuration: c)
+    }()
 
-    nonisolated func cached(_ url: String, width: CGFloat) -> UIImage? {
+    init() { box.cache.totalCostLimit = 150 << 20 }
+
+    func cached(_ url: String, width: CGFloat) -> UIImage? {
         memory.object(forKey: key(url, width) as NSString)
     }
 
-    nonisolated private func key(_ url: String, _ width: CGFloat) -> String { "\(Int(width))|\(url)" }
+    private func key(_ url: String, _ width: CGFloat) -> String { "\(Int(width))|\(url)" }
 
+    /// Loads in the caller's task, so a poster scrolled off screen stops downloading and frees its connection for
+    /// the ones in view. Tries twice; decoding happens off the main thread.
     func image(_ url: String, width: CGFloat) async -> UIImage? {
         let k = key(url, width)
         if let img = memory.object(forKey: k as NSString) { return img }
-        if let t = running[k] { return await t.value }
-        let t = Task<UIImage?, Never> {
-            guard let u = URL(string: url) else { return nil }
-            var r = URLRequest(url: u, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 20)
-            r.setValue(Http.userAgent, forHTTPHeaderField: "User-Agent")
-            guard let (data, _) = try? await URLSession.shared.data(for: r) else { return nil }
-            return Self.downsample(data, width: width)
+        guard let u = URL(string: url) else { return nil }
+        var r = URLRequest(url: u)
+        r.setValue(Http.userAgent, forHTTPHeaderField: "User-Agent")
+        for attempt in 0..<2 {
+            if Task.isCancelled { return nil }
+            if let (data, resp) = try? await session.data(for: r),
+               (resp as? HTTPURLResponse).map({ $0.statusCode < 400 }) ?? true {
+                let img = await Task.detached(priority: .userInitiated) { Self.downsample(data, width: width) }.value
+                if let img {
+                    memory.setObject(img, forKey: k as NSString, cost: Int(img.size.width * img.size.height * img.scale * img.scale * 4))
+                }
+                return img
+            }
+            if attempt == 0 { try? await Task.sleep(nanoseconds: 600_000_000) }
         }
-        running[k] = t
-        let img = await t.value
-        running[k] = nil
-        if let img { memory.setObject(img, forKey: k as NSString, cost: Int(img.size.width * img.size.height * img.scale * img.scale * 4)) }
-        return img
+        return nil
     }
 
     private static func downsample(_ data: Data, width: CGFloat) -> UIImage? {
