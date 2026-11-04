@@ -49,6 +49,7 @@ final class VLC: NSObject {
         media.addOption(":http-user-agent=\(s.headers["User-Agent"] ?? s.headers["user-agent"] ?? Http.userAgent)")
         if let ref = s.headers["Referer"] ?? s.headers["referer"] { media.addOption(":http-referrer=\(ref)") }
         media.addOption(":network-caching=3000")
+        if AppModel.demo { media.addOption(":input-repeat=20") }  // the 10 s sample keeps going for screenshots
         if ms > 5000 { media.addOption(":start-time=\(Double(ms) / 1000)") }
         player.media = media
         history = []
